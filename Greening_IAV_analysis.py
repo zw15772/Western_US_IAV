@@ -62,6 +62,9 @@ class greening_analysis:
             T.save_npy( zscore_dic, outf)
 
     def trend_analysis(self):  ##each window average trend
+        phenology_mask_f = data_root + rf'/basedata/Phenology_extraction/phenology_type.tif'
+        phenology_mask_arr, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(phenology_mask_f)
+        phenology_dic = D.spatial_arr_to_dic(phenology_mask_arr)
 
 
 
@@ -85,9 +88,13 @@ class greening_analysis:
             p_value_dic = {}
             for pix in tqdm(dic):
                 r, c = pix
+                phenology_type=phenology_dic[pix]
+                # print(phenology_type)
+                if phenology_type == 3:
+                    continue
 
                 time_series = dic[pix]
-                print(time_series)
+                # print(time_series)
                 time_series = np.array(time_series)
                 # print(time_series)
 

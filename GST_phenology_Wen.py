@@ -889,8 +889,8 @@ class Phenology:
         vals_list = []
 
         for pix in spatial_dic:
-            # val=spatial_dic[pix]['Onsets']
-            val = spatial_dic[pix]['SeasType']
+            val=spatial_dic[pix]['Onsets']
+            # val = spatial_dic[pix]['SeasType']
             print(pix,val)
             try:
                 val=float(val)
@@ -907,7 +907,7 @@ class Phenology:
         arr = D.pix_dic_to_spatial_arr(result_dic)
         outdir=data_root+rf'SNU_LAI/Phenology_extraction/'
         T.mk_dir(outdir,force=True)
-        outtif=outdir+'phenology_type.tif'
+        outtif=outdir+'Onsets.tif'
         D.arr_to_tif(arr, outtif)
 
 
