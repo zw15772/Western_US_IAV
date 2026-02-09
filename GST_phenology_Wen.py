@@ -19,7 +19,7 @@ class Phenology:
         # self.multi_year_mean_monthly()
         # self.interpolate()
 
-        self.GST()
+        # self.GST()
         # self.plot_4GST_df()
         # self.read_4GST_df()
         self.plot_4GST_npy()  ### plot SOS and EOS
@@ -905,10 +905,16 @@ class Phenology:
         print(vals_list)
 
         arr = D.pix_dic_to_spatial_arr(result_dic)
-        plt.imshow(arr, interpolation='nearest', cmap='jet',vmin=0,vmax=365)
-        plt.colorbar()
-        plt.title('leaf senescence')
-        plt.show()
+        outdir=data_root+rf'SNU_LAI/Phenology_extraction/'
+        T.mk_dir(outdir,force=True)
+        outtif=outdir+'phenology_type.tif'
+        D.arr_to_tif(arr, outtif)
+
+
+        # plt.imshow(arr, interpolation='nearest', cmap='jet',vmin=0,vmax=4)
+        # plt.colorbar()
+        # plt.title('leaf senescence')
+        # plt.show()
 
 
         pass

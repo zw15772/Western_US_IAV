@@ -11,9 +11,12 @@ class Data_processing:
     def run(self):
         # self.nc_to_tif_time_series_fast2()
         # self.extract_tif_from_shp()
-        self.tif_to_dic()
+        # self.tif_to_dic()
         ## 4 extract phenology based 4GST using GST_phenology_Wen.py
-        ## 5 现在用SOS EOS extract growing season
+        ## 5 现在用SOS EOS extract growing season and return monthly data during growing season
+        self.extract_growing_season_monthly()
+        # self.extract_growing_season_LAI_mean()
+        # self.spatial_plot()
 
         pass
     def nc_to_tif_time_series_fast2(self):
@@ -139,25 +142,25 @@ class Data_processing:
                 temp_dic = {}
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
 
-    def extract_phenology_monthly_variables(self):
-        fdir = rf'D:\Project3\Data\GLOBMAP\dic\\'
+    def extract_growing_season_monthly(self):
+        fdir = data_root+rf'SNU_LAI/dic/'
 
-        outdir = rf'D:\Project3\Data\GLOBMAP\\extract_phenology_monthly\\'
+        outdir =data_root + r'SNU_LAI/extract_growing_season_monthly/'
 
         Tools().mk_dir(outdir, force=True)
-        f_phenology = rf'D:\Project3\Data\LAI4g\4GST\\4GST.npy'
+        f_phenology = data_root+rf'/SNU_LAI/4GST/4GST.npy'
         phenology_dic = T.load_npy(f_phenology)
         new_spatial_dic = {}
         for pix in phenology_dic:
             # print(phenology_dic[pix]);exit()
-            val = phenology_dic[pix]['SeasType']
+            val = phenology_dic[pix]['Onsets']
             try:
                 val = float(val)
             except:
                 continue
 
             new_spatial_dic[pix] = val
-        spatial_array = DIC_and_TIF(pixelsize=0.5).pix_dic_to_spatial_arr(new_spatial_dic)
+        spatial_array = D.pix_dic_to_spatial_arr(new_spatial_dic)
         plt.imshow(spatial_array, interpolation='nearest', cmap='jet')
         plt.show()
         exit()
@@ -269,13 +272,13 @@ class Data_processing:
             # plt.show()
             np.save(outf, result_dic)
 
-    def extract_annual_growing_season_LAI_mean(self):  ## extract LAI average
-        fdir = rf'D:\Project3\Data\GLOBMAP\\extract_phenology_monthly\\'
+    def extract_growing_season_LAI_mean(self):  ## extract LAI average
+        fdir = data_root+r'/SNU_LAI/extract_growing_season_monthly/'
 
-        outdir_CV = result_root + rf'\3mm\GLOBMAP\\extract_annual_growing_season_LAI_mean\\'
-        # print(outdir_CV);exit()
+        outdir = data_root+r'/SNU_LAI/extract_growing_season_LAI_mean/'
 
-        T.mk_dir(outdir_CV, force=True)
+
+        T.mk_dir(outdir, force=True)
 
         spatial_dic = T.load_npy_dir(fdir)
         result_dic = {}
@@ -306,9 +309,25 @@ class Data_processing:
                 'growing_season': growing_season_mean_list,
             }
 
-        outf = outdir_CV + 'extract_annual_growing_season_LAI_mean.npy'
+        outf = outdir + 'growing_season_LAI_mean.npy'
 
         np.save(outf, result_dic)
+
+    def spatial_plot(self):
+        f=data_root+r'/SNU_LAI/extract_growing_season_LAI_mean/' + 'growing_season_LAI_mean.npy'
+        dic=T.load_npy(f)
+        spatial_dic = {}
+        for pix in tqdm(dic):
+            r, c = pix
+            vals_growing_season = dic[pix]['growing_season']
+            spatial_dic[pix] = np.nanmean(vals_growing_season)
+        arr=D.pix_dic_to_spatial_arr(spatial_dic)
+        plt.imshow(arr)
+        plt.show()
+
+
+        pass
+
 
 
 class check_data:
@@ -352,6 +371,7 @@ class check_data:
 def main():
 
     Data_processing().run()
+
     # check_data().run()
 
 if __name__ == '__main__':
