@@ -477,19 +477,233 @@ class IAV_analysis():
     def __init__(self):
         pass
     def run(self):
-        pass
-    def detrend(self):
-        pass
-    def extract_moving_window(self):
+        # self.detrend()
+        # self.extract_moving_window()
+        self.moving_window_CV_extraction_anaysis_LAI()
         pass
 
-    def moving_window_average(self):
+    def detrend(self):
+        phenology_mask_f = data_root + rf'SNU_LAI/Phenology_extraction/SeasType.tif'
+        phenology_mask_arr, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(phenology_mask_f)
+        phenology_dic = D.spatial_arr_to_dic(phenology_mask_arr)
+
+        fdir = data_root + rf'/SNU_LAI/extract_growing_season_LAI_mean/'
+        outdir = result_root + rf'IAV_analysis/detrend/'
+        T.mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+            if not f.endswith('.npy'):
+                continue
+
+            print(f)
+
+            outf = outdir + f.split('.')[0] + '_detrend.npy'
+            # if isfile(outf):
+            #     continue
+            # dic=T.load_npy_dir(fdir+f+'\\')
+            dic = dict(np.load(fdir + f, allow_pickle=True, ).item())
+
+            detrend_zscore_dic = {}
+
+            for pix in tqdm(dic):
+                phenology_val=phenology_dic[pix]
+                if phenology_val==3:
+                    continue
+                r, c = pix
+                # print(len(dic[pix]))
+                time_series = dic[pix]['growing_season']
+                # print(time_series)
+                time_series = np.array(time_series, dtype=float)
+                # plt.plot(time_series)
+                # plt.show()
+                time_series[time_series < -999] = np.nan
+                if np.isnan(np.nanmean(time_series)):
+                    continue
+                if np.std(time_series) == 0:
+                    continue
+                ##### if count of nan is more than 50%, then skip
+                if np.sum(np.isnan(time_series)) / len(time_series) > 0.5:
+                    continue
+                # mean = np.nanmean(time_series)
+                # std=np.nanstd(time_series)
+                # if std == 0:
+                #     continue
+                # delta_time_series = (time_series - mean) / std
+                # if np.isnan(time_series).any():
+                #     continue
+                time_series = T.interp_nan(time_series)
+                detrend_delta_time_series = T.detrend_vals(time_series)
+                plt.plot(time_series)
+                plt.plot(detrend_delta_time_series)
+                plt.show()
+
+                detrend_zscore_dic[pix] = detrend_delta_time_series
+
+            np.save(outf, detrend_zscore_dic)
+
+    def extract_moving_window(self):
+
+        fdir_all = result_root + rf'/IAV_analysis/detrend//'
+        outdir = result_root + rf'/IAV_analysis/moving_window_extraction//'
+
+        T.mk_dir(outdir, force=True)
+        for f in os.listdir(fdir_all):
+
+            if not f.endswith('.npy'):
+                continue
+            if not 'detrend' in f:
+                continue
+
+            outf = outdir + f.split('.')[0] + '.npy'
+            print(outf)
+
+            # if os.path.isfile(outf):
+            #     continue
+
+
+            dic = T.load_npy(fdir_all + f)
+            window = 15
+
+            new_x_extraction_by_window = {}
+            for pix in tqdm(dic):
+
+                # time_series = dic[pix][mode]
+                time_series = dic[pix]
+                # plt.plot(time_series)
+                # plt.show()
+
+                time_series = np.array(time_series)
+                # if T.is_all_nan(time_series):
+                #     continue
+                if len(time_series) == 0:
+                    continue
+
+                # time_series[time_series < -999] = np.nan
+                if np.isnan(np.nanmean(time_series)):
+                    print('error')
+                    continue
+                # print((len(time_series)))
+                ## if all values are identical, then continue
+                if np.nanmax(time_series) == np.nanmin(time_series):
+                    continue
+
+                # new_x_extraction_by_window[pix] = self.forward_window_extraction_detrend_anomaly(time_series, window)
+                new_x_extraction_by_window[pix] = self.forward_window_extraction(time_series, window)
+
+            T.save_npy(new_x_extraction_by_window, outf)
+
+    def forward_window_extraction(self, x, window):
+        # 前窗滤波
+        # window = window-1
+        # 不改变数据长度
+
+        if window < 0:
+            raise IOError('window must be greater than 0')
+        elif window == 0:
+            return x
+        else:
+            pass
+
+        x = np.array(x)
+
+        # new_x = np.array([])
+        # plt.plot(x)
+        # plt.show()
+        new_x_extraction_by_window = []
+        for i in range(len(x) + 1):
+            if i + window >= len(x) + 1:
+                continue
+            else:
+                anomaly = []
+                relative_change_list = []
+                x_vals = []
+                for w in range(window):
+                    x_val = (x[i + w])
+                    x_vals.append(x_val)
+                if np.isnan(np.nanmean(x_vals)):
+                    continue
+
+                # x_mean=np.nanmean(x_vals)
+
+                # for i in range(len(x_vals)):
+                #     if x_vals[0]==None:
+                #         continue
+                # x_anomaly=(x_vals[i]-x_mean)
+                # relative_change = (x_vals[i] - x_mean) / x_mean
+
+                # relative_change_list.append(x_vals)
+                new_x_extraction_by_window.append(x_vals)
+        return new_x_extraction_by_window
+
         pass
+
+    def moving_window_CV_extraction_anaysis_LAI(self):
+        window_size = 15
+
+        fdir = result_root + rf'IAV_analysis/moving_window_extraction/'
+        outdir = result_root + rf'IAV_analysis/moving_window_CV_extraction_anaysis/'
+        T.mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+
+            dic = T.load_npy(fdir + f)
+
+            outf = outdir + f.split('.')[0] + f'_CV.npy'
+            print(outf)
+
+            # if os.path.isfile(outf):
+            #     continue
+
+            new_x_extraction_by_window = {}
+            trend_dic = {}
+            p_value_dic = {}
+
+            for pix in tqdm(dic):
+                trend_list = []
+                time_series_all = dic[pix]
+                print(len(time_series_all))
+                if len(time_series_all) < 28:  ##
+                    continue
+                time_series_all = np.array(time_series_all)
+                slides = len(time_series_all)
+                for ss in range(slides):
+                    if np.isnan(np.nanmean(time_series_all)):
+                        print('error')
+                        continue
+
+
+                    ### if all values are identical, then continue
+                    time_series = time_series_all[ss]
+                    if np.nanmax(time_series) == np.nanmin(time_series):
+                        continue
+                    # print(len(time_series))
+
+                    if np.nanmean(time_series) == 0:
+                        continue
+                    cv = np.nanstd(time_series) / np.nanmean(time_series) * 100
+
+                    trend_list.append(cv)
+                    # print(trend_list)
+                # plt.plot(trend_list)
+                # plt.show()
+                trend_dic[pix] = trend_list
+
+            np.save(outf, trend_dic)
+            T.open_path_and_file(outdir)
+
+            ##tiff
+            # arr_trend = DIC_and_TIF(pixelsize=0.25).pix_dic_to_spatial_arr(trend_dic)
+            #
+            # p_value_arr = DIC_and_TIF(pixelsize=0.25).pix_dic_to_spatial_arr(p_value_dic)
+            # DIC_and_TIF(pixelsize=0.25).arr_to_tif(arr_trend, outf + '_trend.tif')
+            # DIC_and_TIF(pixelsize=0.25).arr_to_tif(p_value_arr, outf + '_p_value.tif')
+
 
 def main():
-    greening_analysis().run()
+    # greening_analysis().run()
     # area_weighted_average().run()
     # PLOT_greening_IAV().run()
+    IAV_analysis().run()
 
 
 
