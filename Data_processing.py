@@ -3,7 +3,7 @@ import numpy as np
 
 
 from __Global__ import *
-tif_template= '/Users/wenzhang/Downloads/Western US IAV/Data/SNU_LAI/extract_tif/199901.tif'
+tif_template= '/Users/wenzhang/Downloads/Western US IAV/Data/SNU_LAI/extract_tif/200401.tif'
 D=DIC_and_TIF(tif_template=tif_template)
 
 
@@ -15,8 +15,8 @@ class Data_processing:
         ## 4 extract phenology based 4GST using GST_phenology_Wen.py
         ## 5 现在用SOS EOS extract growing season and return monthly data during growing season
         self.extract_growing_season_monthly()
-        # self.extract_growing_season_LAI_mean()
-        # self.spatial_plot()
+        self.extract_growing_season_LAI_mean()
+        self.spatial_plot()
 
         pass
     def nc_to_tif_time_series_fast2(self):
@@ -48,7 +48,7 @@ class Data_processing:
                 # exit()
 
     def extract_tif_from_shp(self):
-        shp_f=data_root + 'basedata/merged_western_US.shp'
+        shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
         fdir=data_root + '/SNU_LAI/tif/'
         outdir=data_root + '/SNU_LAI/extract_tif/'
         T.mk_dir(outdir,force=True)
@@ -151,19 +151,19 @@ class Data_processing:
         f_phenology = data_root+rf'/SNU_LAI/4GST/4GST.npy'
         phenology_dic = T.load_npy(f_phenology)
         new_spatial_dic = {}
-        for pix in phenology_dic:
-            # print(phenology_dic[pix]);exit()
-            val = phenology_dic[pix]['Onsets']
-            try:
-                val = float(val)
-            except:
-                continue
-
-            new_spatial_dic[pix] = val
-        spatial_array = D.pix_dic_to_spatial_arr(new_spatial_dic)
-        plt.imshow(spatial_array, interpolation='nearest', cmap='jet')
-        plt.show()
-        exit()
+        # for pix in phenology_dic:
+        #     # print(phenology_dic[pix]);exit()
+        #     val = phenology_dic[pix]['Onsets']
+        #     try:
+        #         val = float(val)
+        #     except:
+        #         continue
+        #
+        #     new_spatial_dic[pix] = val
+        # spatial_array = D.pix_dic_to_spatial_arr(new_spatial_dic)
+        # plt.imshow(spatial_array, interpolation='nearest', cmap='jet')
+        # plt.show()
+        # exit()
         spatial_dict_gs_count = {}
 
         for f in T.listdir(fdir):
@@ -258,6 +258,12 @@ class Data_processing:
                     time_series = np.array(time_series)
                     time_series_gs = np.reshape(time_series, (-1, 12))
 
+                elif SeasType == 1:
+                    time_series = spatial_dict[pix]
+                    time_series = np.array(time_series)
+                    time_series_gs = np.reshape(time_series, (-1, 12))
+
+
                 else:
                     SeasClss = phenology_dic[pix]['SeasClss']
                     print(SeasType, SeasClss)
@@ -330,6 +336,8 @@ class Data_processing:
 
 
 
+
+
 class check_data:
     def run(self):
         self.plot_time_series()
@@ -370,7 +378,8 @@ class check_data:
 
 def main():
 
-    Data_processing().run()
+     Data_processing().run()
+    # area_weighted_average().run()
 
     # check_data().run()
 

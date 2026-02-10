@@ -19,7 +19,7 @@ class greening_analysis:
         outdir = result_root + rf'greening_analysis/relative_change/'
         Tools().mk_dir(outdir, force=True)
 
-        outf = outdir + 'LAI_growing_season_relative_change.npy'
+        outf = outdir + 'SNU_LAI.npy'
         # print(outf);exit()
 
 
@@ -38,7 +38,7 @@ class greening_analysis:
             time_series = np.array(time_series)
 
 
-            print(len(time_series))
+            # print(len(time_series))
 
             if np.isnan(np.nanmean(time_series)):
                 continue
@@ -59,10 +59,15 @@ class greening_analysis:
           #   plt.show()
 
                 ## save
-            T.save_npy( zscore_dic, outf)
+        T.save_npy( zscore_dic, outf)
 
-    def trend_analysis(self):  ##each window average trend
-        phenology_mask_f = data_root + rf'/basedata/Phenology_extraction/phenology_type.tif'
+    def trend_analysis(self):
+
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.pyplot as plt
+        ##each window average trend
+        phenology_mask_f = data_root + rf'SNU_LAI/Phenology_extraction/SeasType.tif'
         phenology_mask_arr, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(phenology_mask_f)
         phenology_dic = D.spatial_arr_to_dic(phenology_mask_arr)
 
@@ -79,6 +84,7 @@ class greening_analysis:
             # if os.path.isfile(outf + '_trend.tif'):
             #     continue
             print(outf)
+
 
             if not f.endswith('.npy'):
                 continue
@@ -119,22 +125,371 @@ class greening_analysis:
 
             arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
 
+
             p_value_arr = D.pix_dic_to_spatial_arr(p_value_dic)
+            fpath=result_root+rf'/greening_analysis/relative_change/trend/SNU_LAI_trend.tif'
+            ll,lr,ul,ur=RasterIO_Func().get_tif_bounds(fpath)
+            print(ll,lr,ul,ur)
 
-            # plt.imshow(arr_trend, cmap='jet', vmin=-0.01, vmax=0.01)
+            ax = plt.axes(projection=ccrs.PlateCarree())
+
+            # --- 画趋势图 ---
+            im = ax.imshow(
+                arr_trend,
+                cmap='RdBu',
+                vmin=-1,
+                vmax=1,
+                extent=[-124.55, -102.04, 25.59,49],
+                transform=ccrs.PlateCarree()
+            )
+
+            # --- 加 continent ---
+            ax.add_feature(
+                cfeature.LAND,
+                facecolor='none',  #
+                edgecolor='black',
+                linewidth=0.5,
+                zorder=2
+            )
+
+            lon_min_box = -125
+            lon_max_box = -105
+            lat_min_box = 30
+            lat_max_box = 45
+
+            rect = mpatches.Rectangle(
+                (lon_min_box, lat_min_box),  # 左下角 (lon, lat)
+                lon_max_box - lon_min_box,  # 宽度
+                lat_max_box - lat_min_box,  # 高度
+                linewidth=1.5,
+                edgecolor='black',
+                facecolor='none',
+                transform=ccrs.PlateCarree(),  # ⭐关键
+                zorder=10
+            )
+
+            ax.add_patch(rect)
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+
+            cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+            cbar.set_label('Trend')
+
+            plt.title(f)
+            plt.show()
+
+            # D.arr_to_tif(arr_trend, outf + '_trend.tif')
+            # D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
             #
-            # plt.colorbar()
-            # plt.title(f)
-            # plt.show()
+            # np.save(outf + '_trend', arr_trend)
+            # np.save(outf + '_p_value', p_value_arr)
 
-            D.arr_to_tif(arr_trend, outf + '_trend.tif')
-            D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
+class PLOT_greening_IAV:
+    def __init__(self):
+        self.map_width = 13 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+        pass
+    def run(self):
+        self.plot_relative_change_LAI()
+        pass
 
-            np.save(outf + '_trend', arr_trend)
-            np.save(outf + '_p_value', p_value_arr)
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+        df = df[df['SeasType'] !=3]
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+
+        return df
+    def plot_relative_change_LAI(self):  ##### plot for 4 clusters
+
+        df = T.load_df(
+            result_root + rf'greening_analysis/Dataframe/greening_analysis_area_weighted.df')
+        print(len(df))
+        df=self.df_clean(df)
+        pix_list = df['pix'].tolist()
+        unique_pix_list = list(set(pix_list))
+        spatial_dic = {}
+
+        for pix in unique_pix_list:
+            spatial_dic[pix] = 1
+        arr = D.pix_dic_to_spatial_arr(spatial_dic)
+        plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+        plt.colorbar()
+        plt.show()
+
+
+        print(len(df))
+        T.print_head_n(df)
+        # exit()
+
+        # create color list with one green and another 14 are grey
+
+        color_list = ['black','green', 'blue',  'magenta', 'black','purple',  'purple', 'black', 'yellow', 'purple', 'pink', 'grey',
+                      'brown', 'lime', 'teal', 'magenta']
+        linewidth_list = [2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+
+
+        fig = plt.figure()
+        i = 1
+
+
+        variable_list = [
+                         'LAI_growing_season_relative_change',
+                         ]
+        dic_label={'LAI_growing_season_relative_change':'SNU_LAI_growing_season_relative_change',}
+        year_list=range(1982,2024)
+
+        result_dic = {}
+
+        for var in variable_list:
+            mean_dic = {}
+            for year in year_list:
+                df_i = df[df['year'] == year]
+                ## scheme1
+                vals = np.array(df_i[f'{var}'].tolist(), dtype=float)
+                weight = np.array(df_i['area_weight'].tolist(), dtype=float)
+                weighted_mean_values = (
+                        np.nansum(vals * weight)
+                        / np.nansum(weight * np.isfinite(vals))
+                )
+
+                # print(var, year, weighted_mean_values)
+                ## scheme2
+                # vals = np.array(df_i[f'{var}_relative_change'].tolist(), dtype=float)
+                # weighted_mean_values = np.nanmean(vals)
+
+                mean_dic[year] = weighted_mean_values
+
+            result_dic[var] = mean_dic
+
+
+        # 转成 DataFrame
+        df_new = pd.DataFrame(result_dic).reset_index()
+
+
+
+        # T.print_head_n(df_new);exit()
+
+
+        flag=0
+        plt.figure(figsize=(self.map_width, self.map_height))
+
+        for var in variable_list:
+            plt.plot(year_list, df_new[var], label=dic_label[var],linewidth=linewidth_list[flag], color=color_list[flag])
+            flag=flag+1
+            slope, intercept, r_value, p_value, std_err = stats.linregress(year_list, df_new[var])
+            print(var, f'{slope:.2f}', f'{p_value:.2f}')
+        plt.ylabel('Relative change LAI (%)')
+
+        plt.grid(True, axis='x')   # 只画竖线（随 x 刻度）
+
+        plt.legend()
+        plt.show()
+        # out_pdf_fdir = result_root + rf'\Figure\\weighted_area\\Figure1a\\'
+        # T.mk_dir(out_pdf_fdir, force=True)
+        # plt.savefig(out_pdf_fdir + 'time_series_relative_change_mean.pdf', dpi=300, bbox_inches='tight')
+        # plt.close()
+
+class area_weighted_average():
+    def __init__(self):
+        pass
+    def run(self):
+        self.weighted_average_LAI_relative_change()
+        # self.weighted_average_LAICV()
+        # self.weighted_average_LAI_percentile()
+        # self.weighted_average_LAICV_relative_change()
+
+
+
+    def weighted_average_LAI_relative_change(self):  ###add weighted average LAI in dataframe
+        df =result_root+rf'greening_analysis/Dataframe/greening_analysis.df'
+        df = T.load_df(df)
+
+        vars_to_weight = [
+            'LAI_growing_season_relative_change',
+
+        ]
+
+        df['area_weight'] = np.cos(np.deg2rad(df['lat']))
+
+        df_aw_year = (
+            df
+            .groupby('year')
+            .apply(
+                lambda x: pd.Series({
+                    f'{v}_area_weighted':
+                        (x[v] * x['area_weight']).sum() / x['area_weight'].sum()
+                    for v in vars_to_weight
+                })
+            )
+            .reset_index()
+        )
+
+
+        df = df.merge(df_aw_year, on='year', how='left')
+
+
+
+        # plt.figure(figsize=(6, 4))
+        #
+        # plt.plot(
+        #     df_aw_year['year'],
+        #     df_aw_year['SNU_LAI_relative_change_area_weighted'],
+        #     color='black',
+        #     lw=2
+        # )
+        #
+        # plt.xlabel('Year')
+        # plt.ylabel('Area-weighted LAI change')
+        # plt.title('Dryland vegetation change (area-weighted)')
+        # plt.tight_layout()
+        # plt.show()
+
+        # df[df['year'] == 1982][
+        #     ['SNU_LAI_relative_change_area_weighted',
+        #      'LAI4g_relative_change_area_weighted',
+        #      'composite_LAI_mean_relative_change_area_weighted',
+        #      'GLOBMAP_LAI_relative_change_area_weighted',
+        #
+        #      ]
+        # ].head()
+        # T.print_head_n(df)
+
+
+        outf=result_root+rf'/greening_analysis/Dataframe//greening_analysis_area_weighted.df'
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+
+        pass
+
+    def weighted_average_LAICV(self):  ###add weighted average LAI in dataframe
+        df =result_root+rf'\Dataframe\CVLAI\\CVLAI.df'
+        df = T.load_df(df)
+
+        vars_to_weight = [
+            'SNU_LAI_detrend_CV',
+            'LAI4g_detrend_CV',
+            'composite_LAI_mean_detrend_CV',
+            'GLOBMAP_LAI_detrend_CV',
+
+        ]
+
+        df['area_weight'] = np.cos(np.deg2rad(df['lat']))
+
+        df_aw_year = (
+            df
+            .groupby('window')
+            .apply(
+                lambda x: pd.Series({
+                    f'{v}_area_weighted':
+                        (x[v] * x['area_weight']).sum() / x['area_weight'].sum()
+                    for v in vars_to_weight
+                })
+            )
+            .reset_index()
+        )
+
+
+        df = df.merge(df_aw_year, on='window', how='left')
+
+
+
+        # plt.figure(figsize=(6, 4))
+        #
+        # plt.plot(
+        #     df_aw_year['year'],
+        #     df_aw_year['SNU_LAI_relative_change_area_weighted'],
+        #     color='black',
+        #     lw=2
+        # )
+        #
+        # plt.xlabel('Year')
+        # plt.ylabel('Area-weighted LAI change')
+        # plt.title('Dryland vegetation change (area-weighted)')
+        # plt.tight_layout()
+        # plt.show()
+
+        # df[df['year'] == 1982][
+        #     ['SNU_LAI_relative_change_area_weighted',
+        #      'LAI4g_relative_change_area_weighted',
+        #      'composite_LAI_mean_relative_change_area_weighted',
+        #      'GLOBMAP_LAI_relative_change_area_weighted',
+        #
+        #      ]
+        # ].head()
+        # T.print_head_n(df)
+
+
+        outf=result_root+rf'\Dataframe\CVLAI\\CVLAI_area_weighted.df'
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+
+
+
+
+    def weighted_average_LAICV_relative_change(self):  ###add weighted average LAI in dataframe
+        df =result_root+rf'\Dataframe\Trends_CV\\Trends_CV.df'
+        df = T.load_df(df)
+
+        # print(len(df_clean))
+
+        df['area_weight'] = np.cos(np.deg2rad(df['lat']))
+
+        # plt.figure(figsize=(6, 4))
+        #
+        # plt.plot(
+        #     df_aw_year['year'],
+        #     df_aw_year['SNU_LAI_relative_change_area_weighted'],
+        #     color='black',
+        #     lw=2
+        # )
+        #
+        # plt.xlabel('Year')
+        # plt.ylabel('Area-weighted LAI change')
+        # plt.title('Dryland vegetation change (area-weighted)')
+        # plt.tight_layout()
+        # plt.show()
+
+        # df[df['year'] == 1982][
+        #     ['SNU_LAI_relative_change_area_weighted',
+        #      'LAI4g_relative_change_area_weighted',
+        #      'composite_LAI_mean_relative_change_area_weighted',
+        #      'GLOBMAP_LAI_relative_change_area_weighted',
+        #
+        #      ]
+        # ].head()
+        # T.print_head_n(df)
+
+
+        outf=result_root+rf'Dataframe\Trends_CV\\Trends_CV_area_weighted.df'
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+
+class IAV_analysis():
+    def __init__(self):
+        pass
+    def run(self):
+        pass
+    def detrend(self):
+        pass
+    def extract_moving_window(self):
+        pass
+
+    def moving_window_average(self):
+        pass
 
 def main():
     greening_analysis().run()
+    # area_weighted_average().run()
+    # PLOT_greening_IAV().run()
 
 
 
