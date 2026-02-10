@@ -848,10 +848,427 @@ class build_dataframe():
             print(col)
         return df
         pass
+class build_moving_window_dataframe():
+    def __init__(self):
+
+        self.this_class_arr = (
+                    result_root +  rf'\IAV_analysis\Dataframe\\')
+        Tools().mk_dir(self.this_class_arr, force=True)
+        self.dff = self.this_class_arr + rf'Dataframe.df'
+    def run(self):
+        df = self.__gen_df_init(self.dff)
+        # df=self.build_df(df)
+        # self.append_value(df)
+        # df=self.append_attributes(df)
+        # df=self.add_trend_to_df(df)
+        df=self.foo1(df)
+        # df=self.add_window_to_df(df)
+
+
+
+        # df=self.rename_columns(df)
+        # df=self.add_columns(df)
+        # df=self.drop_field_df(df)
+        self.show_field()
+
+        T.save_df(df, self.dff)
+        self.__df_to_excel(df, self.dff)
+    def show_field(self):
+        df = T.load_df(self.dff)
+        for col in df.columns:
+            print(col)
+
+
+
+    def __gen_df_init(self, file):
+        df = pd.DataFrame()
+        if not os.path.isfile(file):
+            T.save_df(df, file)
+            return df
+        else:
+            df = self.__load_df(file)
+            return df
+            # raise Warning('{} is already existed'.format(self.dff))
+
+    def __load_df(self, file):
+        df = T.load_df(file)
+        return df
+        # return df_early,dff
+
+    def __df_to_excel(self, df, dff, n=1000, random=False):
+        dff = dff.split('.')[0]
+        if n == None:
+            df.to_excel('{}.xlsx'.format(dff))
+        else:
+            if random:
+                df = df.sample(n=n, random_state=1)
+                df.to_excel('{}.xlsx'.format(dff))
+            else:
+                df = df.head(n)
+                df.to_excel('{}.xlsx'.format(dff))
+
+        pass
+
+    def build_df(self, df):
+
+        fdir = result_root+rf'3mm\Multiregression\Multiregression_result_residual\OBS_zscore\Y\\'
+        all_dic = {}
+
+        for f in os.listdir(fdir):
+            if not f.endswith('.npy'):
+                continue
+            if not 'zscore' in f:
+                continue
+
+            fname = f.split('.')[0]
+
+            fpath = fdir + f
+
+            dic = T.load_npy(fpath)
+            key_name = fname
+
+            all_dic[key_name] = dic
+        # print(all_dic.keys())
+        df = T.spatial_dics_to_df(all_dic)
+        T.print_head_n(df)
+        return df
+
+    def append_value(self, df):  ##补齐
+
+        ## extract LAI4g
+
+        for col in df.columns:
+            if not 'LAI4g' in col:
+                continue
+            if 'CV' in col:
+                continue
+
+            vals_new = []
+
+
+            for i, row in tqdm(df.iterrows(), total=len(df), desc=f'append {col}'):
+                pix = row['pix']
+                r, c = pix
+                if r<480:
+                    continue
+                vals = row[col]
+                print(vals)
+                if type(vals) == float:
+                    vals_new.append(np.nan)
+                    continue
+                vals = np.array(vals)
+                print(len(vals))
+                # if len(vals)==23:
+                #     for i in range(1):
+                #         vals=np.append(vals,np.nan)
+                #     # print(len(vals))
+                # elif len(vals)==38:
+                #     for i in range(1):
+                #         vals=np.append(vals,np.nan)
+                #     print(len(vals))
+                if len(vals) == 23:
+
+                    vals = np.append(vals, np.nan)
+                    vals_new.append(vals)
+
+                vals_new.append(vals)
+
+                # exit()
+            df[col] = vals_new
+
+        return df
+
+        pass
+
+    def foo1(self, df):
+
+        f =result_root+ rf'IAV_analysis/moving_window_CV_extraction_anaysis/growing_season_LAI_mean_detrend_CV.npy'
+        # array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
+        # array = np.array(array, dtype=float)
+        # dic = DIC_and_TIF().spatial_arr_to_dic(array)
+
+        dic = T.load_npy(f)
+
+        pix_list = []
+        change_rate_list = []
+        year = []
+
+        for pix in tqdm(dic):
+            time_series = dic[pix]
+            y = 0
+
+            for val in time_series:
+                pix_list.append(pix)
+                change_rate_list.append(val)
+                window=y
+                # print(window)
+                year.append(window)
+                y += 1
+
+        df['pix'] = pix_list
+
+
+
+        df['window'] = year
+
+        df['SNU_LAI_CV'] = change_rate_list
+        return df
+    def add_window_to_df(self, df):
+
+
+        fdir=result_root+rf'\Composite_LAI\LAImin_LAImax\\'
+
+
+        for f in os.listdir(fdir):
+            if 'max' in f:
+                continue
+            if 'min' in f:
+                continue
+
+
+
+            variable= f.split('.')[0]
+
+            print(variable)
+
+
+            if not f.endswith('.npy'):
+                continue
+
+            val_dic = T.load_npy(fdir + f)
+
+            NDVI_list = []
+            for i, row in tqdm(df.iterrows(), total=len(df)):
+
+                window = row.window
+                # pix = row.pix
+                pix = row['pix']
+                r, c = pix
+
+
+                if not pix in val_dic:
+                    NDVI_list.append(np.nan)
+                    continue
+
+                y = window
+
+                vals = val_dic[pix]
+                vals=np.array(vals)
+                print(len(vals))
+                # exit()
+                # plt.plot(vals)
+                # plt.show()
+
+                # print(vals)
+                # vals[vals>9999] = np.nan
+                # vals[vals<-9999] = np.nan
+
+                ##### if len vals is 38, the end of list add np.nan
+
+                #
+                if len(vals) == 24:
+                    ## add twice nan at the end
+                    # vals=np.append([np.nan,np.nan,np.nan,np.nan,np.nan,np.nan], vals,)
+                    vals=np.append(vals,[np.nan])
+
+
+
+                # if len(vals) !=24:
+                #
+                #     NDVI_list.append(np.nan)
+                #     continue
+
+
+                if len(vals) ==0:
+                    NDVI_list.append(np.nan)
+                    continue
+
+                v1= vals[y-0]
+                NDVI_list.append(v1)
+
+
+
+            df[f'{variable}'] = NDVI_list
+            # df[f'{variable}_growing_season'] = NDVI_list
+        # exit()
+        return df
+
+
+    def append_attributes(self, df):  ## add attributes
+        fdir =  result_root + rf'\3mm\Multiregression\Multiregression_result_residual\OBS_zscore\Y\\'
+        var_list=['CV_intraannual_rainfall_ecosystem_year_zscore','CV_intraannual_rainfall_growing_season_zscore',
+'detrended_sum_rainfall_ecosystem_year_CV_zscore','detrended_sum_rainfall_growing_season_CV_zscore',
+                  'rainfall_frenquency_ecosystem_year_zscore','rainfall_frenquency_growing_season_zscore',
+                  'LAI4g_sensitivity_zscore','GLOBMAP_LAI_sensitivity_zscore','composite_LAI_sensitivity_zscore',
+                  'SNU_LAI_sensitivity_zscore'
+                 ]
+        for f in tqdm(os.listdir(fdir)):
+            if not f.endswith('.npy'):
+                continue
+            if not 'median' in f:
+                continue
+
+
+
+            # array=np.load(fdir+f)
+            # dic = DIC_and_TIF().spatial_arr_to_dic(array)
+            dic=T.load_npy(fdir+f)
+            key_name = f.split('.')[0]
+            # if not key_name in var_list:
+            #     continue
+            print(key_name)
+
+            # df[key_name] = df['pix'].map(dic)
+            # T.print_head_n(df)
+            df=T.add_spatial_dic_to_df(df,dic,key_name)
+        return df
+
+    def add_phenology_type_to_df(self, df):
+        f = data_root+rf'/basedata/Phenology_extraction/SeasType.tif'
+
+        array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
+        array = np.array(array, dtype=float)
+
+        val_dic = D.spatial_arr_to_dic(array)
+
+
+        f_name ='SeasType'
+        print(f_name)
+
+        val_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            pix = row['pix']
+            if not pix in val_dic:
+                val_list.append(np.nan)
+                continue
+            val = val_dic[pix]
+            if val < -9999:
+                val_list.append(np.nan)
+                continue
+            if val > 9999:
+                val_list.append(np.nan)
+                continue
+            val_list.append(val)
+
+
+        df[f'{f_name}'] = val_list
+
+
+        return df
+
+    def add_phenology_type_to_df(self, df):
+        f = data_root+rf'/basedata/Phenology_extraction/SeasType.tif'
+
+        array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
+        array = np.array(array, dtype=float)
+
+        val_dic = D.spatial_arr_to_dic(array)
+
+
+        f_name ='SeasType'
+        print(f_name)
+
+        val_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            pix = row['pix']
+            if not pix in val_dic:
+                val_list.append(np.nan)
+                continue
+            val = val_dic[pix]
+            if val < -9999:
+                val_list.append(np.nan)
+                continue
+            if val > 9999:
+                val_list.append(np.nan)
+                continue
+            val_list.append(val)
+
+
+        df[f'{f_name}'] = val_list
+
+
+        return df
+
+
+
+    def add_columns(self, df):
+        df['window'] = df['window'].str.extract(r'(\d+)').astype(int)
+
+
+        return df
+
+
+    def rename_columns(self, df):
+        df = df.rename(columns={'Non tree vegetation_average_zscore': 'Non_tree_vegetation_average_zscore',
+                                'Tree cover_average_zscore': 'Tree_cover_average_zscore',
+                                'Non vegetatated_average_zscore': 'Non_vegetatated_average_zscore',
+
+                                }
+
+                       )
+
+        return df
+
+    def drop_field_df(self, df):
+        for col in df.columns:
+            print(col)
+        # exit()
+        df = df.drop(columns=[
+
+
+                              'TRENDY_ensemble_sensitivity_zscore_mean',
+            'TRENDY_ensemble_sensitivity_zscore_median',
+
+
+
+
+
+                              ])
+        return df
+
+
+    def add_row(self, df):
+        r_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            pix = row['pix']
+            r, c = pix
+            r_list.append(r)
+        df['row'] = r_list
+        return df
+
+    def add_trend_to_df(self, df):
+        fdir=result_root+rf'\bivariate\rainfallmin_rainfallmax\trend\\'
+        for f in os.listdir(fdir):
+
+            if not f.endswith('.tif'):
+                continue
+            print(f)
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fdir+f)
+            array = np.array(array, dtype=float)
+            val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
+            f_name = f.split('.')[0]
+            print(f_name)
+            val_list = []
+            for i, row in tqdm(df.iterrows(), total=len(df)):
+                pix = row['pix']
+                if not pix in val_dic:
+                    val_list.append(np.nan)
+                    continue
+                val = val_dic[pix]
+
+                if val < -99:
+                    val_list.append(np.nan)
+                    continue
+                val_list.append(val)
+            df[f_name] = val_list
+        return df
+
+        pass
 
 
 def main ():
-    build_dataframe().run()
+    # build_dataframe().run()
+    build_moving_window_dataframe().run()
     pass
 
 if __name__ == '__main__':

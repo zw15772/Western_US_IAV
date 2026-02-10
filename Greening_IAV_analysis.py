@@ -479,7 +479,8 @@ class IAV_analysis():
     def run(self):
         # self.detrend()
         # self.extract_moving_window()
-        self.moving_window_CV_extraction_anaysis_LAI()
+        # self.moving_window_CV_extraction_anaysis_LAI()
+        self.trend_analysis()
         pass
 
     def detrend(self):
@@ -661,7 +662,7 @@ class IAV_analysis():
             for pix in tqdm(dic):
                 trend_list = []
                 time_series_all = dic[pix]
-                print(len(time_series_all))
+                # print(len(time_series_all))
                 if len(time_series_all) < 28:  ##
                     continue
                 time_series_all = np.array(time_series_all)
@@ -691,13 +692,127 @@ class IAV_analysis():
             np.save(outf, trend_dic)
             T.open_path_and_file(outdir)
 
-            ##tiff
-            # arr_trend = DIC_and_TIF(pixelsize=0.25).pix_dic_to_spatial_arr(trend_dic)
-            #
-            # p_value_arr = DIC_and_TIF(pixelsize=0.25).pix_dic_to_spatial_arr(p_value_dic)
-            # DIC_and_TIF(pixelsize=0.25).arr_to_tif(arr_trend, outf + '_trend.tif')
-            # DIC_and_TIF(pixelsize=0.25).arr_to_tif(p_value_arr, outf + '_p_value.tif')
 
+    def trend_analysis(self):
+
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.pyplot as plt
+        ##each window average trend
+        phenology_mask_f = data_root + rf'SNU_LAI/Phenology_extraction/SeasType.tif'
+        phenology_mask_arr, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(phenology_mask_f)
+        phenology_dic = D.spatial_arr_to_dic(phenology_mask_arr)
+
+        fdir = result_root + r'IAV_analysis/moving_window_CV_extraction_anaysis/'
+        outdir = result_root + r'IAV_analysis/moving_window_CV_extraction_anaysis/trend/'
+        Tools().mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+
+
+            outf = outdir + f.split('.')[0]
+            # if os.path.isfile(outf + '_trend.tif'):
+            #     continue
+            print(outf)
+
+
+            if not f.endswith('.npy'):
+                continue
+            dic = np.load(fdir + f, allow_pickle=True, encoding='latin1').item()
+
+            trend_dic = {}
+            p_value_dic = {}
+            for pix in tqdm(dic):
+                r, c = pix
+                phenology_type=phenology_dic[pix]
+                # print(phenology_type)
+                if phenology_type == 3:
+                    continue
+
+                time_series = dic[pix]
+                # print(time_series)
+                time_series = np.array(time_series)
+                # print(time_series)
+
+                if len(time_series) == 0:
+                    continue
+                # print(time_series)
+                ### if all valus are the same, then skip
+                # if len(set(time_series)) == 1:
+                #     continue
+                # print(time_series)
+
+                if np.nanstd(time_series) == 0:
+                    continue
+                try:
+
+                    # slope, intercept, r_value, p_value, std_err = stats.linregress(np.arange(len(time_series)), time_series)
+                    slope, b, r, p_value = T.nan_line_fit(np.arange(len(time_series)), time_series)
+                    trend_dic[pix] = slope
+                    p_value_dic[pix] = p_value
+                except:
+                    continue
+
+            arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
+
+
+            p_value_arr = D.pix_dic_to_spatial_arr(p_value_dic)
+            fpath=result_root+rf'/greening_analysis/relative_change/trend/SNU_LAI_trend.tif'
+            ll,lr,ul,ur=RasterIO_Func().get_tif_bounds(fpath)
+            print(ll,lr,ul,ur)
+
+            ax = plt.axes(projection=ccrs.PlateCarree())
+
+            # --- 画趋势图 ---
+            im = ax.imshow(
+                arr_trend,
+                cmap='PRGn_r',
+                vmin=-.8,
+                vmax=.8,
+                extent=[-124.55, -102.04, 25.59,49],
+                transform=ccrs.PlateCarree()
+            )
+
+            # --- 加 continent ---
+            ax.add_feature(
+                cfeature.LAND,
+                facecolor='none',  #
+                edgecolor='black',
+                linewidth=0.5,
+                zorder=2
+            )
+
+            lon_min_box = -125
+            lon_max_box = -105
+            lat_min_box = 30
+            lat_max_box = 45
+
+            rect = mpatches.Rectangle(
+                (lon_min_box, lat_min_box),  # 左下角 (lon, lat)
+                lon_max_box - lon_min_box,  # 宽度
+                lat_max_box - lat_min_box,  # 高度
+                linewidth=1.5,
+                edgecolor='black',
+                facecolor='none',
+                transform=ccrs.PlateCarree(),  # ⭐关键
+                zorder=10
+            )
+
+            ax.add_patch(rect)
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+
+            cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+            cbar.set_label('Trend')
+
+            plt.title(f)
+            plt.show()
+
+            D.arr_to_tif(arr_trend, outf + '_trend.tif')
+            D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
+
+            np.save(outf + '_trend', arr_trend)
+            np.save(outf + '_p_value', p_value_arr)
 
 def main():
     # greening_analysis().run()
