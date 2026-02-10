@@ -261,7 +261,7 @@ class build_dataframe():
         df['year'] = year
 
 
-        df['LAI_growing_season_relative_change'] = change_rate_list
+        df['SNU_LAI_relative_change'] = change_rate_list
         return df
 
     def foo2(self, df):  # 新建trend
@@ -426,15 +426,6 @@ class build_dataframe():
     def add_lat_lon_to_df(self, df):
         T.add_lon_lat_to_df(df,D)
         return df
-
-
-
-
-
-
-        return df
-
-
 
 
     def add_area_to_df(self, df):
@@ -852,7 +843,7 @@ class build_moving_window_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                    result_root +  rf'\IAV_analysis\Dataframe\\')
+                    result_root +  rf'/IAV_analysis/Dataframe/')
         Tools().mk_dir(self.this_class_arr, force=True)
         self.dff = self.this_class_arr + rf'Dataframe.df'
     def run(self):
@@ -861,8 +852,11 @@ class build_moving_window_dataframe():
         # self.append_value(df)
         # df=self.append_attributes(df)
         # df=self.add_trend_to_df(df)
-        df=self.foo1(df)
+        # df=self.foo1(df)
         # df=self.add_window_to_df(df)
+        # df=self.add_phenology_type_to_df(df)
+        # df=self.add_row(df)
+        df=self.add_lat_lon_to_df(df)
 
 
 
@@ -1226,6 +1220,9 @@ class build_moving_window_dataframe():
                               ])
         return df
 
+    def add_lat_lon_to_df(self, df):
+        T.add_lon_lat_to_df(df, D)
+        return df
 
     def add_row(self, df):
         r_list = []

@@ -3,6 +3,8 @@ import numpy as np
 
 
 from __Global__ import *
+
+
 tif_template= '/Users/wenzhang/Downloads/Western US IAV/Data/SNU_LAI/extract_tif/200401.tif'
 D=DIC_and_TIF(tif_template=tif_template)
 
@@ -14,9 +16,12 @@ class Data_processing:
         # self.tif_to_dic()
         ## 4 extract phenology based 4GST using GST_phenology_Wen.py
         ## 5 现在用SOS EOS extract growing season and return monthly data during growing season
-        self.extract_growing_season_monthly()
-        self.extract_growing_season_LAI_mean()
+        # self.extract_growing_season_monthly()
+        # self.extract_growing_season_LAI_mean()
+        # self.extract_growing_season_LAI_min()
+        # self.extract_growing_season_LAI_max()
         self.spatial_plot()
+
 
         pass
     def nc_to_tif_time_series_fast2(self):
@@ -319,8 +324,89 @@ class Data_processing:
 
         np.save(outf, result_dic)
 
+    def extract_growing_season_LAI_min(self):  ## extract LAI average
+        fdir = data_root+r'/SNU_LAI/extract_growing_season_monthly/'
+
+        outdir = data_root+r'/SNU_LAI/extract_growing_season_LAI_min/'
+
+
+        T.mk_dir(outdir, force=True)
+
+        spatial_dic = T.load_npy_dir(fdir)
+        result_dic = {}
+
+        for pix in tqdm(spatial_dic):
+            ### ui==if northern hemisphere
+            r, c = pix
+
+            ### annual year
+
+            vals_growing_season = spatial_dic[pix]
+            print(vals_growing_season.shape[1])
+            # plt.imshow(vals_growing_season)
+            # plt.colorbar()
+            # plt.show()
+            growing_season_mean_list = []
+
+            for val in vals_growing_season:
+                if T.is_all_nan(val):
+                    continue
+                val = np.array(val)
+
+                sum_growing_season = np.nanmin(val)
+
+                growing_season_mean_list.append(sum_growing_season)
+
+            result_dic[pix] = {
+                'growing_season': growing_season_mean_list,
+            }
+
+        outf = outdir + 'growing_season_LAI_min.npy'
+
+        np.save(outf, result_dic)
+
+    def extract_growing_season_LAI_max(self):  ## extract LAI average
+        fdir = data_root + r'/SNU_LAI/extract_growing_season_monthly/'
+
+        outdir = data_root + r'/SNU_LAI/extract_growing_season_LAI_max/'
+
+        T.mk_dir(outdir, force=True)
+
+        spatial_dic = T.load_npy_dir(fdir)
+        result_dic = {}
+
+        for pix in tqdm(spatial_dic):
+            ### ui==if northern hemisphere
+            r, c = pix
+
+            ### annual year
+
+            vals_growing_season = spatial_dic[pix]
+            print(vals_growing_season.shape[1])
+            # plt.imshow(vals_growing_season)
+            # plt.colorbar()
+            # plt.show()
+            growing_season_mean_list = []
+
+            for val in vals_growing_season:
+                if T.is_all_nan(val):
+                    continue
+                val = np.array(val)
+
+                sum_growing_season = np.nanmax(val)
+
+                growing_season_mean_list.append(sum_growing_season)
+
+            result_dic[pix] = {
+                'growing_season': growing_season_mean_list,
+            }
+
+        outf = outdir + 'growing_season_LAI_max.npy'
+
+        np.save(outf, result_dic)
+
     def spatial_plot(self):
-        f=data_root+r'/SNU_LAI/extract_growing_season_LAI_mean/' + 'growing_season_LAI_mean.npy'
+        f=data_root+r'/SNU_LAI/extract_growing_season_LAI_min/' + 'growing_season_LAI_min.npy'
         dic=T.load_npy(f)
         spatial_dic = {}
         for pix in tqdm(dic):
@@ -333,6 +419,74 @@ class Data_processing:
 
 
         pass
+
+class convert_dic_to_tiff:   ### display in QGIS
+    def run(self):
+        self.add_nan()
+        self.spatial_dict_to_tif()
+    def add_nan(self):
+        ## this function for NH 43 years and SH 42 years
+        fpath = rf'/Users/wenzhang/Downloads/Western US IAV/Result/greening_analysis/relative_change/SNU_LAI.npy'
+        spatial_dic = T.load_npy(fpath)
+        len_dic={}
+        for pix in tqdm(spatial_dic):
+            data_len=len(spatial_dic[pix])
+            len_dic[pix]=data_len
+
+        arr = D.pix_dic_to_spatial_arr(len_dic)
+        plt.imshow(arr)
+        plt.show()
+        spatial_dic_new={}
+        for pix in tqdm(spatial_dic):
+            r, c = pix
+            vals = spatial_dic[pix]
+            print(len(vals))
+
+            if len(vals) == 42:
+                vals = np.append(vals, np.nan)
+
+            if len(vals) == 43:
+                spatial_dic_new[pix] = vals
+
+        outdir=result_root+r'/greening_analysis/convert_dic_to_tiff/relative_change/'
+        T.mk_dir(outdir, force=True)
+        outpath=outdir+r'/SNU_LAI.npy'
+        T.save_npy( spatial_dic_new,outpath,)
+
+
+
+
+    def spatial_dict_to_tif(self):
+        phenology_mask_f = data_root + rf'SNU_LAI/Phenology_extraction/SeasType.tif'
+        phenology_mask_arr, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(phenology_mask_f)
+        phenology_dic = D.spatial_arr_to_dic(phenology_mask_arr)
+
+        fpath=result_root+rf'greening_analysis/convert_dic_to_tiff/relative_change/SNU_LAI.npy'
+        spatial_dic=T.load_npy(fpath)
+
+        len_dic = {}
+        for pix in tqdm(spatial_dic):
+            data_len = len(spatial_dic[pix])
+            len_dic[pix] = data_len
+
+        arr = D.pix_dic_to_spatial_arr(len_dic)
+        plt.imshow(arr)
+        plt.show()
+
+
+        spatial_new={}
+        for pix in tqdm(spatial_dic):
+            phenology_type=phenology_dic[pix]
+            if phenology_type==3:
+                continue
+            spatial_new[pix]=spatial_dic[pix]
+
+        outdir=result_root+r'/greening_analysis/convert_dic_to_tiff/relative_change/tif/'
+        T.mk_dir(outdir, force=True)
+        D.pix_dic_to_tif_every_time_stamp(spatial_new, outdir, filename_list=list(range(1982,2025)))
+
+
+    pass
 
 
 
@@ -382,6 +536,7 @@ def main():
     # area_weighted_average().run()
 
     # check_data().run()
+    # convert_dic_to_tiff().run()
 
 if __name__ == '__main__':
     main()
