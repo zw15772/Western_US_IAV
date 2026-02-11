@@ -893,58 +893,94 @@ class IAV_analysis():
 
 
 
-class LAI_min_LAImax:
+class LAImin_LAImax:
     def run(self):
+        # self.extract_growing_season_LAI_stats()
+        # self.LAImax_LAImin_diff()
         self.trend_analysis()
 
+    def extract_growing_season_LAI_stats(self):
+        """
+        For each pixel and each year, extract:
+        - LAI_min, LAI_max
+        - Percentiles: 95, 90, 80, 70, 30, 20, 10, 5
+        """
 
-    def relative_change(self):
+        fdir = data_root + r'/SNU_LAI/extract_growing_season_monthly/'
+        outdir = result_root + r'/LAImin_LAImax/raw/percentiles/'
+        T.mk_dir(outdir, force=True)
 
-        f = data_root+r'SNU_LAI/extract_growing_season_LAI_mean/growing_season_LAI_mean.npy'
-        outdir = result_root + rf'greening_analysis/relative_change/'
-        Tools().mk_dir(outdir, force=True)
-
-        outf = outdir + 'SNU_LAI.npy'
-        # print(outf);exit()
-
-
-        dic = T.load_npy(f)
-
-        zscore_dic = {}
-
-        for pix in tqdm(dic):
+        spatial_dic = T.load_npy_dir(fdir)
 
 
+        # --- containers ---
+        lai_min_dic = {}
+        lai_max_dic = {}
 
-            # print(len(dic[pix]))
-            time_series = dic[pix]['growing_season']
+        percentiles = [95, 90, 80, 70, 30, 20, 10, 5]
+        percentile_dic_all = {p: {} for p in percentiles}
+
+        # --- main loop ---
+        for pix in tqdm(spatial_dic):
+            vals_growing_season = spatial_dic[pix]
+
+            lai_min_list = []
+            lai_max_list = []
+            percentile_lists = {p: [] for p in percentiles}
+
+            for val in vals_growing_season:
+                if T.is_all_nan(val):
+                    continue
+
+                val = np.array(val, dtype=float)
+
+                lai_min_list.append(np.nanmin(val))
+                lai_max_list.append(np.nanmax(val))
+
+                for p in percentiles:
+                    percentile_lists[p].append(np.nanpercentile(val, p))
+
+            # --- save to dicts ---
+            lai_min_dic[pix] = lai_min_list
+            lai_max_dic[pix] = lai_max_list
+
+            for p in percentiles:
+                percentile_dic_all[p][pix] = percentile_lists[p]
+
+        # --- save files ---
+        np.save(outdir + 'LAI_min.npy', lai_min_dic)
+        np.save(outdir + 'LAI_max.npy', lai_max_dic)
+
+        for p in percentiles:
+            np.save(outdir + f'LAI_p{p}.npy', percentile_dic_all[p])
 
 
-            time_series = np.array(time_series)
 
-
-            # print(len(time_series))
-
-            if np.isnan(np.nanmean(time_series)):
+    def LAImax_LAImin_diff(self):
+        fmin_path=data_root+rf'SNU_LAI/extract_growing_season_LAI_min/growing_season_LAI_min.npy'
+        fmax_path=data_root+rf'SNU_LAI/extract_growing_season_LAI_max/growing_season_LAI_max.npy'
+        dic_max=T.load_npy(fmax_path)
+        dic_min=T.load_npy(fmin_path)
+        spatial_dic={}
+        for pix in tqdm(dic_max):
+            if not pix in dic_min:
                 continue
+            vals_max=dic_max[pix]['growing_season']
+            vals_max=np.array(vals_max)
 
-            time_series = time_series
-            mean = np.nanmean(time_series)
-            relative_change = (time_series - mean) / mean * 100
-            anomaly = time_series - mean
-            zscore_dic[pix] = relative_change
-          # plot
-          #   plt.plot(anomaly)
-          #   # plt.legend(['anomaly'])
-          #   plt.show()
-          #
-          #   plt.plot(relative_change)
-          #   plt.legend(['relative_change'])
-          #   plt.legend(['anomaly','relative_change'])
-          #   plt.show()
 
-                ## save
-        T.save_npy( zscore_dic, outf)
+            vals_min=dic_min[pix]['growing_season']
+            vals_min=np.array(vals_min)
+            vals_differences=vals_max-vals_min
+            spatial_dic[pix]=vals_differences
+        outdir=result_root + r'LAI_min_LAImax/raw/differences/'
+        T.mk_dir(outdir, force=True)
+        outf=outdir + r'LAImax_LAImin_difference.npy'
+
+        T.save_npy(spatial_dic,outf)
+
+
+        pass
     def trend_analysis(self):
 
         import cartopy.crs as ccrs
@@ -957,8 +993,8 @@ class LAI_min_LAImax:
 
 
 
-        fdir = data_root + r'SNU_LAI/extract_growing_season_LAI_min/'
-        outdir = result_root + r'LAI_min_LAImax/raw/trend/'
+        fdir = result_root + rf'LAImin_LAImax/raw/percentiles/'
+        outdir = result_root + r'LAI_min_LAImax/raw/percentiles/trend/'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -983,7 +1019,7 @@ class LAI_min_LAImax:
                 if phenology_type == 3:
                     continue
 
-                time_series = dic[pix]['growing_season']
+                time_series = dic[pix]
                 # print(time_series)
                 time_series = np.array(time_series)
                 # print(time_series)
@@ -1074,7 +1110,7 @@ def main():
     # area_weighted_average().run()
     # PLOT_greening_IAV().run()
     # IAV_analysis().run()
-    LAI_min_LAImax().run()
+    LAImin_LAImax().run()
 
 
 
