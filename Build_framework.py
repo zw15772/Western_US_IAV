@@ -3,7 +3,7 @@ import numpy as np
 
 
 from __Global__ import *
-tif_template= '/Users/wenzhang/Downloads/Western US IAV/Data/SNU_LAI/extract_tif/199901.tif'
+tif_template= data_root + rf'basedata\Phenology_extraction\SeasType.tif'
 D=DIC_and_TIF(tif_template=tif_template)
 
 
@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'greening_analysis/Dataframe/')
+                result_root +  rf'SPEI_Greening/Dataframe/')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'greening_analysis.df'
+        self.dff = self.this_class_arr + rf'SPEI_Greening.df'
 
 
         pass
@@ -64,7 +64,7 @@ class build_dataframe():
         # df=self.add_area_to_df(df)
 
 
-        # df=self.rename_columns(df)
+        df=self.rename_columns(df)
         # df = self.drop_field_df(df)
         # df=self.remove_duplicate_columns(df)
         df=self.show_field(df)
@@ -266,7 +266,7 @@ class build_dataframe():
 
     def foo2(self, df):  # 新建trend
 
-        f = result_root + rf'Multiregression_contribution\Obs\result_new\3mm\composite_LAI_mean\composite_LAI_mean_sensitivity_zscore.tif'
+        f = result_root + rf'Terraclimate\SPEI\SPEI_12\trend\\growing_season_SPEI12_mean_trend.tif'
         array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
         array = np.array(array, dtype=float)
         val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
@@ -484,14 +484,8 @@ class build_dataframe():
         return df
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\Multiregression_contribution\Obs\input\Y\zscore\trend\\'
+        fdir = result_root + rf'\greening_analysis\relative_change\trend\\'
 
-        variables_list = [
-                          'CABLE-POP_S2_lai', 'CLASSIC_S2_lai',
-                          'CLM5', 'DLEM_S2_lai', 'IBIS_S2_lai', 'ISAM_S2_lai',
-                          'ISBA-CTRIP_S2_lai', 'JSBACH_S2_lai',
-                          'JULES_S2_lai', 'LPJ-GUESS_S2_lai', 'LPX-Bern_S2_lai',
-                          'ORCHIDEE_S2_lai','YIBs']
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
@@ -586,7 +580,9 @@ class build_dataframe():
 
 
     def rename_columns(self, df):
-        df = df.rename(columns={'composite_LAI_detrend_CV_median_p_value': 'composite_LAI_median_detrend_CV_p_value',
+        df = df.rename(columns={'SPEI_p_value': 'SPEI12_p_value',
+                                'SPEI_trend':'SPEI12_trend'
+
 
 
 
@@ -1264,8 +1260,8 @@ class build_moving_window_dataframe():
 
 
 def main ():
-    # build_dataframe().run()
-    build_moving_window_dataframe().run()
+    build_dataframe().run()
+    # build_moving_window_dataframe().run()
     pass
 
 if __name__ == '__main__':
