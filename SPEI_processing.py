@@ -515,8 +515,8 @@ class SPEI_calculation:
 
             ### annual year
 
-            vals_growing_season = spatial_dic[pix]
-            print(vals_growing_season.shape[1])
+            vals_growing_season = spatial_dic[pix][24:]
+            print(vals_growing_season.shape[0])
             # plt.imshow(vals_growing_season)
             # plt.colorbar()
             # plt.show()
@@ -580,7 +580,7 @@ class SPEI_calculation:
                 time_series = dic[pix]['growing_season']
                 # print(time_series)
                 time_series = np.array(time_series)
-                # print(time_series)
+                print(len(time_series))
 
                 if len(time_series) == 0:
                     continue
@@ -615,8 +615,8 @@ class SPEI_calculation:
             im = ax.imshow(
                 arr_trend,
                 cmap='RdBu',
-                vmin=-0.02,
-                vmax=0.02,
+                vmin=-0.05,
+                vmax=0.05,
                 extent=[-124.55, -102.04, 25.59,49],
                 transform=ccrs.PlateCarree()
             )
@@ -663,12 +663,154 @@ class SPEI_calculation:
             np.save(outf + '_trend', arr_trend)
             np.save(outf + '_p_value', p_value_arr)
 
+class PLOT_SPEI:
+    def __init__(self):
+        self.map_width = 13 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+        pass
+    def run(self):
+        self.plot_SPEI()
+
+        pass
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+        df = df[df['SeasType'] !=3]
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+
+        return df
+    def plot_SPEI(self):  ##### plot for 4 clusters
+
+        df = T.load_df(
+            result_root + rf'greening_analysis/Dataframe/greening_analysis_area_weighted.df')
+        print(len(df))
+        df=self.df_clean(df)
+        pix_list = df['pix'].tolist()
+        unique_pix_list = list(set(pix_list))
+        spatial_dic = {}
+
+        for pix in unique_pix_list:
+            spatial_dic[pix] = 1
+        arr = D.pix_dic_to_spatial_arr(spatial_dic)
+        plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+        plt.colorbar()
+        plt.show()
+
+
+        print(len(df))
+        T.print_head_n(df)
+        # exit()
+
+        # create color list with one green and another 14 are grey
+
+        color_list = ['black','green', 'blue',  'magenta', 'black','purple',  'purple', 'black', 'yellow', 'purple', 'pink', 'grey',
+                      'brown', 'lime', 'teal', 'magenta']
+        linewidth_list = [2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+
+
+        fig = plt.figure()
+        i = 1
+
+
+        variable_list = [
+                         'SPEI12_mean',
+                         ]
+        dic_label={'SPEI12_mean':'SPEI12_mean',}
+        year_list=range(1982,2024)
+
+        mean_dic = {}
+        std_dic = {}
+        result_dic={}
+
+        for var in variable_list:
+            mean_dic = {}
+            for year in year_list:
+                df_i = df[df['year'] == year]
+                ## scheme1
+                vals = np.array(df_i[f'{var}'].tolist(), dtype=float)
+                weight = np.array(df_i['area_weight'].tolist(), dtype=float)
+                weighted_mean = (
+                        np.nansum(vals * weight)
+                        / np.nansum(weight * np.isfinite(vals))
+                )
+
+                # 加权方差
+                weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+
+                weighted_std = np.sqrt(weighted_var)
+
+                mean_dic[year] = weighted_mean
+                std_dic[year] = weighted_std
+                print(weighted_std)
+
+
+                # print(var, year, weighted_mean_values)
+                ## scheme2
+                # vals = np.array(df_i[f'{var}_relative_change'].tolist(), dtype=float)
+                # weighted_mean_values = np.nanmean(vals)
+
+
+
+            result_dic[var] = mean_dic
+            result_dic[f'{var}_std'] = std_dic
+
+        # 转成 DataFrame
+        df_new = pd.DataFrame(result_dic).reset_index()
+
+
+
+        # T.print_head_n(df_new);exit()
+
+        flag=0
+        plt.figure(figsize=(self.map_width, self.map_height))
+
+        for var in variable_list:
+            mean_vals = df_new[var]
+            std_vals = df_new[f'{var}_std']
+
+            plt.plot(year_list, mean_vals,
+                     label=dic_label[var],
+                     linewidth=linewidth_list[flag],
+                     color=color_list[flag])
+
+            plt.fill_between(year_list,
+                             mean_vals - std_vals,
+                             mean_vals + std_vals,
+                             color=color_list[flag],
+                             alpha=0.2)
+
+            slope, intercept, r_value, p_value, std_err = stats.linregress(year_list, mean_vals)
+            print(var, f'{slope:.4f}', f'{p_value:.4f}')
+
+            flag += 1
+        plt.ylabel('SPEI')
+
+        plt.grid(True, axis='x')   # 只画竖线（随 x 刻度）
+
+        plt.legend()
+        plt.show()
+        # out_pdf_fdir = result_root + rf'\Figure\\weighted_area\\Figure1a\\'
+        # T.mk_dir(out_pdf_fdir, force=True)
+        # plt.savefig(out_pdf_fdir + 'time_series_relative_change_mean.pdf', dpi=300, bbox_inches='tight')
+        # plt.close()
+
+
 
 
 def main():
 
     # Processing_data().run()
-    SPEI_calculation().run()
+    # SPEI_calculation().run()
+    PLOT_SPEI().run()
 
 
     pass

@@ -3,15 +3,15 @@ import numpy as np
 
 
 from __Global__ import *
-tif_template= '/Users/wenzhang/Downloads/Western US IAV/Data/SNU_LAI/extract_tif/199901.tif'
+tif_template= rf'D:\Western_US_IAV\Result\greening_analysis\relative_change\trend\SNU_LAI_trend.tif'
 D=DIC_and_TIF(tif_template=tif_template)
 
 class greening_analysis:
     def __init__(self):
         pass
     def run(self):
-        self.relative_change()
-        # self.trend_analysis()
+        # self.relative_change()
+        self.trend_analysis()
         pass
     def relative_change(self):
 
@@ -67,7 +67,7 @@ class greening_analysis:
         import cartopy.feature as cfeature
         import matplotlib.pyplot as plt
         ##each window average trend
-        phenology_mask_f = data_root + rf'SNU_LAI/Phenology_extraction/SeasType.tif'
+        phenology_mask_f = data_root + rf'\basedata\Phenology_extraction\SeasType.tif'
         phenology_mask_arr, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(phenology_mask_f)
         phenology_dic = D.spatial_arr_to_dic(phenology_mask_arr)
 
@@ -151,6 +151,7 @@ class greening_analysis:
                 linewidth=0.5,
                 zorder=2
             )
+            ax.add_feature(cfeature.STATES, linewidth=0.3)
 
             lon_min_box = -125
             lon_max_box = -105
@@ -173,7 +174,7 @@ class greening_analysis:
             ax.set_ylabel('Latitude')
 
             cbar = plt.colorbar(im, ax=ax, shrink=0.8)
-            cbar.set_label('Trend')
+            cbar.set_label('Trend (relative_change, %)')
 
             plt.title(f)
             plt.show()
@@ -1106,11 +1107,11 @@ class LAImin_LAImax:
 
 
 def main():
-    # greening_analysis().run()
+    greening_analysis().run()
     # area_weighted_average().run()
     # PLOT_greening_IAV().run()
     # IAV_analysis().run()
-    LAImin_LAImax().run()
+    # LAImin_LAImax().run()
 
 
 

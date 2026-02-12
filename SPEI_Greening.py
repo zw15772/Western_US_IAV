@@ -113,7 +113,7 @@ class SPEI_Greening:
 
         import numpy as np
         import pandas as pd
-        dff = result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening_category_9.df'
+        dff = result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening.df'
         df = T.load_df(dff)
         df = df.dropna()
 
@@ -144,16 +144,16 @@ class SPEI_Greening:
         df['lai_group'] = 3  # 默认 3 = stable
 
         # 1 = significant greening
-        df.loc[(df['LAI_p95_trend'] > 0) &
-               (df['LAI_p95_p_value'] < 0.05),
+        df.loc[(df['SNU_LAI_trend'] > 0) &
+               (df['SNU_LAI_p_value'] < 0.05),
         'lai_group'] = 1
 
         # 2 = significant browning
-        df.loc[(df['LAI_p95_trend'] < 0) &
-               (df['LAI_p95_p_value'] < 0.05),
+        df.loc[(df['SNU_LAI_trend'] < 0) &
+               (df['SNU_LAI_p_value'] < 0.05),
         'lai_group'] = 2
 
-        df['category_9_95percentile'] = (df['moisture_group'] - 1) * 3 + df['lai_group']
+        df['category_mean'] = (df['moisture_group'] - 1) * 3 + df['lai_group']
 
         category_labels = {
             1: 'Wetting - Greening',
@@ -168,14 +168,14 @@ class SPEI_Greening:
         }
 
         T.print_head_n(df)
-        dff_new=result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening_category_9_95percentile.df'
+        dff_new=result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening_mean.df'
         T.save_df(df, dff_new)
         T.df_to_excel(df,dff_new)
-        spatial_dic=T.df_to_spatial_dic(df,'category_9_95percentile')
+        spatial_dic=T.df_to_spatial_dic(df,'category_mean')
         array=D.pix_dic_to_spatial_arr(spatial_dic)
         outdir=result_root + rf'\SPEI_Greening\tif\\'
         Tools().mk_dir(outdir, force=True)
-        D.arr_to_tif(array,outdir+rf'\SPEI_Greening_category_9_95percentile.tif')
+        D.arr_to_tif(array,outdir+rf'\SPEI_Greening_category_mean.tif')
 
         # ================================
         # Step 3: 统计比例
@@ -215,7 +215,7 @@ class SPEI_Greening:
         # pass
 
     def plot_categorize(self):
-        dff=result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening_category_9_mean.df'
+        dff=result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening_95percentile.df'
         df=T.load_df(dff)
         df=df.dropna()
         df=self.df_clean(df)

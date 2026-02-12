@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'SPEI_Greening/Dataframe/')
+                result_root +  rf'greening_analysis\Dataframe\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'SPEI_Greening_category_9.df'
+        self.dff = self.this_class_arr + rf'greening_analysis_area_weighted.df'
 
 
         pass
@@ -36,7 +36,7 @@ class build_dataframe():
         # df=self.append_value(df)   ## insert or append value
 
 
-        # df = self.add_detrend_zscore_to_df(df)
+        df = self.add_detrend_zscore_to_df(df)
 
         # df=self.add_trend_to_df(df)
         # df=self.add_phenology_type_to_df(df)
@@ -266,7 +266,7 @@ class build_dataframe():
 
     def foo2(self, df):  # 新建trend
 
-        f = result_root + rf'Terraclimate\SPEI\SPEI_12\trend\\growing_season_SPEI12_mean_trend.tif'
+        f = result_root + rf'\greening_analysis\relative_change\trend\\SNU_LAI_trend.tif'
         array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
         array = np.array(array, dtype=float)
         val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
@@ -296,7 +296,7 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Project3\Result\Nov\Composite_LAI\relative_change\\'
+        fdir=data_root+rf'Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\'
 
 
         for f in os.listdir(fdir):
@@ -325,7 +325,8 @@ class build_dataframe():
                     NDVI_list.append(np.nan)
                     continue
 
-                vals = val_dic[pix]
+                vals = val_dic[pix]['growing_season']
+                # print(vals)
                 print(len(vals))
 
                 ##### if len vals is 38, the end of list add np.nan
@@ -338,7 +339,7 @@ class build_dataframe():
                 #     nan_list=np.array([np.nan]*5)
                 #     vals=np.append(vals,nan_list)
 
-                if len(vals)==38:
+                if len(vals)==42:
                     vals = np.append(vals,np.nan)
 
 
@@ -484,14 +485,14 @@ class build_dataframe():
         return df
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'LAImin_LAImax\raw\percentiles\trend\\'
+        fdir = result_root + rf'Terraclimate\SPEI\SPEI_12_NOAA\trend\\'
 
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
                 continue
-            if not 'p5' in f:
-                continue
+            # if not 'p95' in f:
+            #     continue
 
 
 
@@ -583,8 +584,8 @@ class build_dataframe():
 
 
     def rename_columns(self, df):
-        df = df.rename(columns={'SPEI_p_value': 'SPEI12_p_value',
-                                'SPEI_trend':'SPEI12_trend'
+        df = df.rename(columns={'growing_season_SPEI12_mean_p_value': 'SPEI12_p_value',
+                                'growing_season_SPEI12_mean_trend':'SPEI12_trend'
 
 
 
@@ -1254,10 +1255,33 @@ class build_moving_window_dataframe():
 
         pass
 
+class check_Data:
+    def __init__(self):
+        pass
+    def run(self):
+        self.spatial_plot()
+    def spatial_plot(self):
+
+        fdir=rf'D:\Western_US_IAV\Data\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\'
+        spatial_len={}
+
+        for f in os.listdir(fdir):
+            dic=T.load_npy(fdir+f)
+            for pix in dic:
+                vals=dic[pix]['growing_season']
+                length=len(vals)
+                spatial_len[pix]=length
+            array=D.pix_dic_to_spatial_arr(spatial_len)
+            plt.imshow(array)
+            plt.show()
+
+
+
 
 def main ():
     build_dataframe().run()
     # build_moving_window_dataframe().run()
+    # check_Data().run()
     pass
 
 if __name__ == '__main__':
