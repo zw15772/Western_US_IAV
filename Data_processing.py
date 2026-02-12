@@ -148,9 +148,9 @@ class Data_processing:
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
 
     def extract_growing_season_monthly(self):
-        fdir = data_root+rf'SNU_LAI/dic/'
+        fdir = data_root+rf'\Terraclimate\SPEI\SPEI_12\\dic\\'
 
-        outdir =data_root + r'SNU_LAI/extract_growing_season_monthly/'
+        outdir =data_root + r'Terraclimate\SPEI\SPEI_12\extract_growing_season_monthly\\'
 
         Tools().mk_dir(outdir, force=True)
         f_phenology = data_root+rf'/SNU_LAI/4GST/4GST.npy'
