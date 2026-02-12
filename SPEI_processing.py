@@ -3,7 +3,7 @@ import numpy as np
 
 
 from __Global__ import *
-tif_template= rf'D:\Western_US_IAV\Data\Terraclimate\PET\extract_tif/195802.tif'
+tif_template= data_root + rf'basedata\Phenology_extraction\SeasType.tif'
 D=DIC_and_TIF(tif_template=tif_template)
 
 class Processing_data:
@@ -179,8 +179,11 @@ class Processing_data:
 
 class SPEI_calculation:
     def run(self):
-        self.calculate_SPEI()
+        # self.calculate_SPEI()
         # self.compute_spei_NOAA()
+        # self.extract_growing_season_monthly()
+        # self.extract_growing_season_LAI_mean()
+        self.trend_analysis()
         pass
 
     def calculate_SPEI(self):
@@ -336,6 +339,310 @@ class SPEI_calculation:
             # 保存结果
             save_path = os.path.join(outdir, f)
             np.save(save_path, SPEI_12)
+
+
+    def extract_growing_season_monthly(self):
+        fdir = data_root+rf'\Terraclimate\SPEI\SPEI_12_NOAA\\dic\\'
+
+        outdir =data_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_monthly\\'
+
+        Tools().mk_dir(outdir, force=True)
+        f_phenology = data_root+rf'\basedata\4GST\4GST.npy'
+        phenology_dic = T.load_npy(f_phenology)
+        new_spatial_dic = {}
+        # for pix in phenology_dic:
+        #     # print(phenology_dic[pix]);exit()
+        #     val = phenology_dic[pix]['Onsets']
+        #     try:
+        #         val = float(val)
+        #     except:
+        #         continue
+        #
+        #     new_spatial_dic[pix] = val
+        # spatial_array = D.pix_dic_to_spatial_arr(new_spatial_dic)
+        # plt.imshow(spatial_array, interpolation='nearest', cmap='jet')
+        # plt.show()
+        # exit()
+        spatial_dict_gs_count = {}
+
+        for f in T.listdir(fdir):
+
+            outf = outdir + f
+            #
+            # if os.path.isfile(outf):
+            #     continue
+            # print(outf)
+            spatial_dict = dict(np.load(fdir + f, allow_pickle=True, encoding='latin1').item())
+            dic_DOY = {15: 1,
+                       30: 1,
+                       45: 2,
+                       60: 2,
+                       75: 3,
+                       90: 3,
+                       105: 4,
+                       120: 4,
+                       135: 5,
+                       150: 5,
+                       165: 6,
+                       180: 6,
+                       195: 7,
+                       210: 7,
+                       225: 8,
+                       240: 8,
+                       255: 9,
+                       270: 9,
+                       285: 10,
+                       300: 10,
+                       315: 11,
+                       330: 11,
+                       345: 12,
+                       360: 12,
+                       }
+
+            result_dic = {}
+
+            for pix in tqdm(spatial_dict):
+                if not pix in phenology_dic:
+                    continue
+                # print(pix)
+
+                r, c = pix
+
+                SeasType = phenology_dic[pix]['SeasType']
+                if SeasType == 2:
+
+                    SOS = phenology_dic[pix]['Onsets']
+                    try:
+                        SOS = float(SOS)
+
+                    except:
+                        continue
+
+                    SOS = int(SOS)
+                    SOS_monthly = dic_DOY[SOS]
+
+                    EOS = phenology_dic[pix]['Offsets']
+                    EOS = int(EOS)
+                    EOS_monthly = dic_DOY[EOS]
+                    # print(SOS_monthly,EOS_monthly)
+                    # print(SOS,EOS)
+
+                    time_series = spatial_dict[pix]
+
+                    time_series = np.array(time_series)
+                    if SOS_monthly > EOS_monthly:  ## south hemisphere
+                        time_series_flatten = time_series.flatten()
+                        time_series_reshape = time_series_flatten.reshape(-1, 12)
+                        time_series_dict = {}
+                        for y in range(len(time_series_reshape)):
+                            if y + 1 == len(time_series_reshape):
+                                break
+
+                            time_series_dict[y] = np.concatenate(
+                                (time_series_reshape[y][SOS_monthly - 1:], time_series_reshape[y + 1][:EOS_monthly]))
+
+                    else:
+                        time_series_flatten = time_series.flatten()
+                        time_series_reshape = time_series_flatten.reshape(-1, 12)
+                        time_series_dict = {}
+                        for y in range(len(time_series_reshape)):
+                            time_series_dict[y] = time_series_reshape[y][SOS_monthly - 1:EOS_monthly]
+                    time_series_gs = []
+                    for y in range(len(time_series_dict)):
+                        time_series_gs.append(time_series_dict[y])
+                    time_series_gs = np.array(time_series_gs)
+
+                elif SeasType == 3:
+                    time_series = spatial_dict[pix]
+                    time_series = np.array(time_series)
+                    time_series_gs = np.reshape(time_series, (-1, 12))
+
+                elif SeasType == 1:
+                    time_series = spatial_dict[pix]
+                    time_series = np.array(time_series)
+                    time_series_gs = np.reshape(time_series, (-1, 12))
+
+
+                else:
+                    SeasClss = phenology_dic[pix]['SeasClss']
+                    print(SeasType, SeasClss)
+                    continue
+                spatial_dict_gs_count[pix] = time_series_gs.shape[1]
+                result_dic[pix] = time_series_gs
+            # print(spatial_dict_gs_count)
+            # arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict_gs_count)
+            # # arr[arr<6] = np.nan
+            # plt.imshow(arr,interpolation='nearest',cmap='jet',vmin=0,vmax=12)
+            # plt.colorbar()
+            # plt.show()
+            np.save(outf, result_dic)
+
+
+    def extract_growing_season_LAI_mean(self):  ## extract LAI average
+        fdir = data_root+r'Terraclimate\SPEI\SPEI_12\extract_growing_season_monthly'
+
+        outdir = data_root+r'\Terraclimate\SPEI\SPEI_12\extract_growing_season_LAI_mean\\'
+
+
+        T.mk_dir(outdir, force=True)
+
+        spatial_dic = T.load_npy_dir(fdir)
+        result_dic = {}
+
+        for pix in tqdm(spatial_dic):
+            ### ui==if northern hemisphere
+            r, c = pix
+
+            ### annual year
+
+            vals_growing_season = spatial_dic[pix]
+            print(vals_growing_season.shape[1])
+            # plt.imshow(vals_growing_season)
+            # plt.colorbar()
+            # plt.show()
+            growing_season_mean_list = []
+
+            for val in vals_growing_season:
+                if T.is_all_nan(val):
+                    continue
+                val = np.array(val)
+
+                sum_growing_season = np.nanmean(val)
+
+                growing_season_mean_list.append(sum_growing_season)
+
+            result_dic[pix] = {
+                'growing_season': growing_season_mean_list,
+            }
+
+        outf = outdir + 'growing_season_LAI_mean.npy'
+
+        np.save(outf, result_dic)
+
+    def trend_analysis(self):
+
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.pyplot as plt
+        ##each window average trend
+        phenology_mask_f = data_root + rf'basedata\Phenology_extraction\SeasType.tif'
+        phenology_mask_arr, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(phenology_mask_f)
+        phenology_dic = D.spatial_arr_to_dic(phenology_mask_arr)
+
+
+
+        fdir = data_root + r'\Terraclimate\SPEI\SPEI_12\extract_growing_season_mean\\'
+        outdir = result_root + r'Terraclimate\SPEI\SPEI_12\trend\\'
+        Tools().mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+
+
+            outf = outdir + f.split('.')[0]
+            # if os.path.isfile(outf + '_trend.tif'):
+            #     continue
+            print(outf)
+
+
+            if not f.endswith('.npy'):
+                continue
+            dic = np.load(fdir + f, allow_pickle=True, encoding='latin1').item()
+
+            trend_dic = {}
+            p_value_dic = {}
+            for pix in tqdm(dic):
+                r, c = pix
+                phenology_type=phenology_dic[pix]
+                # print(phenology_type)
+                if phenology_type == 3:
+                    continue
+
+                time_series = dic[pix]['growing_season']
+                # print(time_series)
+                time_series = np.array(time_series)
+                # print(time_series)
+
+                if len(time_series) == 0:
+                    continue
+                # print(time_series)
+                ### if all valus are the same, then skip
+                # if len(set(time_series)) == 1:
+                #     continue
+                # print(time_series)
+
+                if np.nanstd(time_series) == 0:
+                    continue
+                try:
+
+                    # slope, intercept, r_value, p_value, std_err = stats.linregress(np.arange(len(time_series)), time_series)
+                    slope, b, r, p_value = T.nan_line_fit(np.arange(len(time_series)), time_series)
+                    trend_dic[pix] = slope
+                    p_value_dic[pix] = p_value
+                except:
+                    continue
+
+            arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
+
+
+            p_value_arr = D.pix_dic_to_spatial_arr(p_value_dic)
+            fpath=data_root + rf'basedata\Phenology_extraction\SeasType.tif'
+            ll,lr,ul,ur=RasterIO_Func().get_tif_bounds(fpath)
+            print(ll,lr,ul,ur)
+
+            ax = plt.axes(projection=ccrs.PlateCarree())
+
+            # --- 画趋势图 ---
+            im = ax.imshow(
+                arr_trend,
+                cmap='RdBu',
+                vmin=-0.02,
+                vmax=0.02,
+                extent=[-124.55, -102.04, 25.59,49],
+                transform=ccrs.PlateCarree()
+            )
+
+            # --- 加 continent ---
+            ax.add_feature(
+                cfeature.LAND,
+                facecolor='none',  #
+                edgecolor='black',
+                linewidth=0.5,
+                zorder=2
+            )
+            ax.add_feature(cfeature.STATES, linewidth=0.3)
+
+            lon_min_box = -125
+            lon_max_box = -105
+            lat_min_box = 30
+            lat_max_box = 45
+
+            rect = mpatches.Rectangle(
+                (lon_min_box, lat_min_box),  # 左下角 (lon, lat)
+                lon_max_box - lon_min_box,  # 宽度
+                lat_max_box - lat_min_box,  # 高度
+                linewidth=1.5,
+                edgecolor='black',
+                facecolor='none',
+                transform=ccrs.PlateCarree(),  # ⭐关键
+                zorder=10
+            )
+
+            ax.add_patch(rect)
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+
+            cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+            cbar.set_label('Trend')
+
+            plt.title(f)
+            plt.show()
+
+            D.arr_to_tif(arr_trend, outf + '_trend.tif')
+            D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
+
+            np.save(outf + '_trend', arr_trend)
+            np.save(outf + '_p_value', p_value_arr)
+
 
 
 def main():
