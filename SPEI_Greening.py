@@ -113,7 +113,7 @@ class SPEI_Greening:
 
         import numpy as np
         import pandas as pd
-        dff = result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening.df'
+        dff = result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening_category_9.df'
         df = T.load_df(dff)
         df = df.dropna()
 
@@ -144,16 +144,16 @@ class SPEI_Greening:
         df['lai_group'] = 3  # 默认 3 = stable
 
         # 1 = significant greening
-        df.loc[(df['SNU_LAI_trend'] > 0) &
-               (df['SNU_LAI_p_value'] < 0.05),
+        df.loc[(df['LAI_p95_trend'] > 0) &
+               (df['LAI_p95_p_value'] < 0.05),
         'lai_group'] = 1
 
         # 2 = significant browning
-        df.loc[(df['SNU_LAI_trend'] < 0) &
-               (df['SNU_LAI_p_value'] < 0.05),
+        df.loc[(df['LAI_p95_trend'] < 0) &
+               (df['LAI_p95_p_value'] < 0.05),
         'lai_group'] = 2
 
-        df['category_9'] = (df['moisture_group'] - 1) * 3 + df['lai_group']
+        df['category_9_95percentile'] = (df['moisture_group'] - 1) * 3 + df['lai_group']
 
         category_labels = {
             1: 'Wetting - Greening',
@@ -168,14 +168,14 @@ class SPEI_Greening:
         }
 
         T.print_head_n(df)
-        dff_new=result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening_category_9.df'
+        dff_new=result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening_category_9_95percentile.df'
         T.save_df(df, dff_new)
         T.df_to_excel(df,dff_new)
-        spatial_dic=T.df_to_spatial_dic(df,'category_9')
+        spatial_dic=T.df_to_spatial_dic(df,'category_9_95percentile')
         array=D.pix_dic_to_spatial_arr(spatial_dic)
         outdir=result_root + rf'\SPEI_Greening\tif\\'
         Tools().mk_dir(outdir, force=True)
-        D.arr_to_tif(array,outdir+rf'\SPEI_Greening_category_9.tif')
+        D.arr_to_tif(array,outdir+rf'\SPEI_Greening_category_9_95percentile.tif')
 
         # ================================
         # Step 3: 统计比例
@@ -215,9 +215,10 @@ class SPEI_Greening:
         # pass
 
     def plot_categorize(self):
-        dff=result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening_category_9.df'
+        dff=result_root + rf'\SPEI_Greening\Dataframe\SPEI_Greening_category_9_mean.df'
         df=T.load_df(dff)
         df=df.dropna()
+        df=self.df_clean(df)
         # 计算比例
         table = pd.crosstab(
             df['moisture_group'],
@@ -229,22 +230,33 @@ class SPEI_Greening:
         table = table.reindex(index=[1, 2, 3], columns=[1, 2, 3])
 
         data = table.values * 100  # 转百分比
-
+        counts = df['moisture_group'].value_counts().sort_index()
+        counts = counts.reindex([1, 2, 3])
 
         labels = ['Wetter', 'Dryer', 'Stable']
 
         x = np.arange(len(labels))  # 0,1,2
         width = 0.25
 
-        fig, ax = plt.subplots(figsize=(8, 6))
+        fig, ax = plt.subplots(figsize=(5, 3))
 
         ax.bar(x - width, data[:, 0], width, label='Greening', color='#33a02c')
         ax.bar(x, data[:, 1], width, label='Browning', color='#e31a1c')
         ax.bar(x + width, data[:, 2], width, label='Stable LAI', color='#bdbdbd')
 
+        for i, count in enumerate(counts):
+            ax.text(
+                x[i],
+                102,  # 稍微高于100%
+                f'n = {int(count)}',
+                ha='center',
+                va='bottom',
+                fontsize=11
+            )
+
         ax.set_xticks(x)
         ax.set_xticklabels(labels)
-        ax.set_ylabel('No. pixels (%)')
+        ax.set_ylabel('No. pixels (%)',fontsize=12)
         ax.set_ylim(0, 100)
 
         ax.legend(frameon=False)
@@ -253,6 +265,20 @@ class SPEI_Greening:
         plt.show()
 
         pass
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+        df = df[df['SeasType'] != 3]
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+        return df
 
 
 def main():

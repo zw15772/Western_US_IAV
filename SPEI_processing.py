@@ -11,6 +11,7 @@ class Processing_data:
         # self.nc_to_tif_time_series_fast2()
         # self.extract_tif_from_shp()
         # self.differences_P_PET()
+        # self.resample()
         self.tif_to_dic()
 
 
@@ -59,6 +60,25 @@ class Processing_data:
             ToRaster().clip_array(fpath, outf,shp_f)
 
         pass
+    def resample(self):
+
+        fdir =data_root+ rf'Terraclimate\PET\extract_tif\\'
+        outdir =data_root+ rf'Terraclimate\PET\\resample\\'
+        T.mk_dir(outdir)
+        for f in T.listdir(fdir):
+            if not f.endswith('.tif'):
+                continue
+            fpath = fdir + f
+            outf = outdir + f
+            dataset = gdal.Open(fpath)
+
+            try:
+                gdal.Warp(outf, dataset, xRes=0.05, yRes=0.05, dstSRS='EPSG:4326')
+            # 如果不想使用默认的最近邻重采样方法，那么就在Warp函数里面增加resampleAlg参数，指定要使用的重采样方法，例如下面一行指定了重采样方法为双线性重采样：
+            # gdal.Warp("resampletif.tif", dataset, width=newCols, height=newRows, resampleAlg=gdalconst.GRIORA_Bilinear)
+            except Exception as e:
+                pass
+        pass
     def differences_P_PET(self):
         fdir_P = data_root + rf'Terraclimate\Precip\extract_tif\\'
         fdir_PET = data_root + rf'Terraclimate\PET\extract_tif\\'
@@ -98,8 +118,8 @@ class Processing_data:
 
     def tif_to_dic(self):
 
-        fdir_all = data_root + rf'Terraclimate\Precip\extract_tif\\'
-        outdir=data_root + rf'Terraclimate\Precip\dic\\'
+        fdir_all = data_root + rf'Terraclimate\PET\resample\\'
+        outdir=data_root + rf'Terraclimate\PET\dic\\'
         T.mk_dir(outdir, force=True)
 
         year_list = list(range(1958, 2025))
@@ -281,7 +301,7 @@ class SPEI_calculation:
         # 假设你的 T 和 data_root 已经定义
         fdir_PET = data_root + r'Terraclimate\PET\dic\\'
         fdir_Precip = data_root + r'Terraclimate\Precip\dic\\'
-        outdir = data_root + r'Terraclimate\SPEI\SPEI_12_NOAA\\'
+        outdir = data_root + r'Terraclimate\SPEI\SPEI_12_NOAA\\dic\\'
         T.mk_dir(outdir, force=True)
 
 
@@ -479,9 +499,9 @@ class SPEI_calculation:
 
 
     def extract_growing_season_LAI_mean(self):  ## extract LAI average
-        fdir = data_root+r'Terraclimate\SPEI\SPEI_12\extract_growing_season_monthly'
+        fdir = data_root+r'Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_monthly'
 
-        outdir = data_root+r'\Terraclimate\SPEI\SPEI_12\extract_growing_season_LAI_mean\\'
+        outdir = data_root+r'\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\'
 
 
         T.mk_dir(outdir, force=True)
@@ -515,7 +535,7 @@ class SPEI_calculation:
                 'growing_season': growing_season_mean_list,
             }
 
-        outf = outdir + 'growing_season_LAI_mean.npy'
+        outf = outdir + 'growing_season_SPEI12_mean.npy'
 
         np.save(outf, result_dic)
 
@@ -531,8 +551,8 @@ class SPEI_calculation:
 
 
 
-        fdir = data_root + r'\Terraclimate\SPEI\SPEI_12\extract_growing_season_mean\\'
-        outdir = result_root + r'Terraclimate\SPEI\SPEI_12\trend\\'
+        fdir = data_root + r'\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\'
+        outdir = result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\trend\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):

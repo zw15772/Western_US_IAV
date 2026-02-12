@@ -17,7 +17,7 @@ class build_dataframe():
                 result_root +  rf'SPEI_Greening/Dataframe/')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'SPEI_Greening.df'
+        self.dff = self.this_class_arr + rf'SPEI_Greening_category_9.df'
 
 
         pass
@@ -64,7 +64,7 @@ class build_dataframe():
         # df=self.add_area_to_df(df)
 
 
-        df=self.rename_columns(df)
+        # df=self.rename_columns(df)
         # df = self.drop_field_df(df)
         # df=self.remove_duplicate_columns(df)
         df=self.show_field(df)
@@ -484,12 +484,15 @@ class build_dataframe():
         return df
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\greening_analysis\relative_change\trend\\'
+        fdir = result_root + rf'LAImin_LAImax\raw\percentiles\trend\\'
 
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
                 continue
+            if not 'p5' in f:
+                continue
+
 
 
 
@@ -602,16 +605,9 @@ class build_dataframe():
         for col in df.columns:
             print(col)
         # exit()
-        df = df.drop(columns=['SNU_LAI_detrend_CV_zscore_trend_percent',
-                              'SNU_LAI_detrend_CV_zscore_p_value_percent',
-                              'LAI4g_detrend_CV_zscore_trend_percent',
-                              'LAI4g_detrend_CV_zscore_p_value_percent',
-                              'GLOBMAP_LAI_detrend_CV_zscore_trend_percent',
-                              'GLOBMAP_LAI_detrend_CV_zscore_p_value_percent',
-                              'composite_LAI_median_detrend_CV_zscore_trend_percent',
-                              'composite_LAI_median_detrend_CV_zscore_p_value_percent',
-                              'composite_LAI_mean_detrend_CV_zscore_trend_percent',
-                              'composite_LAI_mean_detrend_CV_zscore_p_value_percent',
+        df = df.drop(columns=['category_9_percentile5',
+                              'category_9_percentile95',
+
 
 
 
