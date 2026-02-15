@@ -5,7 +5,7 @@ import numpy as np
 from __Global__ import *
 
 
-tif_template= '/Users/wenzhang/Downloads/Western US IAV/Data/SNU_LAI/extract_tif/200401.tif'
+tif_template= rf'D:\Western_US_IAV\Data\basedata\Phenology_extraction\Offsets.tif'
 D=DIC_and_TIF(tif_template=tif_template)
 
 
@@ -16,11 +16,11 @@ class Data_processing:
         # self.tif_to_dic()
         ## 4 extract phenology based 4GST using GST_phenology_Wen.py
         ## 5 现在用SOS EOS extract growing season and return monthly data during growing season
-        # self.extract_growing_season_monthly()
+        self.extract_growing_season_monthly()
         # self.extract_growing_season_LAI_mean()
         # self.extract_growing_season_LAI_min()
         # self.extract_growing_season_LAI_max()
-        self.spatial_plot()
+        # self.spatial_plot()
 
 
         pass
@@ -66,6 +66,8 @@ class Data_processing:
             ToRaster().clip_array(fpath, outf,shp_f)
 
         pass
+
+
 
     def tif_to_dic(self):
 
@@ -148,9 +150,9 @@ class Data_processing:
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
 
     def extract_growing_season_monthly(self):
-        fdir = data_root+rf'\Terraclimate\SPEI\SPEI_12\\dic\\'
+        fdir = data_root+rf'\SNU_LAI\dic\dic\\'
 
-        outdir =data_root + r'Terraclimate\SPEI\SPEI_12\extract_growing_season_monthly\\'
+        outdir =data_root + r'\SNU_LAI\extract_growing_season_monthly\\'
 
         Tools().mk_dir(outdir, force=True)
         f_phenology = data_root+rf'/SNU_LAI/4GST/4GST.npy'
@@ -210,7 +212,8 @@ class Data_processing:
             for pix in tqdm(spatial_dict):
                 if not pix in phenology_dic:
                     continue
-                # print(pix)
+
+
 
                 r, c = pix
 
@@ -235,10 +238,21 @@ class Data_processing:
 
                     time_series = spatial_dict[pix]
 
+
                     time_series = np.array(time_series)
                     if SOS_monthly > EOS_monthly:  ## south hemisphere
                         time_series_flatten = time_series.flatten()
+
+                        # lon, lat = D.pix_to_lon_lat(pix)
+                        #
+
                         time_series_reshape = time_series_flatten.reshape(-1, 12)
+                        # plt.imshow(time_series_reshape)
+                        #
+                        # plt.title(f'lon:{lon}, lat:{lat},SOS_monthly:{SOS_monthly}, EOS_monthly:{EOS_monthly}')
+                        # plt.show()
+                        # plt.plot(time_series_reshape[0])
+                        # plt.show()
                         time_series_dict = {}
                         for y in range(len(time_series_reshape)):
                             if y + 1 == len(time_series_reshape):
@@ -281,7 +295,7 @@ class Data_processing:
             # plt.imshow(arr,interpolation='nearest',cmap='jet',vmin=0,vmax=12)
             # plt.colorbar()
             # plt.show()
-            np.save(outf, result_dic)
+            # np.save(outf, result_dic)
 
     def extract_growing_season_LAI_mean(self):  ## extract LAI average
         fdir = data_root+r'/SNU_LAI/extract_growing_season_monthly/'
@@ -301,6 +315,8 @@ class Data_processing:
             ### annual year
 
             vals_growing_season = spatial_dic[pix]
+
+
             print(vals_growing_season.shape[1])
             # plt.imshow(vals_growing_season)
             # plt.colorbar()
@@ -311,6 +327,11 @@ class Data_processing:
                 if T.is_all_nan(val):
                     continue
                 val = np.array(val)
+                if len(vals_growing_season) == 42:
+                    plt.plot(val)
+                    plt.show()
+
+
 
                 sum_growing_season = np.nanmean(val)
 
@@ -414,10 +435,10 @@ class convert_dic_to_tiff:   ### display in QGIS
 
 class check_data:
     def run(self):
-        self.plot_time_series()
-        # self.check_spatial_coverage()
+        # self.plot_time_series()
+        self.check_spatial_coverage()
     def plot_time_series(self):
-        f=data_root+rf'SNU_LAI/multi_year_mean_monthly/multi_year_mean_monthly.npy'
+        f=data_root+rf'D\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\SPEI12_mean.npy'
         dic=T.load_npy(f)
         for pix in dic:
             vals=dic[pix]
@@ -431,8 +452,8 @@ class check_data:
             plt.show()
 
     def check_spatial_coverage(self):
-        fdir = r'/Users/wenzhang/Downloads/Western US IAV/Data/SNU_LAI/dic/'
-        dic = T.load_npy_dir(fdir)
+        f = result_root+rf'\greening_analysis\relative_change\\SNU_LAI.npy'
+        dic = T.load_npy(f)
         spatial_coverage = {}
 
 
@@ -452,10 +473,10 @@ class check_data:
 
 def main():
 
-     Data_processing().run()
+     # Data_processing().run()
     # area_weighted_average().run()
 
-    # check_data().run()
+     check_data().run()
     # convert_dic_to_tiff().run()
 
 if __name__ == '__main__':

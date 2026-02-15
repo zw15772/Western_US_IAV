@@ -555,19 +555,19 @@ class IAV_analysis():
     def __init__(self):
         pass
     def run(self):
-        # self.detrend()
+        self.detrend()
         # self.extract_moving_window()
         # self.moving_window_CV_extraction_anaysis_LAI()
-        self.trend_analysis()
+        # self.trend_analysis()
         pass
 
     def detrend(self):
-        phenology_mask_f = data_root + rf'SNU_LAI/Phenology_extraction/SeasType.tif'
+        phenology_mask_f = data_root + rf'\basedata\Phenology_extraction\SeasType.tif'
         phenology_mask_arr, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(phenology_mask_f)
         phenology_dic = D.spatial_arr_to_dic(phenology_mask_arr)
 
-        fdir = data_root + rf'/SNU_LAI/extract_growing_season_LAI_mean/'
-        outdir = result_root + rf'IAV_analysis/detrend/'
+        fdir = result_root + rf'greening_analysis\relative_change\\'
+        outdir = result_root + rf'greening_analysis/relative_change\\'
         T.mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -590,7 +590,7 @@ class IAV_analysis():
                     continue
                 r, c = pix
                 # print(len(dic[pix]))
-                time_series = dic[pix]['growing_season']
+                time_series = dic[pix]
                 # print(time_series)
                 time_series = np.array(time_series, dtype=float)
                 # plt.plot(time_series)
@@ -612,9 +612,9 @@ class IAV_analysis():
                 #     continue
                 time_series = T.interp_nan(time_series)
                 detrend_delta_time_series = T.detrend_vals(time_series)
-                plt.plot(time_series)
-                plt.plot(detrend_delta_time_series)
-                plt.show()
+                # plt.plot(time_series)
+                # plt.plot(detrend_delta_time_series)
+                # plt.show()
 
                 detrend_zscore_dic[pix] = detrend_delta_time_series
 
@@ -1107,10 +1107,10 @@ class LAImin_LAImax:
 
 
 def main():
-    greening_analysis().run()
+    # greening_analysis().run()
     # area_weighted_average().run()
     # PLOT_greening_IAV().run()
-    # IAV_analysis().run()
+    IAV_analysis().run()
     # LAImin_LAImax().run()
 
 

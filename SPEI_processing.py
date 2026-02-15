@@ -8,18 +8,67 @@ D=DIC_and_TIF(tif_template=tif_template)
 
 class Processing_data:
     def run(self):
-        # self.nc_to_tif_time_series_fast2()
-        # self.extract_tif_from_shp()
+        # self.nc_to_tif_time_series_fast2_official_SPEI()
+        self.extract_tif_from_shp()
         # self.differences_P_PET()
         # self.resample()
-        self.tif_to_dic()
+        # self.tif_to_dic()
+
+    def nc_to_tif_time_series_fast2_official_SPEI(self):
+        from rasterio.transform import from_origin
+        fdir = data_root + rf'SPEI12_official\\nc\\'
+        outdir = data_root + rf'SPEI12_official\tif\\'
+        Tools().mk_dir(outdir, force=True)
+
+        for f in tqdm(os.listdir(fdir)):
+
+
+            fpath = join(fdir, f)
+            nc_in = xarray.open_dataset(fpath)
+            spei = nc_in['spei']  # (time, lat, lon)
+            lats = nc_in['lat'].values
+            lons = nc_in['lon'].values
+            time = nc_in['time'].values
+
+            lat_res = abs(lats[1] - lats[0])
+            lon_res = abs(lons[1] - lons[0])
+            # print(lats[0], lats[-1]);exit()
+
+
+
+            transform = from_origin(
+                lons.min(),
+                lats.max(),
+                lon_res,
+                lat_res
+            )
+            for i in range(len(time)):
+
+                data = spei[i].values
+
+
+                data = np.flipud(data)
+
+                # 把 nan 设成 nodata
+                data = data.astype(np.float32)
+
+                year = str(nc_in['time.year'][i].values)
+
+                outf = os.path.join(outdir, f'SPEI_{year}.tif')
+
+                longitude_start, latitude_start, pixelWidth, pixelHeight = -180, 90, 0.5, -0.5
+                ToRaster().array2raster(outf, longitude_start, latitude_start,
+                                        pixelWidth, pixelHeight, data, ndv=-999999)
+                # exit()
+
+    pass
 
 
 
     def nc_to_tif_time_series_fast2(self):
 
-        fdir=data_root + rf'\Terraclimate\Precip\tif\\'
-        outdir=data_root + rf'Terraclimate\Precip\tif\\'
+        fdir=data_root + rf'SPEI12_official\\nc\\'
+        outdir=data_root + rf'SPEI12_official\tif\\'
         Tools().mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
 
@@ -28,18 +77,18 @@ class Processing_data:
 
             # exit()
 
-            yearlist = list(range(1982, 2025))
+            yearlist = list(range(1958, 2025))
             fpath = join(fdir,f)
             nc_in = xarray.open_dataset(fpath)
-            print(nc_in)
+            # print(nc_in)
 
 
             outf = join(outdir,outdir_name+'.tif')
-            array = nc_in['ppt']
-            array = np.array(array).T
+            array = nc_in['spei']
+            # array = np.array(array).T
 
             array[array < 0] = np.nan
-            longitude_start, latitude_start, pixelWidth, pixelHeight = -180, 90, 0.0416667, -0.0416667
+            longitude_start, latitude_start, pixelWidth, pixelHeight = -180, 90, 0.5, -0.5
             ToRaster().array2raster(outf, longitude_start, latitude_start,
                                     pixelWidth, pixelHeight, array, ndv=-999999)
                 # exit()
@@ -48,14 +97,17 @@ class Processing_data:
 
     def extract_tif_from_shp(self):
         shp_f=data_root + rf'basedata\\Western_US_bountry\\merged_western_US.shp'
-        fdir= data_root + rf'Terraclimate\PET\tif\\'
-        outdir=data_root + rf'Terraclimate\PET\extract_tif\\'
+        fdir= data_root + rf'SPEI12_official\\tif\\'
+        outdir=data_root + rf'SPEI12_official\extract_tif\\'
         T.mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
+            year=f.split('.')[0].split('_')[-1]
+            if year<'1958' or year>'2024':
+                continue
             if not f.endswith('.tif'):
                 continue
             fpath=join(fdir,f)
-            outf=outdir+f
+            outf=outdir+year+'.tif'
 
             ToRaster().clip_array(fpath, outf,shp_f)
 
@@ -201,6 +253,8 @@ class SPEI_calculation:
     def run(self):
         # self.calculate_SPEI()
         # self.compute_spei_NOAA()
+        # self.calculating_annual_mean()
+
         # self.extract_growing_season_monthly()
         # self.extract_growing_season_LAI_mean()
         self.trend_analysis()
@@ -319,6 +373,7 @@ class SPEI_calculation:
                 ts_PET = np.array(dic_PET[pix], dtype=float)
                 ts_Precip = np.array(dic_Precip[pix], dtype=float)
 
+
                 # print(ts)
 
                 if np.sum(np.isfinite(ts_PET)) < 360:
@@ -350,7 +405,9 @@ class SPEI_calculation:
 
 
                     # 该函数返回的是一个掩码数组 (Masked Array)，我们转回普通 numpy 数组
+                    print(np.nanmean(spei_vals))
                     SPEI_12[pix] = np.ma.filled(spei_vals, np.nan)
+
 
                 except Exception as e:
                     print(f"Error at pixel {pix}: {e}")
@@ -360,7 +417,63 @@ class SPEI_calculation:
             save_path = os.path.join(outdir, f)
             np.save(save_path, SPEI_12)
 
+    def calculating_annual_mean(self):
+        fdir = data_root + rf'\Terraclimate\SPEI\SPEI_12_NOAA\\dic\\'
 
+        outdir = data_root + r'Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\'
+        Tools().mk_dir(outdir, force=True)
+        f_phenology = data_root + rf'\basedata\4GST\4GST.npy'
+        phenology_dic = T.load_npy(f_phenology)
+        new_spatial_dic = {}
+        # for pix in phenology_dic:
+        #     # print(phenology_dic[pix]);exit()
+        #     val = phenology_dic[pix]['Onsets']
+        #     try:
+        #         val = float(val)
+        #     except:
+        #         continue
+        #
+        #     new_spatial_dic[pix] = val
+        # spatial_array = D.pix_dic_to_spatial_arr(new_spatial_dic)
+        # plt.imshow(spatial_array, interpolation='nearest', cmap='jet')
+        # plt.show()
+        # exit()
+        spatial_dict_gs_count = {}
+        result_dic = {}
+        outf = outdir + 'SPEI12_annual_mean'
+
+        for f in T.listdir(fdir):
+
+
+            #
+            # if os.path.isfile(outf):
+            #     continue
+            # print(outf)
+            spatial_dict = dict(np.load(fdir + f, allow_pickle=True, encoding='latin1').item())
+
+            for pix in spatial_dict:
+
+                time_series = spatial_dict[pix]
+                time_series = np.array(time_series)
+                time_series_gs = np.reshape(time_series, (-1, 12))
+                # plt.imshow(time_series_gs)
+                # plt.show()
+                time_series_annual_mean = np.nanmean(time_series_gs, axis=1)
+
+                # plt.plot(time_series_annual_mean)
+                # plt.show()
+
+                result_dic[pix] = time_series_annual_mean
+            # print(spatial_dict_gs_count)
+            # arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict_gs_count)
+            # # arr[arr<6] = np.nan
+            # plt.imshow(arr,interpolation='nearest',cmap='jet',vmin=0,vmax=12)
+            # plt.colorbar()
+            # plt.show()
+        np.save(outf, result_dic)
+
+
+        pass
     def extract_growing_season_monthly(self):
         fdir = data_root+rf'\Terraclimate\SPEI\SPEI_12_NOAA\\dic\\'
 
@@ -501,7 +614,7 @@ class SPEI_calculation:
     def extract_growing_season_LAI_mean(self):  ## extract LAI average
         fdir = data_root+r'Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_monthly'
 
-        outdir = data_root+r'\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\'
+        outdir = data_root+r'\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean_whole_period\\'
 
 
         T.mk_dir(outdir, force=True)
@@ -515,7 +628,8 @@ class SPEI_calculation:
 
             ### annual year
 
-            vals_growing_season = spatial_dic[pix][24:]
+            # vals_growing_season = spatial_dic[pix][24:]
+            vals_growing_season = spatial_dic[pix]
             print(vals_growing_season.shape[0])
             # plt.imshow(vals_growing_season)
             # plt.colorbar()
@@ -551,8 +665,8 @@ class SPEI_calculation:
 
 
 
-        fdir = data_root + r'\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\'
-        outdir = result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\trend\\'
+        fdir = data_root + r'Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\'
+        outdir = result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\trend\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -577,8 +691,9 @@ class SPEI_calculation:
                 if phenology_type == 3:
                     continue
 
-                time_series = dic[pix]['growing_season']
-                # print(time_series)
+                time_series = dic[pix]
+                # plt.plot(time_series)
+                # plt.show()
                 time_series = np.array(time_series)
                 print(len(time_series))
 
@@ -590,12 +705,14 @@ class SPEI_calculation:
                 #     continue
                 # print(time_series)
 
-                if np.nanstd(time_series) == 0:
-                    continue
+                # if np.nanstd(time_series) == 0:
+                #     continue
                 try:
 
                     # slope, intercept, r_value, p_value, std_err = stats.linregress(np.arange(len(time_series)), time_series)
                     slope, b, r, p_value = T.nan_line_fit(np.arange(len(time_series)), time_series)
+                    # print(slope)
+
                     trend_dic[pix] = slope
                     p_value_dic[pix] = p_value
                 except:
@@ -615,8 +732,8 @@ class SPEI_calculation:
             im = ax.imshow(
                 arr_trend,
                 cmap='RdBu',
-                vmin=-0.05,
-                vmax=0.05,
+                vmin=-0.02,
+                vmax=0.02,
                 extent=[-124.55, -102.04, 25.59,49],
                 transform=ccrs.PlateCarree()
             )
@@ -669,7 +786,10 @@ class PLOT_SPEI:
         self.map_height = 8.2 * centimeter_factor
         pass
     def run(self):
-        self.plot_SPEI()
+        # self.weighted_average_SPEI()
+        # self.plot_SPEI()
+        self.PLOT_slices()
+        # self.layout_plot()
 
         pass
 
@@ -688,10 +808,73 @@ class PLOT_SPEI:
 
 
         return df
-    def plot_SPEI(self):  ##### plot for 4 clusters
+
+    def weighted_average_SPEI(self):  ###add weighted average LAI in dataframe
+        df = T.load_df(
+            result_root + rf'\Terraclimate\SPEI\SPEI_12_NOAA\SPEI12_annual_mean.df')
+        print(len(df))
+
+
+        vars_to_weight = [
+            'SPEI12_annual_mean',
+
+        ]
+
+        df['area_weight'] = np.cos(np.deg2rad(df['lat']))
+
+        df_aw_year = (
+            df
+            .groupby('year')
+            .apply(
+                lambda x: pd.Series({
+                    f'{v}_area_weighted':
+                        (x[v] * x['area_weight']).sum() / x['area_weight'].sum()
+                    for v in vars_to_weight
+                })
+            )
+            .reset_index()
+        )
+
+
+        df = df.merge(df_aw_year, on='year', how='left')
+
+
+
+        # plt.figure(figsize=(6, 4))
+        #
+        # plt.plot(
+        #     df_aw_year['year'],
+        #     df_aw_year['SNU_LAI_relative_change_area_weighted'],
+        #     color='black',
+        #     lw=2
+        # )
+        #
+        # plt.xlabel('Year')
+        # plt.ylabel('Area-weighted LAI change')
+        # plt.title('Dryland vegetation change (area-weighted)')
+        # plt.tight_layout()
+        # plt.show()
+
+        # df[df['year'] == 1982][
+        #     ['SNU_LAI_relative_change_area_weighted',
+        #      'LAI4g_relative_change_area_weighted',
+        #      'composite_LAI_mean_relative_change_area_weighted',
+        #      'GLOBMAP_LAI_relative_change_area_weighted',
+        #
+        #      ]
+        # ].head()
+        # T.print_head_n(df)
+
+
+        outf=result_root+rf'Terraclimate\SPEI\SPEI_12_NOAA\SPEI12_annual_mean_area_weighted.df'
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+
+        pass
+    def plot_SPEI_time_series(self):  ##### plot for 4 clusters
 
         df = T.load_df(
-            result_root + rf'greening_analysis/Dataframe/greening_analysis_area_weighted.df')
+            result_root+rf'Terraclimate\SPEI\SPEI_12_NOAA\SPEI12_annual_mean_area_weighted.df')
         print(len(df))
         df=self.df_clean(df)
         pix_list = df['pix'].tolist()
@@ -722,10 +905,10 @@ class PLOT_SPEI:
 
 
         variable_list = [
-                         'SPEI12_mean',
+                         'SPEI12_annual_mean',
                          ]
-        dic_label={'SPEI12_mean':'SPEI12_mean',}
-        year_list=range(1982,2024)
+        dic_label={'SPEI12_annual_mean':'SPEI12_mean',}
+        year_list=range(1958,2024)
 
         mean_dic = {}
         std_dic = {}
@@ -793,6 +976,9 @@ class PLOT_SPEI:
 
             flag += 1
         plt.ylabel('SPEI')
+        ## add y=0 line
+        plt.axhline(y=-1, linestyle='--')
+        plt.axhline(y=1, linestyle='--')
 
         plt.grid(True, axis='x')   # 只画竖线（随 x 刻度）
 
@@ -802,6 +988,107 @@ class PLOT_SPEI:
         # T.mk_dir(out_pdf_fdir, force=True)
         # plt.savefig(out_pdf_fdir + 'time_series_relative_change_mean.pdf', dpi=300, bbox_inches='tight')
         # plt.close()
+
+    def PLOT_slices(self): ## output each year slices tif
+        f=data_root+rf'Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\SPEI12_mean.npy'
+        outdir=result_root+rf'\Terraclimate\SPEI\SPEI_12_NOAA\\growing_season\\'
+        T.mk_dir(outdir,force=True)
+        dic=T.load_npy(f)
+
+
+        year_list=list(range(1982,2025))
+
+        for i, year in enumerate(year_list):
+
+            # 每一年构建一个新的 spatial_dic
+            spatial_dic = {}
+
+            for pix in dic:
+                vals = dic[pix]['growing_season']
+                # if len(vals)<42:
+                #         continue
+                print(len(vals))
+                vals=np.array(vals, dtype=float)
+                if len(vals)==42:
+                    vals = np.append(vals, np.nan)
+
+
+                val = vals[i]
+
+                if np.isnan(val):
+                    continue
+
+                spatial_dic[pix] = val
+
+            # 转成栅格
+            arr = D.pix_dic_to_spatial_arr(spatial_dic)
+
+            # 输出
+            outf = os.path.join(outdir, f'{year}.tif')
+
+            D.arr_to_tif(arr, outf,)
+
+    def layout_plot(self):
+        ## here I want to subplot 3*3
+        fdir=result_root+rf'\greening_analysis\convert_dic_to_tiff\relative_change\tif\\'
+        file_list = sorted(T.listdir(fdir))
+        file_list = [f for f in file_list if int(f.split('.')[0]) >= 1982]
+
+        n_per_page = 9
+        nrows = 3
+        ncols = 3
+        for page_start in range(0, len(file_list), n_per_page):
+
+            fig, axes = plt.subplots(nrows, ncols, figsize=(10, 10))
+            axes = axes.flatten()
+
+            subset_files = file_list[page_start:page_start + n_per_page]
+
+            for i, f in enumerate(subset_files):
+
+                if  f.endswith('.xml'):
+
+                    continue
+
+                print(f)
+
+                array, originX, originY, pixelWidth, pixelHeight = \
+                    ToRaster().raster2array(os.path.join(fdir, f))
+                array[array < -999] = np.nan
+
+                im = axes[i].imshow(array,
+                                    vmin=-20,
+                                    vmax=20,
+                                    cmap='RdBu',
+                                    interpolation='nearest')
+
+                axes[i].set_title(f.split('.')[0])
+                axes[i].axis('off')
+
+            # 删除多余空图
+            for j in range(len(subset_files), n_per_page):
+                axes[j].axis('off')
+
+            # 统一 colorbar（推荐）
+            plt.subplots_adjust(bottom=0.2)  # 给底部留空间
+
+            # 添加底部居中 colorbar
+            cbar_ax = fig.add_axes([0.25, 0.05, 0.5, 0.02])
+            # 参数解释：
+            # [left, bottom, width, height]
+
+            fig.colorbar(im, cax=cbar_ax, orientation='horizontal')
+            plt.tight_layout()
+            # plt.show()
+            outdir=result_root+rf'\greening_analysis\convert_dic_to_tiff\relative_change\layout_plot\\'
+            T.mk_dir(outdir,force=True)
+            plt.savefig(outdir + f'LAI12_1982_2024_page_{page_start // n_per_page + 1}.png', dpi=300, bbox_inches='tight')
+            plt.close()
+
+        pass
+
+
+
 
 
 
