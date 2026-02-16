@@ -438,7 +438,7 @@ class check_data:
         # self.plot_time_series()
         self.check_spatial_coverage()
     def plot_time_series(self):
-        f=data_root+rf'D\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\SPEI12_mean.npy'
+        f=data_root+rf'\greening_analysis\relative_change\SNU_LAI_detrend.npy'
         dic=T.load_npy(f)
         for pix in dic:
             vals=dic[pix]
@@ -452,13 +452,16 @@ class check_data:
             plt.show()
 
     def check_spatial_coverage(self):
-        f = result_root+rf'\greening_analysis\relative_change\\SNU_LAI.npy'
+        f = result_root+rf'\greening_analysis\relative_change\\SNU_LAI_detrend.npy'
         dic = T.load_npy(f)
         spatial_coverage = {}
 
 
         for pix in dic:
             vals = dic[pix]
+            # if len(vals) == 42:
+            #     plt.plot(vals)
+            #     plt.show()
 
             if np.isnan(np.nanmean(vals)):
                 continue
@@ -466,7 +469,8 @@ class check_data:
             length = len(vals)
             spatial_coverage[pix] = length
         arr=D.pix_dic_to_spatial_arr(spatial_coverage)
-        plt.imshow(arr,cmap='jet')
+        plt.imshow(arr,cmap='jet',vmin=41,vmax=43)
+        plt.colorbar()
         plt.show()
 
 

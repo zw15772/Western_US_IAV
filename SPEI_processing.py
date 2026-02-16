@@ -788,8 +788,8 @@ class PLOT_SPEI:
     def run(self):
         # self.weighted_average_SPEI()
         # self.plot_SPEI()
-        self.PLOT_slices()
-        # self.layout_plot()
+        # self.PLOT_slices()
+        self.layout_plot()
 
         pass
 
@@ -990,8 +990,8 @@ class PLOT_SPEI:
         # plt.close()
 
     def PLOT_slices(self): ## output each year slices tif
-        f=data_root+rf'Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\SPEI12_mean.npy'
-        outdir=result_root+rf'\Terraclimate\SPEI\SPEI_12_NOAA\\growing_season\\'
+        f=result_root+rf'greening_analysis\relative_change\\SNU_LAI_detrend.npy'
+        outdir=result_root+rf'\greening_analysis\relative_change\detrend\tif_time_series\\'
         T.mk_dir(outdir,force=True)
         dic=T.load_npy(f)
 
@@ -1004,9 +1004,9 @@ class PLOT_SPEI:
             spatial_dic = {}
 
             for pix in dic:
-                vals = dic[pix]['growing_season']
-                # if len(vals)<42:
-                #         continue
+                vals = dic[pix]
+                if len(vals)<42:
+                        continue
                 print(len(vals))
                 vals=np.array(vals, dtype=float)
                 if len(vals)==42:
@@ -1030,7 +1030,7 @@ class PLOT_SPEI:
 
     def layout_plot(self):
         ## here I want to subplot 3*3
-        fdir=result_root+rf'\greening_analysis\convert_dic_to_tiff\relative_change\tif\\'
+        fdir=result_root+rf'\greening_analysis\relative_change\detrend\tif_time_series\\'
         file_list = sorted(T.listdir(fdir))
         file_list = [f for f in file_list if int(f.split('.')[0]) >= 1982]
 
@@ -1080,7 +1080,7 @@ class PLOT_SPEI:
             fig.colorbar(im, cax=cbar_ax, orientation='horizontal')
             plt.tight_layout()
             # plt.show()
-            outdir=result_root+rf'\greening_analysis\convert_dic_to_tiff\relative_change\layout_plot\\'
+            outdir=result_root+rf'greening_analysis\relative_change\detrend\\png\\'
             T.mk_dir(outdir,force=True)
             plt.savefig(outdir + f'LAI12_1982_2024_page_{page_start // n_per_page + 1}.png', dpi=300, bbox_inches='tight')
             plt.close()

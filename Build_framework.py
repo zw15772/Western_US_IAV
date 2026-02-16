@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'Terraclimate\SPEI\SPEI_12_NOAA\\')
+                result_root +  rf'\greening_analysis\Dataframe\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'SPEI12_annual_mean.df'
+        self.dff = self.this_class_arr + rf'Dataframe.df'
 
 
         pass
@@ -36,7 +36,7 @@ class build_dataframe():
         # df=self.append_value(df)   ## insert or append value
 
 
-        # df = self.add_detrend_zscore_to_df(df)
+        df = self.add_detrend_zscore_to_df(df)
 
         # df=self.add_trend_to_df(df)
         df=self.add_phenology_type_to_df(df)
@@ -52,7 +52,8 @@ class build_dataframe():
         # df=self.add_landcover_classfication_to_df(df)
         # # # # # # # # # # df=self.dummies(df)
         # df=self.add_maxmium_LC_change(df)
-        df=self.add_row(df)
+        # df=self.add_row(df)
+        df=self.add_Ecoregion_level_II_raster_to_df(df)
         # # # # # # # # # # # # # #
         df=self.add_lat_lon_to_df(df)
         # df=self.add_continent_to_df(df)
@@ -233,38 +234,34 @@ class build_dataframe():
 
 
     def foo1(self, df):
-        fdir=data_root+rf'\Terraclimate\SPEI\SPEI_12_NOAA\\\'
-        for f in os.listdir(fdir):
+        f=result_root+rf'\greening_analysis\relative_change\\SNU_LAI.npy'
 
 
-            # array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
-            # array = np.array(array, dtype=float)
-            # dic = DIC_and_TIF().spatial_arr_to_dic(array)
 
-            dic = T.load_npy(fdir+f)
+        dic = T.load_npy(f)
 
-            pix_list = []
-            change_rate_list = []
-            year = []
+        pix_list = []
+        change_rate_list = []
+        year = []
 
-            for pix in tqdm(dic):
-                time_series = dic[pix]
+        for pix in tqdm(dic):
+            time_series = dic[pix]
 
-                y = 1958
-                for val in time_series:
-                    pix_list.append(pix)
-                    change_rate_list.append(val)
-                    year.append(y)
-                    y += 1
+            y = 1982
+            for val in time_series:
+                pix_list.append(pix)
+                change_rate_list.append(val)
+                year.append(y)
+                y += 1
 
 
-            df['pix'] = pix_list
+        df['pix'] = pix_list
 
-            df['year'] = year
-            fname=f.split('.')[0]
+        df['year'] = year
+        fname=f.split('.')[0]
 
 
-            df[fname] = change_rate_list
+        df[fname] = change_rate_list
         return df
 
     def foo2(self, df):  # 新建trend
@@ -299,7 +296,7 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=data_root+rf'Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\'
+        fdir=data_root+rf'\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\'
 
 
         for f in os.listdir(fdir):
@@ -399,14 +396,55 @@ class build_dataframe():
             df[f_name] = val_list
 
         return df
-    def add_continent_to_df(self, df):
-        tiff = rf'D:\Project3\Data\Base_data\\continent_05.tif'
+    def add_Ecoregion_level_II_raster_to_df(self, df):
+        tiff =data_root+rf'\basedata\Ecoregion\\Ecoregion_level_II_raster.tif'
         array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(tiff)
         array = np.array(array, dtype=float)
         val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
-        f_name = 'continent'
+        f_name = 'Ecoregion_level_II'
 
-        dic_convert={1:'Africa',2:'Asia',3:'Australia',4: np.nan, 5:'South_America', 6: np.nan, 7:'Europe',8:'North_America',255: np.nan}
+        dic_convert={10.1:'Cold Desert',6.2:'Western Cordillera',
+                     9.4:'South Central Semiarid Prairies',
+                     9.3:'West-Central Semiarid Prairies',
+                     10.2:'Warm Desert', 11.1:'Mediterranean California',
+                     13.1:'Upper Gila Mountains', 13.2:'Western Sierra Madre',
+                     12.1:'Western Sierra Madre Piedmont',
+                     7.1:'Marine West Coast Forest',
+                     14.3:'Western Pacific Coastal Plain, Hills and Canyons',
+                     -9999: np.nan
+       }
+
+        val_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            pix = row['pix']
+            if not pix in val_dic:
+                val_list.append(np.nan)
+                continue
+            val = val_dic[pix]
+            # print(val)
+            val=round(val,1)
+
+            # print(val);exit()
+
+            val_convert=dic_convert[val]
+
+            if val < -99:
+                val_list.append(np.nan)
+                continue
+            val_list.append(val_convert)
+        df[f_name] = val_list
+        return df
+
+    pass
+
+    def add_continent_to_df(self, df):
+        tiff =data_root+rf'\basedata\Ecoregion\\Ecoregion_level_II_raster.tif'
+        array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(tiff)
+        array = np.array(array, dtype=float)
+        val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
+        f_name = 'Ecoregion_level_II'
+
+        dic_convert={1:'Africa',2:'Asia',3:'Australia',4: np.nan, 5:'South_America', 6: np.nan, 7:'Europe',8:'North_America',-9999: np.nan}
 
         val_list = []
         for i, row in tqdm(df.iterrows(), total=len(df)):
