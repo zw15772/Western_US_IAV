@@ -7,7 +7,7 @@ tif_template= data_root + rf'basedata\Phenology_extraction\SeasType.tif'
 D=DIC_and_TIF(tif_template=tif_template)
 
 
-class SPEI_Greening:
+class SPEI_Greening_categorize:
     def run(self):
         # self.categrize_2()
         self.plot_categorize()
@@ -280,9 +280,82 @@ class SPEI_Greening:
         # df = df[df['landcover_classfication'] != 'Cropland']
         return df
 
+class SPEI_Greening_ecoregion:
+    def run(self):
+        self.barplot_by_ecoregion()
+        pass
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+        df = df[df['SeasType'] != 3]
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+        return df
+
+    def barplot_by_ecoregion(self):
+        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe.df'
+        df=T.load_df(dff)
+        print(len(df))
+        df=self.df_clean(df)
+        print(len(df))
+        bar_list=[]
+        for ecoregion in df['Ecoregion_level_II'].dropna().unique():
+            if ecoregion == np.nan:
+                continue
+            SNU_LAI_trend = df[df['Ecoregion_level_II'] == ecoregion]['SNU_LAI_trend']
+            leng = len(SNU_LAI_trend)
+            print(leng)
+            if leng == 0:
+                continue
+            greening_ratio = (SNU_LAI_trend > 0).sum() / leng
+            bar_list.append({
+                'ecoregion': ecoregion,
+                'greening_ratio': greening_ratio
+            })
+
+
+        print(bar_list)
+        bar_df = pd.DataFrame(bar_list)
+        bar_df = bar_df.sort_values('greening_ratio', ascending=False)
+
+        plt.figure(figsize=(10, 6))
+
+        plt.barh(bar_df['ecoregion'], bar_df['greening_ratio'])
+
+        plt.xlabel('Greening Ratio')
+        plt.xlim(0, 1)
+
+        plt.gca().invert_yaxis()  # 最大在上面
+
+        plt.tight_layout()
+        plt.show()
+
+
+
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+        df = df[df['SeasType'] != 3]
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+        return df
 
 def main():
-    SPEI_Greening().run()
+    # SPEI_Greening_categorize().run()
+    SPEI_Greening_ecoregion().run()
     pass
 
 
