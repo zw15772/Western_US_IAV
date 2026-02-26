@@ -19,7 +19,7 @@ class Phenology:
         # self.multi_year_mean_monthly()
         # self.interpolate()
 
-        # self.GST()
+        self.GST()
         # self.plot_4GST_df()
         # self.read_4GST_df()
         self.plot_4GST_npy()  ### plot SOS and EOS
@@ -262,7 +262,7 @@ class Phenology:
         SeasClss = 0
 
         # -------- 常绿类 --------
-        if SeasAmpl < 0.2 * LAImean:  # 原来是 0.2，可以调整阈值
+        if SeasAmpl < 0.25 * LAImean:  # 原来是 0.2，可以调整阈值
             SeasType = 1
 
         else:

@@ -9,18 +9,19 @@ tif_template= rf'D:\Western_US_IAV\Data\basedata\Phenology_extraction\Offsets.ti
 D=DIC_and_TIF(tif_template=tif_template)
 
 
-class Data_processing:
+class Data_processing_vegetation:
     def run(self):
         # self.nc_to_tif_time_series_fast2()
         # self.extract_tif_from_shp()
         # self.tif_to_dic()
         ## 4 extract phenology based 4GST using GST_phenology_Wen.py
         ## 5 现在用SOS EOS extract growing season and return monthly data during growing season
-        self.extract_growing_season_monthly()
+        # self.extract_growing_season_monthly()
         # self.extract_growing_season_LAI_mean()
         # self.extract_growing_season_LAI_min()
         # self.extract_growing_season_LAI_max()
         # self.spatial_plot()
+        self.plot_ecoregion()
 
 
         pass
@@ -150,9 +151,9 @@ class Data_processing:
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
 
     def extract_growing_season_monthly(self):
-        fdir = data_root+rf'\SNU_LAI\dic\dic\\'
+        fdir = data_root+rf'\LPDR_v3_monthly_VOD_PM130\dic\\'
 
-        outdir =data_root + r'\SNU_LAI\extract_growing_season_monthly\\'
+        outdir =data_root + r'\LPDR_v3_monthly_VOD_PM130\extract_growing_season_monthly\\'
 
         Tools().mk_dir(outdir, force=True)
         f_phenology = data_root+rf'/SNU_LAI/4GST/4GST.npy'
@@ -361,6 +362,48 @@ class Data_processing:
 
         pass
 
+    def plot_ecoregion(self):
+        f = data_root + rf'basedata\Ecoregion\\Ecoregion_levelII_reprojected.shp'
+        import geopandas as gpd
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+
+        # 读取 shp
+        gdf = gpd.read_file(f)
+
+        # 看一下字段名
+        print(gdf.columns)
+        fig, ax = plt.subplots(figsize=(10, 8))
+        # ax = plt.axes(projection=ccrs.PlateCarree())
+        #
+        # # 加大陆
+        # ax.add_feature(cfeature.LAND, facecolor='lightgray')
+        # ax.add_feature(cfeature.COASTLINE)
+
+        gdf.plot(
+            column='NA_L2NAME',
+            categorical=True,
+            legend=True,
+            cmap='tab20',
+            edgecolor='black',
+            linewidth=0.5,
+            ax=ax,
+        )
+
+
+
+        plt.axis('off')
+        # 移动 legend
+        leg = ax.get_legend()
+        leg.set_bbox_to_anchor((0.1, 0.2))
+        leg._loc = 9  # upper center
+
+        plt.tight_layout()
+        plt.show()
+        plt.tight_layout()
+        plt.show()
+
+
 class convert_dic_to_tiff:   ### display in QGIS
     def run(self):
         self.add_nan()
@@ -475,12 +518,13 @@ class check_data:
 
 
 
+
 def main():
 
-     # Data_processing().run()
+     Data_processing().run()
     # area_weighted_average().run()
 
-     check_data().run()
+     # check_data().run()
     # convert_dic_to_tiff().run()
 
 if __name__ == '__main__':

@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'\SPEI_Greening\Dataframe\\')
+                result_root +  rf'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'Dataframe.df'
+        self.dff = self.this_class_arr + rf'wet_events_annual.df'
 
 
         pass
@@ -38,7 +38,7 @@ class build_dataframe():
 
         # df = self.add_detrend_zscore_to_df(df)
 
-        df=self.add_trend_to_df(df)
+        # df=self.add_trend_to_df(df)
         # df=self.add_phenology_type_to_df(df)
 
         # df=self.add_mean_to_df(df)
@@ -52,10 +52,10 @@ class build_dataframe():
         # df=self.add_landcover_classfication_to_df(df)
         # # # # # # # # # # df=self.dummies(df)
         # df=self.add_maxmium_LC_change(df)
-        # df=self.add_row(df)
-        # df=self.add_Ecoregion_level_II_raster_to_df(df)
+        df=self.add_row(df)
+        df=self.add_Ecoregion_level_II_raster_to_df(df)
         # # # # # # # # # # # # # #
-        # df=self.add_lat_lon_to_df(df)
+        df=self.add_lat_lon_to_df(df)
         # df=self.add_continent_to_df(df)
         # df=self.add_residual_to_df(df)
 
@@ -65,7 +65,7 @@ class build_dataframe():
         # df=self.add_area_to_df(df)
 
 
-        df=self.rename_columns(df)
+        # df=self.rename_columns(df)
         # df = self.drop_field_df(df)
         # df=self.remove_duplicate_columns(df)
         df=self.show_field(df)
@@ -526,22 +526,18 @@ class build_dataframe():
         return df
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\greening_analysis\relative_change\trend\\'
+        fdir = result_root + rf'\Terraclimate\SPEI\SPEI_12_NOAA\trend\\'
 
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
                 continue
-            # if not 'p95' in f:
-            #     continue
-
-
+            if not 'growing_season_SPEI12_mean_p_value' in f:
+                continue
 
 
             variable = (f.split('.')[0])
             print(variable)
-
-
 
 
             # if 'sensitivity' in variable:
@@ -625,7 +621,7 @@ class build_dataframe():
 
 
     def rename_columns(self, df):
-        df = df.rename(columns={rf'D:\Western_US_IAV\\Result\\\greening_analysis\relative_change\\SNU_LAI': 'SNU_LAI_relative_change',
+        df = df.rename(columns={rf'growing_season_SPEI12_mean_trend': 'SNU_LAI_relative_change',
 
 
 

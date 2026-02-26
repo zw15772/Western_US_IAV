@@ -282,7 +282,7 @@ class SPEI_Greening_categorize:
 
 class SPEI_Greening_ecoregion:
     def run(self):
-        self.barplot_by_ecoregion()
+        self.barplot_by_ecoregion_SPEI()
         pass
     def df_clean(self, df):
         T.print_head_n(df)
@@ -298,60 +298,198 @@ class SPEI_Greening_ecoregion:
         # df = df[df['landcover_classfication'] != 'Cropland']
         return df
 
-    def barplot_by_ecoregion(self):
+    def barplot_by_ecoregion_LAI(self):
         dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe.df'
         df=T.load_df(dff)
         print(len(df))
         df=self.df_clean(df)
+
+        pix_list = df['pix'].tolist()
+        unique_pix_list = list(set(pix_list))
+        spatial_dic = {}
+
+        for pix in unique_pix_list:
+            spatial_dic[pix] = 1
+        arr = D.pix_dic_to_spatial_arr(spatial_dic)
+        plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+        plt.colorbar()
+        plt.show()
         print(len(df))
-        bar_list=[]
-        for ecoregion in df['Ecoregion_level_II'].dropna().unique():
-            if ecoregion == np.nan:
+        result = []
+
+        for eco in df['Ecoregion_level_II'].dropna().unique():
+
+            subset = df[df['Ecoregion_level_II'] == eco]
+
+            total = len(subset)
+
+            if total == 0:
                 continue
-            SNU_LAI_trend = df[df['Ecoregion_level_II'] == ecoregion]['SNU_LAI_trend']
-            leng = len(SNU_LAI_trend)
-            print(leng)
-            if leng == 0:
-                continue
-            greening_ratio = (SNU_LAI_trend > 0).sum() / leng
-            bar_list.append({
-                'ecoregion': ecoregion,
-                'greening_ratio': greening_ratio
+
+            sig_greening = ((subset['SNU_LAI_trend'] > 0) &
+                            (subset['SNU_LAI_p_value'] < 0.05)).sum() / total
+
+            non_sig_greening = ((subset['SNU_LAI_trend'] > 0) &
+                                (subset['SNU_LAI_p_value'] >= 0.05)).sum() / total
+
+            sig_browning = ((subset['SNU_LAI_trend'] < 0) &
+                            (subset['SNU_LAI_p_value'] < 0.05)).sum() / total
+
+            non_sig_browning = ((subset['SNU_LAI_trend'] < 0) &
+                                (subset['SNU_LAI_p_value'] >= 0.05)).sum() / total
+
+            result.append({
+                'ecoregion': eco,
+                'sig_greening': sig_greening,
+                'non_sig_greening': non_sig_greening,
+                'sig_browning': sig_browning,
+                'non_sig_browning': non_sig_browning
             })
+        result_df = pd.DataFrame(result)
 
+        result_df = result_df.sort_values('sig_greening', ascending=False)
 
-        print(bar_list)
-        bar_df = pd.DataFrame(bar_list)
-        bar_df = bar_df.sort_values('greening_ratio', ascending=False)
+        plt.figure(figsize=(8, 6))
 
-        plt.figure(figsize=(10, 6))
+        plt.barh(result_df['ecoregion'],
+                 result_df['sig_greening'],
+                 color='darkgreen',
+                 label='Sig Greening')
 
-        plt.barh(bar_df['ecoregion'], bar_df['greening_ratio'])
+        plt.barh(result_df['ecoregion'],
+                 result_df['non_sig_greening'],
+                 left=result_df['sig_greening'],
+                 color='lightgreen',
+                 label='Non-sig Greening')
 
-        plt.xlabel('Greening Ratio')
+        left2 = result_df['sig_greening'] + result_df['non_sig_greening']
+
+        plt.barh(result_df['ecoregion'],
+                 result_df['sig_browning'],
+                 left=left2,
+                 color='darkred',
+                 label='Sig Browning')
+
+        plt.barh(result_df['ecoregion'],
+                 result_df['non_sig_browning'],
+                 left=left2 + result_df['sig_browning'],
+                 color='salmon',
+                 label='Non-sig Browning')
+
         plt.xlim(0, 1)
+        plt.legend()
+        plt.gca().invert_yaxis()
+        plt.tight_layout()
+        plt.show()
 
-        plt.gca().invert_yaxis()  # 最大在上面
+    def barplot_by_ecoregion_SPEI(self):
+        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe.df'
+        df=T.load_df(dff)
+        print(len(df))
+        df=self.df_clean(df)
 
+        pix_list = df['pix'].tolist()
+        unique_pix_list = list(set(pix_list))
+        spatial_dic = {}
+
+        for pix in unique_pix_list:
+            spatial_dic[pix] = 1
+        arr = D.pix_dic_to_spatial_arr(spatial_dic)
+        plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+        plt.colorbar()
+        plt.show()
+        print(len(df))
+        result = []
+
+        eco_order = [
+            "West-Central Semiarid Prairies",
+            "Western Pacific Coastal Plain, Hills and Canyons",
+            "Marine West Coast Forest",
+            "Cold Desert",
+            "Western Cordillera",
+            "South Central Semiarid Prairies",
+            "Mediterranean California",
+            "Western Sierra Madre",
+            "Western Sierra Madre Piedmont",
+            "Upper Gila Mountains",
+            "Warm Desert"
+        ]
+
+        for eco in df['Ecoregion_level_II'].dropna().unique():
+
+            subset = df[df['Ecoregion_level_II'] == eco]
+
+            total = len(subset)
+
+            if total == 0:
+                continue
+
+            sig_wetting = ((subset['growing_season_SPEI12_mean_trend'] > 0) &
+                            (subset['growing_season_SPEI12_mean_p_value'] < 0.05)).sum() / total
+
+            non_sig_wetting = ((subset['growing_season_SPEI12_mean_trend'] > 0) &
+                                (subset['growing_season_SPEI12_mean_p_value'] >= 0.05)).sum() / total
+
+            sig_drying = ((subset['growing_season_SPEI12_mean_trend'] < 0) &
+                            (subset['growing_season_SPEI12_mean_p_value'] < 0.05)).sum() / total
+
+            non_sig_drying= ((subset['growing_season_SPEI12_mean_trend'] < 0) &
+                                (subset['growing_season_SPEI12_mean_p_value'] >= 0.05)).sum() / total
+
+            result.append({
+                'ecoregion': eco,
+                'sig_wetting': sig_wetting,
+                'non_sig_wetting': non_sig_wetting,
+                'sig_drying': sig_drying,
+                'non_sig_drying': non_sig_drying
+            })
+        result_df = pd.DataFrame(result)
+
+        result_df['ecoregion'] = pd.Categorical(
+            result_df['ecoregion'],
+            categories=eco_order,
+            ordered=True
+        )
+
+        result_df = result_df.sort_values('ecoregion')
+
+        plt.figure(figsize=(8, 6))
+
+        plt.barh(result_df['ecoregion'],
+                 result_df['sig_wetting'],
+                 color='darkblue',
+                 label='Sig Wetting')
+
+        plt.barh(result_df['ecoregion'],
+                 result_df['non_sig_wetting'],
+                 left=result_df['sig_wetting'],
+                 color='lightblue',
+                 label='Non-sig Wetting')
+
+        left2 = result_df['sig_wetting'] + result_df['non_sig_wetting']
+
+        plt.barh(result_df['ecoregion'],
+                 result_df['sig_drying'],
+                 left=left2,
+                 color='red',
+                 label='Sig Drying')
+
+        plt.barh(result_df['ecoregion'],
+                 result_df['non_sig_drying'],
+                 left=left2 + result_df['sig_drying'],
+                 color='orange',
+                 label='Non-sig Drying')
+
+        plt.xlim(0, 1)
+        plt.legend()
+        plt.gca().invert_yaxis()
         plt.tight_layout()
         plt.show()
 
 
 
 
-    def df_clean(self, df):
-        T.print_head_n(df)
-        # df = df.dropna(subset=[self.y_variable])
-        # T.print_head_n(df)
-        # exit()
-        df = df[df['SeasType'] != 3]
-        df = df[df['lon'] > -125]
-        df = df[df['lon'] < -105]
-        df = df[df['lat'] > 30]
-        df = df[df['lat'] < 45]
-        #
-        # df = df[df['landcover_classfication'] != 'Cropland']
-        return df
+
 
 def main():
     # SPEI_Greening_categorize().run()

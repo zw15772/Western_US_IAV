@@ -1,3 +1,5 @@
+from cmath import isnan
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -5,14 +7,73 @@ import numpy as np
 from __Global__ import *
 tif_template= data_root + rf'basedata\Phenology_extraction\SeasType.tif'
 D=DIC_and_TIF(tif_template=tif_template)
+class download_data:
+    def run(self):
+        self.download_VOD()
+        pass
 
-class Processing_data:
+    def download_VOD(self):
+        import os
+        import requests
+        from bs4 import BeautifulSoup
+        from urllib.parse import urljoin
+
+        base_url = "http://files.ntsg.umt.edu/data/LPDR_v3/monthlyVOD/PM130/"
+        save_dir = rf"D:\Resilience\Data\LPDR_v3_monthlyVOD_PM130\\"
+
+        os.makedirs(save_dir, exist_ok=True)
+
+        # 1️⃣ 获取网页内容
+        response = requests.get(base_url)
+        response.raise_for_status()
+
+        # 2️⃣ 解析 HTML
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # 3️⃣ 找到所有 .tif 文件
+        file_links = []
+        for link in soup.find_all("a"):
+            href = link.get("href")
+            if href and href.endswith(".tif"):
+                file_links.append(urljoin(base_url, href))
+
+        print(f"Found {len(file_links)} tif files")
+
+        # 4️⃣ 下载函数（支持断点续传）
+        def download_file(url):
+            local_path = os.path.join(save_dir, url.split("/")[-1])
+
+            headers = {}
+            if os.path.exists(local_path):
+                existing_size = os.path.getsize(local_path)
+                headers['Range'] = f'bytes={existing_size}-'
+            else:
+                existing_size = 0
+
+            with requests.get(url, stream=True, headers=headers) as r:
+                r.raise_for_status()
+                mode = "ab" if existing_size > 0 else "wb"
+                with open(local_path, mode) as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+
+            print(f"Downloaded: {local_path}")
+
+        # 5️⃣ 批量下载
+        for file_url in file_links:
+            download_file(file_url)
+
+        print("All downloads complete.")
+
+    pass
+class Processing_data_SPEI:
     def run(self):
         # self.nc_to_tif_time_series_fast2_official_SPEI()
-        self.extract_tif_from_shp()
+        # self.extract_tif_from_shp()
         # self.differences_P_PET()
         # self.resample()
-        # self.tif_to_dic()
+        self.tif_to_dic()
 
     def nc_to_tif_time_series_fast2_official_SPEI(self):
         from rasterio.transform import from_origin
@@ -97,25 +158,28 @@ class Processing_data:
 
     def extract_tif_from_shp(self):
         shp_f=data_root + rf'basedata\\Western_US_bountry\\merged_western_US.shp'
-        fdir= data_root + rf'SPEI12_official\\tif\\'
-        outdir=data_root + rf'SPEI12_official\extract_tif\\'
+        fdir=  rf'D:\Resilience\Data\LPDR_v3_monthly_VOD_PM130\\tif\\'
+        outdir=data_root + rf'LPDR_v3_monthly_VOD_PM130\extract_tif\\'
         T.mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
-            year=f.split('.')[0].split('_')[-1]
+            # 'AMSRU_Mland_VOD_2002_10_ave_A'
+            year=f.split('.')[0].split('_')[3]
+            month=f.split('.')[0].split('_')[4]
             if year<'1958' or year>'2024':
                 continue
             if not f.endswith('.tif'):
                 continue
             fpath=join(fdir,f)
-            outf=outdir+year+'.tif'
+            # outf=outdir+year+'.tif'
+            outf = outdir + year + month+'.tif'
 
             ToRaster().clip_array(fpath, outf,shp_f)
 
         pass
     def resample(self):
 
-        fdir =data_root+ rf'Terraclimate\PET\extract_tif\\'
-        outdir =data_root+ rf'Terraclimate\PET\\resample\\'
+        fdir =data_root+ rf'\basedata\Phenology_extraction\\'
+        outdir =data_root+ rf'\basedata\Phenology_extraction\\\\resample\\'
         T.mk_dir(outdir)
         for f in T.listdir(fdir):
             if not f.endswith('.tif'):
@@ -125,7 +189,7 @@ class Processing_data:
             dataset = gdal.Open(fpath)
 
             try:
-                gdal.Warp(outf, dataset, xRes=0.05, yRes=0.05, dstSRS='EPSG:4326')
+                gdal.Warp(outf, dataset, xRes=0.25, yRes=0.25, dstSRS='EPSG:4326')
             # 如果不想使用默认的最近邻重采样方法，那么就在Warp函数里面增加resampleAlg参数，指定要使用的重采样方法，例如下面一行指定了重采样方法为双线性重采样：
             # gdal.Warp("resampletif.tif", dataset, width=newCols, height=newRows, resampleAlg=gdalconst.GRIORA_Bilinear)
             except Exception as e:
@@ -170,11 +234,11 @@ class Processing_data:
 
     def tif_to_dic(self):
 
-        fdir_all = data_root + rf'Terraclimate\PET\resample\\'
-        outdir=data_root + rf'Terraclimate\PET\dic\\'
+        fdir_all = data_root + rf'\LPDR_v3_monthly_VOD_PM130\extract_tif\\'
+        outdir=data_root + rf'LPDR_v3_monthly_VOD_PM130\dic\\'
         T.mk_dir(outdir, force=True)
 
-        year_list = list(range(1958, 2025))
+        year_list = list(range(2002, 2025))
         # 作为筛选条件
 
         all_array = []  #### so important  it should be go with T.mk_dic
@@ -1087,17 +1151,405 @@ class PLOT_SPEI:
 
         pass
 
+class statistics_drought_analysis:
+    def run(self):
+        # self.call_extract_extreme_events()
+        self.call_extract_extreme_events_annual_table()
+        # self.spatial_map_freq()
+        # self.diff_spatial_map()
+        # self.spatial_map_severity()
+        # self.generate_annual_spatial_map()
+        pass
+
+
+    def call_extract_extreme_events(self):
+        fdir=data_root + r'\Terraclimate\SPEI\SPEI_12_NOAA\dic\\'
+        outdir=result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\\'
+        T.mk_dir(outdir, force=True)
+        dic=T.load_npy_dir(fdir)
+
+        all_events_wet = []
+        all_events_dry = []
+
+        for pix in tqdm(dic):
+            start_index_1982 = (1982 - 1958) * 12
+            ts = dic[pix][start_index_1982:]  ## only analyze the growing season period
+            # print((len(ts)))
+            # exit()
+            if isnan(np.nansum(ts)):
+                continue
+
+            drought_events = self.extract_events_no_gap(pix,
+                ts,
+                threshold=-1.5,
+                min_duration=1,
+
+            )
+
+            wet_events = self.extract_events_no_gap(pix,
+                ts,
+                threshold=1.5,
+                min_duration=1,
+
+            )
+
+            for start, end in drought_events:
+                duration = end - start + 1
+                intensity = float(np.min(ts[start:end + 1]))
+                peak_index = start + int(np.argmin(ts[start:end + 1]))
+                peak_year = 1982 + peak_index // 12
+                peak_month = peak_index % 12 + 1
+
+                severity = float(np.sum(-1.5 - ts[start:end + 1]))
+
+                all_events_dry.append({
+                    "pix": pix,
+                    "start_index": start,
+                    "end_index": end,
+                    "peak_index": peak_index,
+                    "peak_year": peak_year,
+                    "peak_month": peak_month,
+                    "duration": duration,
+                    "intensity": intensity,
+                    "severity": severity
+                })
 
 
 
+
+
+            for start, end in wet_events:
+                duration = end - start + 1
+                intensity = float(np.min(ts[start:end + 1]))
+                peak_index = start + int(np.argmin(ts[start:end + 1]))
+                peak_year = 1982 + peak_index // 12
+                peak_month = peak_index % 12 + 1
+
+                severity = float(np.sum(ts[start:end + 1] - 1.5))
+
+                all_events_wet.append({
+                    "pix": pix,
+                    "start_index": start,
+                    "end_index": end,
+                    "peak_index": peak_index,
+                    "peak_year": peak_year,
+                    "peak_month": peak_month,
+                    "duration": duration,
+                    "intensity": intensity,
+                    "severity": severity
+                })
+
+
+
+        df_dry = pd.DataFrame(all_events_dry)
+        df_W = pd.DataFrame(all_events_wet)
+
+        outdf_D=outdir + 'drought_events_df.df'
+        outexcel_D=outdir + 'drought_events_df.xlsx'
+
+        T.save_df(df_dry, outdf_D)
+        T.df_to_excel(df_dry, outexcel_D)
+
+        outdf_W=outdir + 'wet_events_df.df'
+        outexcel_W=outdir + 'wet_events_df.xlsx'
+
+        T.save_df(df_W, outdf_W)
+        T.df_to_excel(df_W, outexcel_W)
+
+
+
+        pass
+
+    def call_extract_extreme_events_annual_table(self):
+        fdir=data_root + r'\Terraclimate\SPEI\SPEI_12_NOAA\dic\\'
+        outdir=result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\\'
+        T.mk_dir(outdir, force=True)
+        dic=T.load_npy_dir(fdir)
+
+        all_events_wet = []
+        all_events_dry = []
+
+        for pix in tqdm(dic):
+            start_index_1982 = (1982 - 1958) * 12
+            ts = dic[pix][start_index_1982:]  ## only analyze the growing season period
+            # print((len(ts)))
+            # exit()
+            if isnan(np.nansum(ts)):
+                continue
+
+            drought_events = self.extract_events_no_gap(pix,
+                ts,
+                threshold=-1.5,
+                min_duration=1,
+
+            )
+
+            wet_events = self.extract_events_no_gap(pix,
+                ts,
+                threshold=1.5,
+                min_duration=1,
+
+            )
+
+            for start, end in drought_events:
+                duration = end - start + 1
+                intensity = float(np.min(ts[start:end + 1]))
+                peak_index = start + int(np.argmin(ts[start:end + 1]))
+                peak_year = 1982 + peak_index // 12
+                peak_month = peak_index % 12 + 1
+
+                severity = float(np.sum(-1.5 - ts[start:end + 1]))
+
+                all_events_dry.append({
+                    "pix": pix,
+                    "start_index": start,
+                    "end_index": end,
+                    "peak_index": peak_index,
+                    "peak_year": peak_year,
+                    "peak_month": peak_month,
+                    "duration": duration,
+                    "intensity": intensity,
+                    "severity": severity
+                })
+
+
+
+
+
+            for start, end in wet_events:
+                duration = end - start + 1
+                intensity = float(np.min(ts[start:end + 1]))
+                peak_index = start + int(np.argmin(ts[start:end + 1]))
+                peak_year = 1982 + peak_index // 12
+                peak_month = peak_index % 12 + 1
+
+                severity = float(np.sum(ts[start:end + 1] - 1.5))
+
+                all_events_wet.append({
+                    "pix": pix,
+                    "start_index": start,
+                    "end_index": end,
+                    "peak_index": peak_index,
+                    "peak_year": peak_year,
+                    "peak_month": peak_month,
+                    "duration": duration,
+                    "intensity": intensity,
+                    "severity": severity
+                })
+
+        df_dry_event = pd.DataFrame(all_events_dry)
+        annual_stats = df_dry_event.groupby(["pix", "peak_year"]).agg({
+            "severity": "sum",  # 一年总严重度
+            "intensity": "min",  # 最强一次（更负）
+            "duration": "max",  # 最长一次
+            "peak_index": "count"  # 事件次数 = frequency
+        }).reset_index()
+
+        annual_stats = annual_stats.rename(columns={
+            "peak_year": "year",
+            "peak_index": "frequency"
+        })
+
+        years = list(range(1982, 2025))
+        all_pix = df_dry_event["pix"].unique()
+
+        full_index = pd.MultiIndex.from_product(
+            [all_pix, years],
+            names=["pix", "year"]
+        )
+
+        annual_full = pd.DataFrame(index=full_index).reset_index()
+
+        annual_full = annual_full.merge(
+            annual_stats,
+            on=["pix", "year"],
+            how="left"
+        )
+
+
+        outdf_D=outdir + 'drought_events_annual.df'
+        outexcel_D=outdir + 'drought_events_annual.xlsx'
+
+        T.save_df(annual_full, outdf_D)
+        T.df_to_excel(annual_full, outexcel_D)
+
+        ######## for wet events
+        df_wet_event = pd.DataFrame(all_events_wet)
+
+        annual_stats = df_wet_event.groupby(["pix", "peak_year"]).agg({
+            "severity": "sum",  # 一年总严重度
+            "intensity": "max",  # 最强一次（更负）
+            "duration": "max",  # 最长一次
+            "peak_index": "count"  # 事件次数 = frequency
+        }).reset_index()
+
+        annual_stats = annual_stats.rename(columns={
+            "peak_year": "year",
+            "peak_index": "frequency"
+        })
+
+        years = list(range(1982, 2025))
+        all_pix = df_wet_event["pix"].unique()
+
+        full_index = pd.MultiIndex.from_product(
+            [all_pix, years],
+            names=["pix", "year"]
+        )
+
+        annual_full = pd.DataFrame(index=full_index).reset_index()
+
+        annual_full = annual_full.merge(
+            annual_stats,
+            on=["pix", "year"],
+            how="left"
+        )
+
+        annual_full["frequency"] = annual_full["frequency"].fillna(0)
+        annual_full["severity"] = annual_full["severity"].fillna(0)
+        annual_full["duration"] = annual_full["duration"].fillna(0)
+        annual_full["intensity"] = annual_full["intensity"].fillna(0)
+
+        outdf_W=outdir + 'wet_events_annual.df'
+        outexcel_W=outdir + 'wet_events_annual.xlsx'
+
+        T.save_df(annual_full, outdf_W)
+        T.df_to_excel(annual_full, outexcel_W)
+
+
+
+        pass
+
+
+
+    def extract_events_no_gap(self,pix,ts,
+                              threshold=-1.5,
+                              min_duration=1):
+
+        if threshold < 0:
+            mask = ts <= threshold
+        else:
+            mask = ts >= threshold
+
+        events = []
+        in_event = False
+        start = None
+
+        for i, val in enumerate(mask):
+            if val and not in_event:
+                in_event = True
+                start = i
+
+            elif not val and in_event:
+                end = i - 1
+                if end - start + 1 >= min_duration:
+                    events.append((start, end))
+                in_event = False
+
+        # 最后一个时间点仍在事件中
+        if in_event:
+            end = len(ts) - 1
+            if end - start + 1 >= min_duration:
+                events.append((start, end))
+
+        return events
+
+
+    def spatial_map_freq(self):
+        fdir=result_root + r'\Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\\'
+        outdir=result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\spatial_map\\'
+        T.mk_dir(outdir, force=True)
+        df_dry = T.load_df(fdir + 'drought_events_df.df')
+
+        freq_df_dry = df_dry.groupby("pix").size().reset_index(name="frequency")
+        spatial_dic = dict(zip(freq_df_dry["pix"], freq_df_dry["frequency"]))
+        arr = D.pix_dic_to_spatial_arr(spatial_dic)
+        D.arr_to_tif(arr, outdir + 'drought_events_frequency.tif')
+
+        df_wet = T.load_df(fdir + 'wet_events_df.df')
+        freq_df_wet = df_wet.groupby("pix").size().reset_index(name="frequency")
+        spatial_dic_wet = dict(zip(freq_df_wet["pix"], freq_df_wet["frequency"]))
+        arr_wet = D.pix_dic_to_spatial_arr(spatial_dic_wet)
+        D.arr_to_tif(arr_wet, outdir + 'wet_events_frequency.tif')
+
+        pass
+
+
+
+
+    def diff_spatial_map(self):
+        fdir=result_root + r'\Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\spatial_map\\'
+        outdir=result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\spatial_map\\'
+        T.mk_dir(outdir, force=True)
+        arr_dry, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fdir + 'drought_events_frequency.tif')
+        arr_wet, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fdir + 'wet_events_frequency.tif')
+        arr_diff = arr_wet - arr_dry
+        # arr_diff[arr_diff]
+        D.arr_to_tif(arr_diff, outdir + 'diff_wet-dry_events_frequency.tif')
+        pass
+
+    def spatial_map_severity(self):
+        fdir=result_root + r'\Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\\'
+        outdir=result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\spatial_map\\'
+        T.mk_dir(outdir, force=True)
+        df_dry = T.load_df(fdir + 'drought_events_df.df')
+
+        severity_mean = df_dry.groupby("pix")["severity"].mean().reset_index()
+        spatial_dic = dict(zip(severity_mean["pix"], severity_mean["severity"]))
+        arr = D.pix_dic_to_spatial_arr(spatial_dic)
+        D.arr_to_tif(arr, outdir + 'drought_events_severity.tif')
+
+        df_wet = T.load_df(fdir + 'wet_events_df.df')
+        severity_mean_wet = df_wet.groupby("pix")["severity"].mean().reset_index()
+        spatial_dic_wet = dict(zip(severity_mean_wet["pix"], severity_mean_wet["severity"]))
+        arr_wet = D.pix_dic_to_spatial_arr(spatial_dic_wet)
+        D.arr_to_tif(arr_wet, outdir + 'wet_events_severity.tif')
+
+
+        pass
+
+    def generate_annual_spatial_map(self):
+        fdir = result_root + r'\Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\\'
+        outdir = result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\spatial_map\\'
+        T.mk_dir(outdir, force=True)
+        df_dry = T.load_df(fdir + 'wet_events_df.df')
+        annual_freq = df_dry.groupby(["pix", "peak_year"]).size().reset_index(name="frequency")
+
+        all_pix = annual_freq["pix"].unique()
+        years = range(1982, 2025)
+        full_index = pd.MultiIndex.from_product(
+            [all_pix, years],
+            names=["pix", "peak_year"]
+        )
+
+        full_df = pd.DataFrame(index=full_index).reset_index()
+        annual_full = full_df.merge(
+            annual_freq,
+            on=["pix", "peak_year"],
+            how="left"
+        )
+
+        annual_full["occurrence"] = (annual_full["frequency"] > 0).astype(int)
+
+        # mean_occurrence_year = annual_full.groupby("peak_year")["occurrence"].mean()
+        #
+        #
+        # plt.figure(figsize=(10, 6))
+        # plt.plot(mean_occurrence_year.index, mean_occurrence_year.values, marker='o', color='blue')
+        # plt.xlabel("Year")
+        # plt.ylabel("Mean frequency per pixel")
+        # plt.show()
+
+        pass
 
 
 
 def main():
+    # download_data().run()
 
-    # Processing_data().run()
+    # Processing_data_SPEI().run()
     # SPEI_calculation().run()
-    PLOT_SPEI().run()
+    # PLOT_SPEI().run()
+    statistics_drought_analysis().run()
 
 
     pass
