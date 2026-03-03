@@ -1154,7 +1154,7 @@ class PLOT_SPEI:
 class statistics_drought_analysis:
     def run(self):
         # self.call_extract_extreme_events()
-        self.call_extract_extreme_events_annual_table()
+        # self.call_extract_extreme_events_annual_table()
         # self.spatial_map_freq()
         # self.diff_spatial_map()
         # self.spatial_map_severity()
@@ -1339,7 +1339,7 @@ class statistics_drought_analysis:
 
         df_dry_event = pd.DataFrame(all_events_dry)
         annual_stats = df_dry_event.groupby(["pix", "peak_year"]).agg({
-            "severity": "sum",  # 一年总严重度
+            "severity": "max",  # 一年总严重度
             "intensity": "min",  # 最强一次（更负）
             "duration": "max",  # 最长一次
             "peak_index": "count"  # 事件次数 = frequency
@@ -1540,6 +1540,176 @@ class statistics_drought_analysis:
         # plt.show()
 
         pass
+class PLOT_events:
+    def __init__(self):
+        self.map_width = 13 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+    def run(self):
+        self.plot_events_time_series()
+        # self.plot_affected_area_time_series()
+        pass
+    def plot_events_time_series(self):
+        ## plot affected areas over time, and plot the time series of severity, frequency, duration, intensity for the whole area
+        dff=result_root+rf'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\drought_events_annual.df'
+        df=T.load_df(dff)
+        print(len(df))
+        df=self.df_clean(df)
+
+        pix_list = df['pix'].tolist()
+        unique_pix_list = list(set(pix_list))
+        spatial_dic = {}
+
+        for pix in unique_pix_list:
+            spatial_dic[pix] = 1
+        arr = D.pix_dic_to_spatial_arr(spatial_dic)
+        plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+        plt.colorbar()
+        plt.show()
+
+        print(len(df))
+        T.print_head_n(df)
+        # exit()
+
+        # create color list with one green and another 14 are grey
+
+
+
+
+        year_list = range(1982, 2024)
+
+        result_dic={}
+        ecoregion_unique = df['Ecoregion_level_II'].dropna().unique().tolist()
+        print(ecoregion_unique)
+
+        for ecoregion in ecoregion_unique:
+            print(ecoregion)
+            df_ecoregion=df[df['Ecoregion_level_II']==ecoregion]
+
+            mean_dic = {}
+            for year in year_list:
+                df_i = df_ecoregion[df_ecoregion['year'] == year]
+
+
+                vals = np.array(df_i['severity'].tolist(), dtype=float)
+
+                mean_dic[year] = np.nanmean(vals)
+
+
+                # print(var, year, weighted_mean_values)
+                ## scheme2
+                # vals = np.array(df_i[f'{var}_relative_change'].tolist(), dtype=float)
+                # weighted_mean_values = np.nanmean(vals)
+
+            result_dic[ecoregion] = mean_dic
+
+
+        # 转成 DataFrame
+        df_new = pd.DataFrame(result_dic).reset_index()
+
+        # T.print_head_n(df_new);exit()
+
+        flag = 0
+        plt.figure(figsize=(self.map_width, self.map_height))
+
+        for ecoregion in ecoregion_unique:
+            mean_vals = df_new[ecoregion]
+
+            plt.bar(year_list, mean_vals,
+
+                    color='orange',
+                    label='severity',
+
+                    alpha=0.7)
+
+            flag += 1
+
+
+            plt.grid(True, axis='x')  # 只画竖线（随 x 刻度）
+            plt.title(ecoregion)
+
+            plt.legend()
+            plt.show()
+        # out_pdf_fdir = result_root + rf'\Figure\\weighted_area\\Figure1a\\'
+        # T.mk_dir(out_pdf_fdir, force=True)
+        # plt.savefig(out_pdf_fdir + 'time_series_relative_change_mean.pdf', dpi=300, bbox_inches='tight')
+        # plt.close()
+
+
+        pass
+
+    def plot_affected_area_time_series(self):
+        ## plot the time series of affected area (frequency>0) for drought and wet events
+        dff=result_root+rf'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\drought_events_annual.df'
+        df=T.load_df(dff)
+        df=self.df_clean(df)
+        print(len(df))
+        year_list=range(1982, 2024)
+        ecoregion_unique=df['Ecoregion_level_II'].dropna().unique().tolist()
+        print(ecoregion_unique)
+        ##
+        result_dic={}
+        for ecoregion in ecoregion_unique:
+            print(ecoregion)
+            df_ecoregion=df[df['Ecoregion_level_II']==ecoregion]
+
+            mean_dic = {}
+            for year in year_list:
+                df_i = df_ecoregion[df_ecoregion['year'] == year]
+                ## scheme1
+                df_ii = df_i[df_i['frequency'] > 0]
+                ratio = len(df_ii)/len(df_i)*100
+
+                mean_dic[year] = ratio
+
+            result_dic[ecoregion] = mean_dic
+
+            df_new = pd.DataFrame(result_dic, index=year_list).reset_index()
+
+        flag = 0
+
+        for ecoregion in ecoregion_unique:
+            plt.figure(figsize=(self.map_width, self.map_height))
+            mean_vals=df_new[ecoregion]
+
+            plt.bar(year_list, mean_vals,
+                    label='Affected area (%)',
+                    color='orange',
+                    alpha=0.7)
+
+            flag += 1
+            ## add y=0 line
+            # plt.axhline(y=-1, linestyle='--')
+            # plt.axhline(y=1, linestyle='--')
+
+            plt.grid(True, axis='x')  # 只画竖线（随 x 刻度）
+
+            plt.legend()
+            plt.title(ecoregion)
+            plt.show()
+        # out_pdf_fdir = result_root + rf'\Figure\\weighted_area\\Figure1a\\'
+        # T.mk_dir(out_pdf_fdir, force=True)
+        # plt.savefig(out_pdf_fdir + 'time_series_relative_change_mean.pdf', dpi=300, bbox_inches='tight')
+        # plt.close()
+
+
+
+        pass
+
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+        df = df[df['SeasType'] !=3]
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+        return df
+
 
 
 
@@ -1549,7 +1719,8 @@ def main():
     # Processing_data_SPEI().run()
     # SPEI_calculation().run()
     # PLOT_SPEI().run()
-    statistics_drought_analysis().run()
+    # statistics_drought_analysis().run()
+    PLOT_events().run()
 
 
     pass

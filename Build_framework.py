@@ -17,7 +17,7 @@ class build_dataframe():
                 result_root +  rf'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'wet_events_annual.df'
+        self.dff = self.this_class_arr + rf'drought_events_annual.df'
 
 
         pass
@@ -39,7 +39,7 @@ class build_dataframe():
         # df = self.add_detrend_zscore_to_df(df)
 
         # df=self.add_trend_to_df(df)
-        # df=self.add_phenology_type_to_df(df)
+        df=self.add_phenology_type_to_df(df)
 
         # df=self.add_mean_to_df(df)
 
@@ -52,10 +52,10 @@ class build_dataframe():
         # df=self.add_landcover_classfication_to_df(df)
         # # # # # # # # # # df=self.dummies(df)
         # df=self.add_maxmium_LC_change(df)
-        df=self.add_row(df)
-        df=self.add_Ecoregion_level_II_raster_to_df(df)
+        # df=self.add_row(df)
+        # df=self.add_Ecoregion_level_II_raster_to_df(df)
         # # # # # # # # # # # # # #
-        df=self.add_lat_lon_to_df(df)
+        # df=self.add_lat_lon_to_df(df)
         # df=self.add_continent_to_df(df)
         # df=self.add_residual_to_df(df)
 
