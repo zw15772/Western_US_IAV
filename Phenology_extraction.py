@@ -10,100 +10,120 @@ import numpy as np
 from scipy.signal import savgol_filter, find_peaks
 
 class Phenology_extraction:
-    def __init__(self, D):
+    def __init__(self,):
         pass
     def run(self):
-        fdir= data_root + rf'\MODIS_LAI\extract_tif_scaled\LAI_ts.npy'
-        self.phenology_extract()
-        pass
+        self.extract_phenology_run()
 
+    def extract_phenology_run(self):
+        dic= T.load_npy_dir(data_root + rf'\MODIS_LAI\dic\\')
 
+        class_dic = {}
 
-    # =========================
-    # 1️⃣ 多年平均
-    # =========================
-    def climatology_mean(self,lai_ts):
-        from datetime import datetime
+        sos1_dic = {}
+        eos1_dic = {}
+        mean1_dic = {}
 
+        sos2_dic = {}
+        eos2_dic = {}
+        mean2_dic = {}
 
+        for pix, ts in dic.items():
 
+            if ts is None or np.isnan(ts).all():
+                continue
 
+            result = self.phenology_extract(ts)
 
-        for f in sorted(year_dic['2003']):
-            date = datetime.strptime(f[:8], "%Y%m%d")
-            template_dates.append(date.timetuple().tm_yday)
+            cls = result["class"]
+            class_dic[pix] = cls
 
-        year = '2022'
-        year_dates = []
-        year_files = sorted(year_dic[year])
+            # -------- season1 一定存在 --------
+            s1 = result["season1"]
 
-        for f in year_files:
-            date = datetime.strptime(f[:8], "%Y%m%d")
-            year_dates.append(date.timetuple().tm_yday)
+            sos1_dic[pix] = s1["sos"]
+            eos1_dic[pix] = s1["eos"]
+            mean1_dic[pix] = s1["max"]
 
-        aligned_stack = []
+            # -------- season2 只有 class 2 才有 --------
+            if cls == 2 and result["season2"] is not None:
 
-        for doy in template_dates:
-            if doy in year_dates:
-                idx = year_dates.index(doy)
-                arr,originX,originY, pixelWidth, pixelHeight = ToRaster().raster2array((year_files[idx]))
+                s2 = result["season2"]
+
+                sos2_dic[pix] = s2["sos"]
+                eos2_dic[pix] = s2["eos"]
+                mean2_dic[pix] = s2["max"]
+
             else:
-                arr = np.full((H, W), np.nan)
-
-            aligned_stack.append(arr)
-
-        aligned_stack = np.stack(aligned_stack, axis=0)
+                sos2_dic[pix] = np.nan
+                eos2_dic[pix] = np.nan
+                mean2_dic[pix] = np.nan
 
 
-        return np.nanmean(lai_ts, axis=0)
+        arr_class = D.pix_dic_to_spatial_arr(class_dic)
 
-        # =========================
-        # 2️⃣ 平滑
-        # =========================
+        arr_sos1 = D.pix_dic_to_spatial_arr(sos1_dic)
+        arr_eos1 = D.pix_dic_to_spatial_arr(eos1_dic)
+        arr_mean1 = D.pix_dic_to_spatial_arr(mean1_dic)
 
-    def smooth_series(self, ts):
+        arr_sos2 = D.pix_dic_to_spatial_arr(sos2_dic)
+        arr_eos2 = D.pix_dic_to_spatial_arr(eos2_dic)
+        arr_mean2 = D.pix_dic_to_spatial_arr(mean2_dic)
+        outdir= data_root + rf'\MODIS_LAI\phenology_metrics\\'
+        T.mk_dir(outdir,force=True)
+        D.arr_to_tif(arr_class, outdir + r'classification.tif')
+        D.arr_to_tif(arr_sos1, outdir + r'sos1.tif')
+        D.arr_to_tif(arr_eos1, outdir + r'eos1.tif')
+        D.arr_to_tif(arr_mean1, outdir + r'max1.tif')
+        D.arr_to_tif(arr_sos2, outdir + r'sos2.tif')
+        D.arr_to_tif(arr_eos2, outdir + r'eos2.tif')
+        D.arr_to_tif(arr_mean2, outdir + r'max2.tif')
 
-        ts_interp = ts.copy()
-        nan_mask = np.isnan(ts_interp)
 
-        if nan_mask.any():
-            ts_interp[nan_mask] = np.interp(
-                np.flatnonzero(nan_mask),
-                np.flatnonzero(~nan_mask),
-                ts_interp[~nan_mask]
-            )
 
-        ts_smooth = savgol_filter(ts_interp, 21, 3, mode='wrap')
-        return ts_smooth
 
-        # =========================
-        # 3️⃣ 主函数   ##class = 1  → evergreen
-        # class = 2  → two seasons
-        # class = 3  → single season
-        # =========================
 
-    def phenology_extract(self, lai_ts):
 
-        clim = self.climatology_mean(lai_ts)
+
+
+
+
+    ## main function
+
+    def phenology_extract(self,ts):
+       #class = 1 → evergreen
+    #class = 2 → two seasons
+    #class = 3 → single season
+
+
+        clim = ts
+
+        clim = np.array(clim)
+
+        if len(clim.shape) != 1:
+            raise ValueError("clim must be 1D time series")
+
         ts = self.smooth_series(clim)
 
         n = len(ts)
-        A = np.max(ts) - np.min(ts)
+        A = np.nanmax(ts) - np.nanmin(ts)
 
         # -------------------
         # Evergreen
         # -------------------
-        if A < 0.1:
+
+        if A < 0.15:
             return {
-                "class": 1,
-                "n_seasons": 0,
-                "seasons": []
+                "class": 1,  # evergreen
+                "n_seasons": 1,
+                "seasons": [{
+                    "sos": 0,
+                    "peak": np.argmax(ts),
+                    "eos": len(ts) - 1
+                }]
             }
 
-        # -------------------
-        # 找 peaks
-        # -------------------
-        peaks, props = find_peaks(
+        peaks, _ = find_peaks(
             ts,
             prominence=0.15 * A,
             distance=15
@@ -116,16 +136,18 @@ class Phenology_extraction:
                 "seasons": []
             }
 
-        # 如果只有一个峰 → single
         if len(peaks) == 1:
-            seasons = [self.extract_one_season(ts, peaks[0])]
+            print(peaks)
+            plt.plot(ts)
+            plt.show()
+            season = self.extract_one_season(ts, peaks[0])
             return {
                 "class": 3,
                 "n_seasons": 1,
-                "seasons": seasons
+                "seasons": [season]
             }
 
-        # 如果 >=2 个峰 → 判断是否 two seasons
+        # 选两个最高峰
         peak_vals = ts[peaks]
         idx = np.argsort(peak_vals)[::-1]
 
@@ -145,14 +167,19 @@ class Phenology_extraction:
         cond_distance = abs(p1 - p2) > 20
 
         if cond_valley and cond_distance:
-            season1 = self.extract_one_season(ts, p1)
-            season2 = self.extract_one_season(ts, p2)
+            s1 = self.extract_one_season(ts, p1)
+            s2 = self.extract_one_season(ts, p2)
+
+
+            seasons = [s1, s2]
+            seasons = sorted(seasons, key=lambda x: x["peak"])
 
             return {
                 "class": 2,
                 "n_seasons": 2,
-                "seasons": [season1, season2]
+                "seasons": seasons
             }
+
         else:
             season = self.extract_one_season(ts, p1)
             return {
@@ -161,46 +188,80 @@ class Phenology_extraction:
                 "seasons": [season]
             }
 
-        # =========================
-        # 单个 season 提取
-        # =========================
-
-    def extract_one_season(self, ts, peak_idx):
+    def is_peak_isolated(self,ts, peak_idx, threshold):
 
         n = len(ts)
-        A = np.max(ts) - np.min(ts)
-        threshold = np.min(ts) + 0.2 * A
+
+        # 向左找 valley
+        left = peak_idx
+        found_left_valley = False
+        for _ in range(n):
+            left = (left - 1) % n
+            if ts[left] <= threshold:
+                found_left_valley = True
+                break
+
+        # 向右找 valley
+        right = peak_idx
+        found_right_valley = False
+        for _ in range(n):
+            right = (right + 1) % n
+            if ts[right] <= threshold:
+                found_right_valley = True
+                break
+
+        return found_left_valley and found_right_valley
+
+
+
+    def smooth_series(self, ts):
+
+        ts_interp = ts.copy()
+        nan_mask = np.isnan(ts_interp)
+
+        if nan_mask.any():
+            ts_interp[nan_mask] = np.interp(
+                np.flatnonzero(nan_mask),
+                np.flatnonzero(~nan_mask),
+                ts_interp[~nan_mask]
+            )
+
+        ts_smooth = savgol_filter(ts_interp, 21, 3, mode='wrap')
+        return ts_smooth
+
+    def extract_one_season(self,ts, peak_idx):
+
+        n = len(ts)
+        A = np.nanmax(ts) - np.nanmin(ts)
+        threshold = np.nanmin(ts) + 0.2 * A
 
         # 向左找 SOS
         left = peak_idx
-        while ts[left] > threshold:
-            left -= 1
-            if left < 0:
-                left = n - 1
+        for _ in range(n):
+            if ts[left] <= threshold:
                 break
+            left = (left - 1) % n
 
         # 向右找 EOS
         right = peak_idx
-        while ts[right] > threshold:
-            right += 1
-            if right >= n:
-                right = 0
+        for _ in range(n):
+            if ts[right] <= threshold:
                 break
-
-        sos = left
-        eos = right
+            right = (right + 1) % n
 
         return {
-            "sos": sos,
+            "sos": left,
             "peak": peak_idx,
-            "eos": eos
+            "eos": right
         }
 
-        # =========================
-        # 提取 GS（支持跨年）
-        # =========================
+    # =========================
+    # 提取 GS 指标
+    # =========================
+    def compute_gs_metrics(self,ts, season):
 
-    def extract_gs_values(ts, sos, eos):
+        sos = season["sos"]
+        eos = season["eos"]
 
         if sos < eos:
             gs = ts[sos:eos]
@@ -209,19 +270,153 @@ class Phenology_extraction:
 
         return {
             "length": len(gs),
-            "mean": np.mean(gs),
-            "integral": np.sum(gs),
-            "max": np.max(gs),
-            "min": np.min(gs)
+            "mean": np.nanmean(gs),
+            "integral": np.nansum(gs),
+            "max": np.nanmax(gs),
+            "min": np.nanmin(gs)
         }
+    # =========================
+    # 主函数
+    # =========================
+    def phenology_extract(self,ts):
+        ## class = 1 → evergreen
+        # class = 2 → two seasons
+        # class = 3 → single season
 
+        ts = self.smooth_series(ts)
+        n = len(ts)
+
+        A = np.nanmax(ts) - np.nanmin(ts)
+        # Evergreen
+
+        if A < 0.1 and np.nanmean(ts) > 0.5:
+
+            season1 = {
+
+                "sos": 0,
+                "peak": np.argmax(ts),
+                "eos": n - 1
+            }
+            # plt.plot(ts)
+            # plt.title('class 1')
+            # plt.show()
+
+            season1.update(self.compute_gs_metrics(ts, season1))
+
+            return {
+                "class": 1,
+                "season1": season1,
+                "season2": None
+            }
+            # -------------------
+            # 找 peaks
+            # -------------------
+        peaks, _ = find_peaks(
+            ts,
+            prominence=0.1 * A,
+            distance=15
+        )
+
+
+        # 没峰 → 单季全年
+        if len(peaks) == 0:
+            season1 = {
+                "sos": 0,
+                "peak": np.argmax(ts),
+                "eos": n - 1
+            }
+
+            season1.update(self.compute_gs_metrics(ts, season1))
+
+            return {
+                "class": 3,
+                "season1": season1,
+                "season2": None
+            }
+
+        # 单峰
+        if len(peaks) == 1:
+            season1 = self.extract_one_season(ts, peaks[0])
+            season1.update(self.compute_gs_metrics(ts, season1))
+            # plt.plot(ts)
+            # plt.title('class 3')
+            # plt.show()
+
+            return {
+                "class": 3,
+                "season1": season1,
+                "season2": None
+            }
+
+        # -------------------
+        # 判断双季
+        # -------------------
+        peak_vals = ts[peaks]
+        idx = np.argsort(peak_vals)[::-1]
+
+        p1 = peaks[idx[0]]
+        p2 = peaks[idx[1]]
+
+        left = min(p1, p2)
+        right = max(p1, p2)
+
+        valley = np.min(ts[left:right])
+
+        cond_valley = (
+                (ts[p1] - valley > 0.2 * A) and
+                (ts[p2] - valley > 0.2 * A)
+        )
+
+        cond_distance = abs(p1 - p2) > 20
+
+        threshold = np.nanmin(ts) + 0.2 * A
+
+        # 判断两个峰是否都被 valley 包围
+        isolated1 = self.is_peak_isolated(ts, p1, threshold)
+        isolated2 =self.is_peak_isolated(ts, p2, threshold)
+
+        if cond_valley and cond_distance and isolated1 and isolated2:
+
+            s1 = self.extract_one_season(ts, p1)
+            s2 = self.extract_one_season(ts, p2)
+
+            seasons = sorted([s1, s2], key=lambda x: x["peak"])
+            season1 = seasons[0]
+            season2 = seasons[1]
+
+            season1.update(self.compute_gs_metrics(ts, season1))
+            season2.update(self.compute_gs_metrics(ts, season2))
+            plt.plot(ts)
+            plt.title('class 2')
+            plt.show()
+
+            return {
+                "class": 2,
+                "season1": season1,
+                "season2": season2
+            }
+
+        else:
+            # plt.title('single_season')
+            # plt.plot(ts)
+            # plt.show()
+
+            season1 = self.extract_one_season(ts, p1)
+            season1.update(self.compute_gs_metrics(ts, season1))
+
+            return {
+                "class": 3,
+                "season1": season1,
+                "season2": None
+            }
 
 class Climatology_builder:
     def __init__(self):
         pass
 
     def run(self):
-        self.build_climatology()
+        # self.build_climatology()
+        self.tif_to_dic()
         pass
 
     def build_climatology(self):
@@ -268,20 +463,21 @@ class Climatology_builder:
             D.arr_to_tif(arr, out_path)
 
 
+
     def build_template(self,year_dic):
-        from datetime import datetime
+            from datetime import datetime
 
 
-    # 选一个时间最完整的年份
-        best_year = max(year_dic.keys(), key=lambda y: len(year_dic[y]))
+        # 选一个时间最完整的年份
+            best_year = max(year_dic.keys(), key=lambda y: len(year_dic[y]))
 
-        template_doy = []
+            template_doy = []
 
-        for f in sorted(year_dic[best_year]):
-            date = datetime.strptime(f[:8], "%Y%m%d")
-            template_doy.append(date.timetuple().tm_yday)
+            for f in sorted(year_dic[best_year]):
+                date = datetime.strptime(f[:8], "%Y%m%d")
+                template_doy.append(date.timetuple().tm_yday)
 
-        return template_doy
+            return template_doy
 
     def read_tif(self,path):
 
@@ -320,6 +516,77 @@ class Climatology_builder:
 
         return aligned_stack
 
+    def tif_to_dic(self):
+        fdir = data_root + r'\MODIS_LAI\LAI_climatology\\'
+        outdir = data_root + rf'\MODIS_LAI\dic\\'
+        T.mk_dir(outdir, force=True)
+
+        all_array = []  #### so important  it should be go with T.mk_dic
+
+        for f in T.listdir(fdir):
+            print(f)
+
+            if not f.endswith('.tif'):
+                continue
+
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(join(fdir, f))
+            array = np.array(array, dtype=float)
+
+            # array_unify = array[:720][:720,
+            #               :1440]  # PAR是361*720   ####specify both a row index and a column index as [row_index, column_index]
+            # array_unify = array[:3600][:3600,
+            #               :7200]
+
+            array[array < -999] = np.nan
+            # array_unify[array_unify > 10] = np.nan
+            # array[array ==0] = np.nan
+
+            array[array < 0] = np.nan
+
+            # plt.imshow(array)
+            # plt.show()
+
+            # plt.imshow(array)
+            # plt.show()
+
+            array_dryland = array
+            # plt.imshow(array_dryland)
+            # plt.show()
+
+            all_array.append(array_dryland)
+
+        row = len(all_array[0])
+        col = len(all_array[0][0])
+        key_list = []
+        dic = {}
+
+        for r in tqdm(range(row), desc='构造key'):  # 构造字典的键值，并且字典的键：值初始化
+            for c in range(col):
+                dic[(r, c)] = []
+                key_list.append((r, c))
+        # print(dic_key_list)
+
+        for r in tqdm(range(row), desc='构造time series'):  # 构造time series
+            for c in range(col):
+                for arr in all_array:
+                    value = arr[r][c]
+                    dic[(r, c)].append(value)
+                # print(dic)
+        time_series = []
+        flag = 0
+        temp_dic = {}
+        for key in tqdm(key_list, desc='output...'):  # 存数据
+            flag = flag + 1
+            time_series = dic[key]
+            time_series = np.array(time_series)
+            temp_dic[key] = time_series
+            if flag % 10000 == 0:
+                # print(flag)
+                np.save(outdir + rf'per_pix_dic_%03d' % (flag / 10000), temp_dic)
+                temp_dic = {}
+        np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
+
+
 class check_data:
     def __init__(self):
         pass
@@ -327,8 +594,8 @@ class check_data:
             self.plot_time_series()
 
     def plot_time_series(self):
-        f = data_root + rf'\MODIS_LAI\LAI_climatology\LAI_climatology.npy'
-        dic = T.load_npy(f)
+        fdir = data_root + rf'\MODIS_LAI\dic\\'
+        dic = T.load_npy_dir(fdir)
         for pix in dic:
             vals = dic[pix]
 
@@ -342,9 +609,10 @@ class check_data:
 
 
 def main():
-   # Phenology_extraction().run()
-   Climatology_builder().run()
-   check_data().run()
+
+   # Climatology_builder().run()
+    Phenology_extraction().run()
+   # check_data().run()
 
 
 
