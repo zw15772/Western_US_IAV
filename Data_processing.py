@@ -412,10 +412,10 @@ class Data_processing_MODIS_LAI:
     def run(self):
         # self.modify_tif_metadata()
         # self.extract_tif_from_shp()
-        self.scale()
+        # self.scale()
         #
         # self.MVC()
-        # self.tif_to_dic()
+        self.tif_to_dic()
         pass
 
     def modify_tif_metadata(self):

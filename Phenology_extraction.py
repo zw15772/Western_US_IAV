@@ -5,6 +5,7 @@ import numpy as np
 from __Global__ import *
 tif_template= data_root + rf'basedata\Phenology_extraction\SeasType.tif'
 D=DIC_and_TIF(tif_template=tif_template)
+from datetime import datetime
 
 import numpy as np
 from scipy.signal import savgol_filter, find_peaks
@@ -16,17 +17,18 @@ class Phenology_extraction:
         self.extract_phenology_run()
 
     def extract_phenology_run(self):
-        dic= T.load_npy_dir(data_root + rf'\MODIS_LAI\dic\\')
+        dic= T.load_npy_dir(data_root + rf'\MODIS_LAI\LAI_climatology\dic\\')
 
         class_dic = {}
 
         sos1_dic = {}
         eos1_dic = {}
-        mean1_dic = {}
+
 
         sos2_dic = {}
         eos2_dic = {}
-        mean2_dic = {}
+        result_dic={}
+
 
         for pix, ts in dic.items():
 
@@ -34,6 +36,7 @@ class Phenology_extraction:
                 continue
 
             result = self.phenology_extract(ts)
+            result_dic[pix]= result
 
             cls = result["class"]
             class_dic[pix] = cls
@@ -43,7 +46,6 @@ class Phenology_extraction:
 
             sos1_dic[pix] = s1["sos"]
             eos1_dic[pix] = s1["eos"]
-            mean1_dic[pix] = s1["max"]
 
             # -------- season2 只有 class 2 才有 --------
             if cls == 2 and result["season2"] is not None:
@@ -52,32 +54,34 @@ class Phenology_extraction:
 
                 sos2_dic[pix] = s2["sos"]
                 eos2_dic[pix] = s2["eos"]
-                mean2_dic[pix] = s2["max"]
+
 
             else:
                 sos2_dic[pix] = np.nan
                 eos2_dic[pix] = np.nan
-                mean2_dic[pix] = np.nan
+
 
 
         arr_class = D.pix_dic_to_spatial_arr(class_dic)
 
         arr_sos1 = D.pix_dic_to_spatial_arr(sos1_dic)
         arr_eos1 = D.pix_dic_to_spatial_arr(eos1_dic)
-        arr_mean1 = D.pix_dic_to_spatial_arr(mean1_dic)
+
 
         arr_sos2 = D.pix_dic_to_spatial_arr(sos2_dic)
         arr_eos2 = D.pix_dic_to_spatial_arr(eos2_dic)
-        arr_mean2 = D.pix_dic_to_spatial_arr(mean2_dic)
+
         outdir= data_root + rf'\MODIS_LAI\phenology_metrics\\'
         T.mk_dir(outdir,force=True)
         D.arr_to_tif(arr_class, outdir + r'classification.tif')
         D.arr_to_tif(arr_sos1, outdir + r'sos1.tif')
         D.arr_to_tif(arr_eos1, outdir + r'eos1.tif')
-        D.arr_to_tif(arr_mean1, outdir + r'max1.tif')
+
         D.arr_to_tif(arr_sos2, outdir + r'sos2.tif')
         D.arr_to_tif(arr_eos2, outdir + r'eos2.tif')
-        D.arr_to_tif(arr_mean2, outdir + r'max2.tif')
+
+
+        T.save_npy(result_dic, outdir + r'phenology_result.npy')
 
 
 
@@ -386,9 +390,9 @@ class Phenology_extraction:
 
             season1.update(self.compute_gs_metrics(ts, season1))
             season2.update(self.compute_gs_metrics(ts, season2))
-            plt.plot(ts)
-            plt.title('class 2')
-            plt.show()
+            # plt.plot(ts)
+            # plt.title('class 2')
+            # plt.show()
 
             return {
                 "class": 2,
@@ -607,11 +611,192 @@ class check_data:
             plt.plot(time_series)
             plt.show()
 
+class Extraction_annual_growing_season:
+    def __init__(self):
+        pass
+    def run(self):
+        self.run_pipeline()
+
+    def run_pipeline(self):
+
+        outdir = data_root + r'\MODIS_LAI\dic\\'
+        fdir = data_root + r'\MODIS_LAI\extract_tif_scaled\\'
+
+        file_list = sorted([f for f in os.listdir(fdir) if f.endswith('.tif')])
+
+        year_stack = {}
+
+        # -----------------------------
+        # 1️⃣ 构建 year_stack
+        # -----------------------------
+        for f in tqdm(file_list):
+
+            date = datetime.strptime(f[:8], "%Y%m%d")
+            year = date.year
+
+            path = os.path.join(fdir, f)
+            arr, *_ = ToRaster().raster2array(path)
+
+            if year not in year_stack:
+                year_stack[year] = []
+
+            year_stack[year].append(arr.astype(np.float32))
+
+        # -----------------------------
+        # 2️⃣ stack + 插值（每年只做一次）
+        # -----------------------------
+        for year in tqdm(year_stack):
+
+            stack = np.stack(year_stack[year])  # (time,row,col)
+
+            if stack.shape[0] != 92:
+                stack = self.interp_time_to_92(stack)
+
+            year_stack[year] = stack
+
+        # -----------------------------
+        # 3️⃣ 加载 phenology
+        # -----------------------------
+        phenology_dic = T.load_npy(
+            data_root + r'\MODIS_LAI\phenology_metrics\phenology_result.npy'
+        )
+
+        # -----------------------------
+        # 4️⃣ 构建 annual GS
+        # -----------------------------
+        annual_gs_dic = self.build_annual_gs_dic(
+            year_stack,
+            phenology_dic
+        )
+
+        # -----------------------------
+        # 5️⃣ 保存
+        # -----------------------------
+        os.makedirs(outdir, exist_ok=True)
+
+        np.save(os.path.join(outdir, "annual_gs_dic_max.npy"), annual_gs_dic)
+
+
+
+
+
+    # =========================
+    # 插值函数（时间维）
+    # =========================
+    def interp_time_to_92(self, data, min_len=85, min_valid_ratio=0.7):
+
+        t, rows, cols = data.shape
+
+        # 时间长度太短 → 丢弃整年
+        if t < min_len:
+            return None
+
+        if t == 92:
+            return data
+
+        data_2d = data.reshape(t, -1)
+
+        x_old = np.linspace(0, 1, t)
+        x_new = np.linspace(0, 1, 92)
+
+        data_interp = np.empty((92, data_2d.shape[1]), dtype=np.float32)
+
+        for i in range(data_2d.shape[1]):
+
+            ts = data_2d[:, i]
+
+            valid_ratio = np.sum(~np.isnan(ts)) / t
+
+            if valid_ratio < min_valid_ratio:
+                data_interp[:, i] = np.nan
+                continue
+
+            if np.isnan(ts).all():
+                data_interp[:, i] = np.nan
+                continue
+
+            if np.isnan(ts).any():
+                mask = ~np.isnan(ts)
+                ts = np.interp(x_old, x_old[mask], ts[mask])
+
+            data_interp[:, i] = np.interp(x_new, x_old, ts)
+
+        return data_interp.reshape(92, rows, cols)
+
+    def build_annual_gs_dic(self, year_stack, phenology_dic):
+
+        year_list = sorted(year_stack.keys())
+        annual_gs_dic = {}
+
+        # 获取行列数
+        example_year = year_list[0]
+        _, rows, cols = year_stack[example_year].shape
+
+        for pix, result in tqdm(phenology_dic.items()):
+
+
+
+            s1_series = []
+            s2_series = []
+
+            cls = result["class"]
+
+            for year in year_list:
+                row, col = pix
+
+
+
+                data = year_stack[year]  # 已经是 92
+                ts = data[:, row, col]
+
+
+                if np.isnan(ts).all():
+                    s1_series.append(np.nan)
+                    s2_series.append(np.nan)
+                    continue
+
+                # -------- season1 --------
+                s1 = result["season1"]
+                sos1 = int(s1["sos"])
+                eos1 = int(s1["eos"])
+
+                if sos1 < eos1:
+                    gs1 = ts[sos1:eos1]
+                else:
+                    gs1 = np.concatenate([ts[sos1:], ts[:eos1]])
+
+                # s1_series.append(np.nanmean(gs1))
+                s1_series.append(np.nanmax(gs1))
+
+                # -------- season2 --------
+                if cls == 2 and result["season2"] is not None:
+
+                    s2 = result["season2"]
+                    sos2 = int(s2["sos"])
+                    eos2 = int(s2["eos"])
+
+                    if sos2 < eos2:
+                        gs2 = ts[sos2:eos2]
+                    else:
+                        gs2 = np.concatenate([ts[sos2:], ts[:eos2]])
+
+                    # s2_series.append(np.nanmean(gs2))
+                    s2_series.append(np.nanmax(gs2))
+                else:
+                    s2_series.append(np.nan)
+
+            annual_gs_dic[pix] = {
+                "season1": np.array(s1_series, dtype=np.float32),
+                "season2": np.array(s2_series, dtype=np.float32)
+            }
+
+        return annual_gs_dic
 
 def main():
 
    # Climatology_builder().run()
-    Phenology_extraction().run()
+   #  Phenology_extraction().run()
+    Extraction_annual_growing_season().run()
    # check_data().run()
 
 
