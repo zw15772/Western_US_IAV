@@ -412,10 +412,10 @@ class Data_processing_MODIS_LAI:
     def run(self):
         # self.modify_tif_metadata()
         # self.extract_tif_from_shp()
-        # self.scale()
+        self.scale()
         #
         # self.MVC()
-        self.tif_to_dic()
+        # self.tif_to_dic()
         pass
 
     def modify_tif_metadata(self):
@@ -554,7 +554,7 @@ class Data_processing_MODIS_LAI:
 
     def tif_to_dic(self):
 
-        fdir_all = data_root + rf'/MODIS_LAI/MVC\\'
+        fdir_all = data_root + rf'/MODIS_LAI/extract_tif_scaled\\'
         outdir=data_root + '/MODIS_LAI/dic/'
         T.mk_dir(outdir, force=True)
 
@@ -958,8 +958,9 @@ class check_data:
 
 def main():
 
-     Data_processing_vegetation().run()
+     # Data_processing_vegetation().run()
     # area_weighted_average().run()
+    Data_processing_MODIS_LAI().run()
 
      # check_data().run()
     # convert_dic_to_tiff().run()
