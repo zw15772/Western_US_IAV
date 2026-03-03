@@ -19,8 +19,8 @@ class Phenology:
         # self.multi_year_mean_monthly()
         # self.interpolate()
 
-        self.GST()
-        # self.plot_4GST_df()
+        # self.GST()
+        self.plot_4GST_df()
         # self.read_4GST_df()
         self.plot_4GST_npy()  ### plot SOS and EOS
 
@@ -833,7 +833,7 @@ class Phenology:
     def plot_4GST_df(self):
         fpath = data_root+rf'/SNU_LAI/4GST/4GST.df'
         df = T.load_df(fpath)
-        df_2 = df[df['SeasType'] == 1]
+        df_2 = df[df['SeasType'] == 4]
         onset_list  = []
         offset_list = []
         for i, row in df_2.iterrows():
