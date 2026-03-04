@@ -615,7 +615,8 @@ class Extraction_annual_growing_season:
     def __init__(self):
         pass
     def run(self):
-        self.run_pipeline()
+        # self.run_pipeline()
+        self.calculating_annual_mean()
 
     def run_pipeline(self):
 
@@ -789,6 +790,34 @@ class Extraction_annual_growing_season:
             }
 
         return annual_gs_dic
+
+    def calculating_annual_mean(self):
+        fdir= data_root + r'\MODIS_LAI\extract_tif_scaled\\'
+        arr_list_all={}
+        yearlist=range(2003,2024)
+
+        ## genearte year dic
+        for year in yearlist:
+            arr_list=[]
+            for f in T.listdir(fdir):
+                if year == int(f[:4]) and f.endswith('.tif'):
+
+                    arr, *_ = ToRaster().raster2array(join(fdir, f))
+                    arr = np.array(arr, dtype=np.float32)
+                    arr[arr < -999] = np.nan
+                    arr[arr < 0] = np.nan
+                    arr_list.append(arr)
+            arr_mean= np.nanmean(arr_list, axis=0)
+            arr_list_all[year]= arr_mean
+
+
+
+
+
+
+        pass
+
+
 
 def main():
 

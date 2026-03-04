@@ -15,11 +15,11 @@ class greening_analysis:
         pass
     def relative_change(self):
 
-        f = data_root+r'SNU_LAI/extract_growing_season_LAI_mean/growing_season_LAI_mean.npy'
-        outdir = result_root + rf'greening_analysis/relative_change/'
+        f = data_root+r'MODIS_LAI\dic\annual_gs_dic_mean.npy'
+        outdir = result_root + rf'greening_analysis\MODIS_LAI\\relative_change\\'
         Tools().mk_dir(outdir, force=True)
 
-        outf = outdir + 'SNU_LAI.npy'
+        outf = outdir + 'MODIS_LAI_mean_season1.npy'
         # print(outf);exit()
 
 
@@ -32,7 +32,7 @@ class greening_analysis:
 
 
             # print(len(dic[pix]))
-            time_series = dic[pix]['growing_season']
+            time_series = dic[pix]['season1']
 
 
             time_series = np.array(time_series)
@@ -67,14 +67,12 @@ class greening_analysis:
         import cartopy.feature as cfeature
         import matplotlib.pyplot as plt
         ##each window average trend
-        phenology_mask_f = data_root + rf'\basedata\Phenology_extraction\SeasType.tif'
-        phenology_mask_arr, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(phenology_mask_f)
-        phenology_dic = D.spatial_arr_to_dic(phenology_mask_arr)
 
 
 
-        fdir = result_root + r'greening_analysis/relative_change/'
-        outdir = result_root + r'greening_analysis/relative_change/trend/'
+
+        fdir = result_root + r'greening_analysis/MODIS_LAI/relative_change/'
+        outdir = result_root + r'greening_analysis/MODIS_LAI/relative_change/trend/'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -94,10 +92,7 @@ class greening_analysis:
             p_value_dic = {}
             for pix in tqdm(dic):
                 r, c = pix
-                phenology_type=phenology_dic[pix]
-                # print(phenology_type)
-                if phenology_type == 3:
-                    continue
+
 
                 time_series = dic[pix]
                 # print(time_series)
@@ -1107,10 +1102,10 @@ class LAImin_LAImax:
 
 
 def main():
-    # greening_analysis().run()
+    greening_analysis().run()
     # area_weighted_average().run()
     # PLOT_greening_IAV().run()
-    IAV_analysis().run()
+    # IAV_analysis().run()
     # LAImin_LAImax().run()
 
 

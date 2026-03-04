@@ -723,14 +723,10 @@ class SPEI_calculation:
         import cartopy.feature as cfeature
         import matplotlib.pyplot as plt
         ##each window average trend
-        phenology_mask_f = data_root + rf'basedata\Phenology_extraction\SeasType.tif'
-        phenology_mask_arr, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(phenology_mask_f)
-        phenology_dic = D.spatial_arr_to_dic(phenology_mask_arr)
-
 
 
         fdir = data_root + r'Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\'
-        outdir = result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\trend\\'
+        outdir = result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\trend_2003_2024\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -750,16 +746,14 @@ class SPEI_calculation:
             p_value_dic = {}
             for pix in tqdm(dic):
                 r, c = pix
-                phenology_type=phenology_dic[pix]
-                # print(phenology_type)
-                if phenology_type == 3:
-                    continue
 
-                time_series = dic[pix]
+
+
+                time_series = dic[pix][46:] # 2003-2024
                 # plt.plot(time_series)
                 # plt.show()
                 time_series = np.array(time_series)
-                print(len(time_series))
+                # print(len(time_series));exit()
 
                 if len(time_series) == 0:
                     continue
@@ -796,8 +790,8 @@ class SPEI_calculation:
             im = ax.imshow(
                 arr_trend,
                 cmap='RdBu',
-                vmin=-0.02,
-                vmax=0.02,
+                vmin=-0.1,
+                vmax=0.1,
                 extent=[-124.55, -102.04, 25.59,49],
                 transform=ccrs.PlateCarree()
             )
@@ -1717,10 +1711,10 @@ def main():
     # download_data().run()
 
     # Processing_data_SPEI().run()
-    # SPEI_calculation().run()
+    SPEI_calculation().run()
     # PLOT_SPEI().run()
     # statistics_drought_analysis().run()
-    PLOT_events().run()
+    # PLOT_events().run()
 
 
     pass
