@@ -37,7 +37,7 @@ class Data_processing_vegetation:
 
             # exit()
 
-            yearlist = list(range(1982, 2025))
+
             fpath = join(fdir,f)
             nc_in = xarray.open_dataset(fpath)
             print(nc_in)

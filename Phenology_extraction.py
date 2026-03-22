@@ -94,103 +94,7 @@ class Phenology_extraction:
 
     ## main function
 
-    def phenology_extract(self,ts):
-       #class = 1 → evergreen
-    #class = 2 → two seasons
-    #class = 3 → single season
 
-
-        clim = ts
-
-        clim = np.array(clim)
-
-        if len(clim.shape) != 1:
-            raise ValueError("clim must be 1D time series")
-
-        ts = self.smooth_series(clim)
-
-        n = len(ts)
-        A = np.nanmax(ts) - np.nanmin(ts)
-
-        # -------------------
-        # Evergreen
-        # -------------------
-
-        if A < 0.15:
-            return {
-                "class": 1,  # evergreen
-                "n_seasons": 1,
-                "seasons": [{
-                    "sos": 0,
-                    "peak": np.argmax(ts),
-                    "eos": len(ts) - 1
-                }]
-            }
-
-        peaks, _ = find_peaks(
-            ts,
-            prominence=0.15 * A,
-            distance=15
-        )
-
-        if len(peaks) == 0:
-            return {
-                "class": 1,
-                "n_seasons": 0,
-                "seasons": []
-            }
-
-        if len(peaks) == 1:
-            print(peaks)
-            plt.plot(ts)
-            plt.show()
-            season = self.extract_one_season(ts, peaks[0])
-            return {
-                "class": 3,
-                "n_seasons": 1,
-                "seasons": [season]
-            }
-
-        # 选两个最高峰
-        peak_vals = ts[peaks]
-        idx = np.argsort(peak_vals)[::-1]
-
-        p1 = peaks[idx[0]]
-        p2 = peaks[idx[1]]
-
-        left = min(p1, p2)
-        right = max(p1, p2)
-
-        valley = np.min(ts[left:right])
-
-        cond_valley = (
-                (ts[p1] - valley > 0.2 * A) and
-                (ts[p2] - valley > 0.2 * A)
-        )
-
-        cond_distance = abs(p1 - p2) > 20
-
-        if cond_valley and cond_distance:
-            s1 = self.extract_one_season(ts, p1)
-            s2 = self.extract_one_season(ts, p2)
-
-
-            seasons = [s1, s2]
-            seasons = sorted(seasons, key=lambda x: x["peak"])
-
-            return {
-                "class": 2,
-                "n_seasons": 2,
-                "seasons": seasons
-            }
-
-        else:
-            season = self.extract_one_season(ts, p1)
-            return {
-                "class": 3,
-                "n_seasons": 1,
-                "seasons": [season]
-            }
 
     def is_peak_isolated(self,ts, peak_idx, threshold):
 
@@ -615,8 +519,8 @@ class Extraction_annual_growing_season:
     def __init__(self):
         pass
     def run(self):
-        # self.run_pipeline()
-        self.calculating_annual_mean()
+        self.run_pipeline()
+
 
     def run_pipeline(self):
 
@@ -791,39 +695,204 @@ class Extraction_annual_growing_season:
 
         return annual_gs_dic
 
-    def calculating_annual_mean(self):
-        fdir= data_root + r'\MODIS_LAI\extract_tif_scaled\\'
-        arr_list_all={}
-        yearlist=range(2003,2024)
-
-        ## genearte year dic
-        for year in yearlist:
-            arr_list=[]
-            for f in T.listdir(fdir):
-                if year == int(f[:4]) and f.endswith('.tif'):
-
-                    arr, *_ = ToRaster().raster2array(join(fdir, f))
-                    arr = np.array(arr, dtype=np.float32)
-                    arr[arr < -999] = np.nan
-                    arr[arr < 0] = np.nan
-                    arr_list.append(arr)
-            arr_mean= np.nanmean(arr_list, axis=0)
-            arr_list_all[year]= arr_mean
-
-
 
 
 
 
         pass
 
+class extraction_calendar_year_LAI:  ## this is test, no growing season just annual year
+
+    def run(self):
+        # self.run_interp_time_to_92()
+        self.tif_to_dic()
+        pass
+    def run_interp_time_to_92(self):
+
+        outdir = data_root + r'\MODIS_LAI\calendar_year\\'
+        T.mk_dir(outdir, force=True)
+        fdir = data_root + r'\MODIS_LAI\extract_tif_scaled\\'
+
+        file_list = sorted([f for f in os.listdir(fdir) if f.endswith('.tif')])
+
+        year_stack = {}
+
+        # -----------------------------
+        # 1️⃣ 构建 year_stack
+        # -----------------------------
+        for f in tqdm(file_list):
+
+            date = datetime.strptime(f[:8], "%Y%m%d")
+            year = date.year
+
+            path = os.path.join(fdir, f)
+            arr, *_ = ToRaster().raster2array(path)
+
+            if year not in year_stack:
+                year_stack[year] = []
+
+            year_stack[year].append(arr.astype(np.float32))
+
+        # -----------------------------
+        # 2️⃣ stack + 插值（每年只做一次）
+        # -----------------------------
+        for year in tqdm(year_stack):
+
+            stack = np.stack(year_stack[year])  # (time,row,col)
+
+            if stack.shape[0] != 92:
+                stack = self.interp_time_to_92(stack)
+
+            year_stack[year] = stack
+
+
+        for year in year_stack:
+
+            calendar_year_LAI=np.nanmean(year_stack[year],axis=0)
+            out_path = data_root + rf'\MODIS_LAI\calendar_year\{year:03d}.tif'
+            arr= calendar_year_LAI
+            arr[np.isnan(arr)] = -9999
+            D.arr_to_tif(arr, out_path)
+            plt.imshow(calendar_year_LAI)
+
+
+        # -----------------------------
+
+
+    def interp_time_to_92(self, data, min_len=85, min_valid_ratio=0.7):
+
+        t, rows, cols = data.shape
+
+        # 时间长度太短 → 丢弃整年
+        if t < min_len:
+            return None
+
+        if t == 92:
+            return data
+
+        data_2d = data.reshape(t, -1)
+
+        x_old = np.linspace(0, 1, t)
+        x_new = np.linspace(0, 1, 92)
+
+        data_interp = np.empty((92, data_2d.shape[1]), dtype=np.float32)
+
+        for i in range(data_2d.shape[1]):
+
+            ts = data_2d[:, i]
+
+            valid_ratio = np.sum(~np.isnan(ts)) / t
+
+            if valid_ratio < min_valid_ratio:
+                data_interp[:, i] = np.nan
+                continue
+
+            if np.isnan(ts).all():
+                data_interp[:, i] = np.nan
+                continue
+
+            if np.isnan(ts).any():
+                mask = ~np.isnan(ts)
+                ts = np.interp(x_old, x_old[mask], ts[mask])
+
+            data_interp[:, i] = np.interp(x_new, x_old, ts)
+
+        return data_interp.reshape(92, rows, cols)
+
+
+    def tif_to_dic(self):
+
+        fdir_all = data_root + rf'\MODIS_LAI\calendar_year\\tiff\\'
+        outdir=data_root + '\MODIS_LAI\calendar_year\dic\\'
+        T.mk_dir(outdir, force=True)
+
+        year_list = list(range(2003, 2025))
+        # 作为筛选条件
+
+        all_array = []  #### so important  it should be go with T.mk_dic
+
+
+        for f in T.listdir(fdir_all):
+            print(f)
+
+            if not f.endswith('.tif'):
+                continue
+            if int(f.split('.')[0][0:4]) not in year_list:
+                continue
+
+
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(join(fdir_all, f))
+            array = np.array(array, dtype=float)
+
+
+            # array_unify = array[:720][:720,
+            #               :1440]  # PAR是361*720   ####specify both a row index and a column index as [row_index, column_index]
+            # array_unify = array[:3600][:3600,
+            #               :7200]
+
+
+            array[array < -999] = np.nan
+            # array_unify[array_unify > 10] = np.nan
+            # array[array ==0] = np.nan
+
+            array[array < 0] = np.nan
+
+
+            # plt.imshow(array)
+            # plt.show()
+
+            # plt.imshow(array)
+            # plt.show()
+
+            array_dryland = array
+            # plt.imshow(array_dryland)
+            # plt.show()
+
+            all_array.append(array_dryland)
+
+        row = len(all_array[0])
+        col = len(all_array[0][0])
+        key_list = []
+        dic = {}
+
+        for r in tqdm(range(row), desc='构造key'):  # 构造字典的键值，并且字典的键：值初始化
+            for c in range(col):
+                dic[(r, c)] = []
+                key_list.append((r, c))
+        # print(dic_key_list)
+
+        for r in tqdm(range(row), desc='构造time series'):  # 构造time series
+            for c in range(col):
+                for arr in all_array:
+                    value = arr[r][c]
+                    dic[(r, c)].append(value)
+                # print(dic)
+        time_series = []
+        flag = 0
+        temp_dic = {}
+        for key in tqdm(key_list, desc='output...'):  # 存数据
+            flag = flag + 1
+            time_series = dic[key]
+            time_series = np.array(time_series)
+            temp_dic[key] = time_series
+            if flag % 10000 == 0:
+                # print(flag)
+                np.save(outdir + rf'per_pix_dic_%03d' % (flag / 10000), temp_dic)
+                temp_dic = {}
+        np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
+
+
+
+
+
 
 
 def main():
 
    # Climatology_builder().run()
-   #  Phenology_extraction().run()
-    Extraction_annual_growing_season().run()
+   # Phenology_extraction().run()
+   # Extraction_annual_growing_season().run()
+   extraction_calendar_year_LAI().run()
    # check_data().run()
 
 
