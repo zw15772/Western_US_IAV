@@ -69,11 +69,11 @@ class download_data:
     pass
 class Processing_data_SPEI:
     def run(self):
-        # self.nc_to_tif_time_series_fast2_official_SPEI()
+        self.nc_to_tif_time_series_fast2_official_SPEI()
         # self.extract_tif_from_shp()
         # self.differences_P_PET()
         # self.resample()
-        self.tif_to_dic()
+        # self.tif_to_dic()
 
     def nc_to_tif_time_series_fast2_official_SPEI(self):
         from rasterio.transform import from_origin
@@ -114,8 +114,10 @@ class Processing_data_SPEI:
                 data = data.astype(np.float32)
 
                 year = str(nc_in['time.year'][i].values)
+                month=str(nc_in['time.month'][i].values)
+                month=int(month)
 
-                outf = os.path.join(outdir, f'SPEI_{year}.tif')
+                outf = os.path.join(outdir, f'{year}{month:02d}.tif')
 
                 longitude_start, latitude_start, pixelWidth, pixelHeight = -180, 90, 0.5, -0.5
                 ToRaster().array2raster(outf, longitude_start, latitude_start,
@@ -148,7 +150,7 @@ class Processing_data_SPEI:
             array = nc_in['spei']
             # array = np.array(array).T
 
-            array[array < 0] = np.nan
+            # array[array < 0] = np.nan
             longitude_start, latitude_start, pixelWidth, pixelHeight = -180, 90, 0.5, -0.5
             ToRaster().array2raster(outf, longitude_start, latitude_start,
                                     pixelWidth, pixelHeight, array, ndv=-999999)
@@ -158,13 +160,13 @@ class Processing_data_SPEI:
 
     def extract_tif_from_shp(self):
         shp_f=data_root + rf'basedata\\Western_US_bountry\\merged_western_US.shp'
-        fdir=  rf'D:\Resilience\Data\LPDR_v3_monthly_VOD_PM130\\tif\\'
-        outdir=data_root + rf'LPDR_v3_monthly_VOD_PM130\extract_tif\\'
+        fdir=  rf'D:\Western_US_IAV\Data\SPEI12_official\tif\\'
+        outdir=data_root + rf'SPEI12_official\extract_tif\\'
         T.mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
             # 'AMSRU_Mland_VOD_2002_10_ave_A'
-            year=f.split('.')[0].split('_')[3]
-            month=f.split('.')[0].split('_')[4]
+            year=f.split('.')[0][0:4]
+            month=f.split('.')[0][4:6]
             if year<'1958' or year>'2024':
                 continue
             if not f.endswith('.tif'):
@@ -234,11 +236,11 @@ class Processing_data_SPEI:
 
     def tif_to_dic(self):
 
-        fdir_all = data_root + rf'\LPDR_v3_monthly_VOD_PM130\extract_tif\\'
-        outdir=data_root + rf'LPDR_v3_monthly_VOD_PM130\dic\\'
+        fdir_all = data_root + rf'\SPEI12_official\extract_tif\\'
+        outdir=data_root + rf'SPEI12_official\dic\\'
         T.mk_dir(outdir, force=True)
 
-        year_list = list(range(2002, 2025))
+        year_list = list(range(1958, 2025))
         # 作为筛选条件
 
         all_array = []  #### so important  it should be go with T.mk_dic
@@ -258,14 +260,14 @@ class Processing_data_SPEI:
 
             # array_unify = array[:720][:720,
             #               :1440]  # PAR是361*720   ####specify both a row index and a column index as [row_index, column_index]
-            array_unify = array[:3600][:3600,
-                          :7200]
+            # array_unify = array[:3600][:3600,
+            #               :7200]
 
-            array_unify[array_unify < -999] = np.nan
+            # array_unify[array_unify < -999] = np.nan
             # array_unify[array_unify > 10] = np.nan
             # array[array ==0] = np.nan
 
-            array_unify[array_unify < 0] = np.nan  ####
+            # array_unify[array_unify < 0] = np.nan  ####
 
             #
             #
@@ -275,7 +277,7 @@ class Processing_data_SPEI:
             # plt.imshow(array_mask)
             # plt.show()
 
-            array_dryland = array_unify
+            array_dryland = array
             # plt.imshow(array_dryland)
             # plt.show()
 
@@ -482,27 +484,12 @@ class SPEI_calculation:
             np.save(save_path, SPEI_12)
 
     def calculating_annual_mean(self):
-        fdir = data_root + rf'\Terraclimate\SPEI\SPEI_12_NOAA\\dic\\'
+        fdir = data_root + rf'\SPEI12_official\dic\\'
 
-        outdir = data_root + r'Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\'
+        outdir = data_root + r'SPEI12_official\calculating_annual_mean\\'
         Tools().mk_dir(outdir, force=True)
-        f_phenology = data_root + rf'\basedata\4GST\4GST.npy'
-        phenology_dic = T.load_npy(f_phenology)
-        new_spatial_dic = {}
-        # for pix in phenology_dic:
-        #     # print(phenology_dic[pix]);exit()
-        #     val = phenology_dic[pix]['Onsets']
-        #     try:
-        #         val = float(val)
-        #     except:
-        #         continue
-        #
-        #     new_spatial_dic[pix] = val
-        # spatial_array = D.pix_dic_to_spatial_arr(new_spatial_dic)
-        # plt.imshow(spatial_array, interpolation='nearest', cmap='jet')
-        # plt.show()
-        # exit()
-        spatial_dict_gs_count = {}
+
+
         result_dic = {}
         outf = outdir + 'SPEI12_annual_mean'
 
@@ -517,8 +504,11 @@ class SPEI_calculation:
 
             for pix in spatial_dict:
 
+
                 time_series = spatial_dict[pix]
                 time_series = np.array(time_series)
+                if isnan(np.nanmean(time_series)):
+                    continue
                 time_series_gs = np.reshape(time_series, (-1, 12))
                 # plt.imshow(time_series_gs)
                 # plt.show()
@@ -538,184 +528,8 @@ class SPEI_calculation:
 
 
         pass
-    def extract_growing_season_monthly(self):
-        fdir = data_root+rf'\Terraclimate\SPEI\SPEI_12_NOAA\\dic\\'
-
-        outdir =data_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_monthly\\'
-
-        Tools().mk_dir(outdir, force=True)
-        f_phenology = data_root+rf'\basedata\4GST\4GST.npy'
-        phenology_dic = T.load_npy(f_phenology)
-        new_spatial_dic = {}
-        # for pix in phenology_dic:
-        #     # print(phenology_dic[pix]);exit()
-        #     val = phenology_dic[pix]['Onsets']
-        #     try:
-        #         val = float(val)
-        #     except:
-        #         continue
-        #
-        #     new_spatial_dic[pix] = val
-        # spatial_array = D.pix_dic_to_spatial_arr(new_spatial_dic)
-        # plt.imshow(spatial_array, interpolation='nearest', cmap='jet')
-        # plt.show()
-        # exit()
-        spatial_dict_gs_count = {}
-
-        for f in T.listdir(fdir):
-
-            outf = outdir + f
-            #
-            # if os.path.isfile(outf):
-            #     continue
-            # print(outf)
-            spatial_dict = dict(np.load(fdir + f, allow_pickle=True, encoding='latin1').item())
-            dic_DOY = {15: 1,
-                       30: 1,
-                       45: 2,
-                       60: 2,
-                       75: 3,
-                       90: 3,
-                       105: 4,
-                       120: 4,
-                       135: 5,
-                       150: 5,
-                       165: 6,
-                       180: 6,
-                       195: 7,
-                       210: 7,
-                       225: 8,
-                       240: 8,
-                       255: 9,
-                       270: 9,
-                       285: 10,
-                       300: 10,
-                       315: 11,
-                       330: 11,
-                       345: 12,
-                       360: 12,
-                       }
-
-            result_dic = {}
-
-            for pix in tqdm(spatial_dict):
-                if not pix in phenology_dic:
-                    continue
-                # print(pix)
-
-                r, c = pix
-
-                SeasType = phenology_dic[pix]['SeasType']
-                if SeasType == 2:
-
-                    SOS = phenology_dic[pix]['Onsets']
-                    try:
-                        SOS = float(SOS)
-
-                    except:
-                        continue
-
-                    SOS = int(SOS)
-                    SOS_monthly = dic_DOY[SOS]
-
-                    EOS = phenology_dic[pix]['Offsets']
-                    EOS = int(EOS)
-                    EOS_monthly = dic_DOY[EOS]
-                    # print(SOS_monthly,EOS_monthly)
-                    # print(SOS,EOS)
-
-                    time_series = spatial_dict[pix]
-
-                    time_series = np.array(time_series)
-                    if SOS_monthly > EOS_monthly:  ## south hemisphere
-                        time_series_flatten = time_series.flatten()
-                        time_series_reshape = time_series_flatten.reshape(-1, 12)
-                        time_series_dict = {}
-                        for y in range(len(time_series_reshape)):
-                            if y + 1 == len(time_series_reshape):
-                                break
-
-                            time_series_dict[y] = np.concatenate(
-                                (time_series_reshape[y][SOS_monthly - 1:], time_series_reshape[y + 1][:EOS_monthly]))
-
-                    else:
-                        time_series_flatten = time_series.flatten()
-                        time_series_reshape = time_series_flatten.reshape(-1, 12)
-                        time_series_dict = {}
-                        for y in range(len(time_series_reshape)):
-                            time_series_dict[y] = time_series_reshape[y][SOS_monthly - 1:EOS_monthly]
-                    time_series_gs = []
-                    for y in range(len(time_series_dict)):
-                        time_series_gs.append(time_series_dict[y])
-                    time_series_gs = np.array(time_series_gs)
-
-                elif SeasType == 3:
-                    time_series = spatial_dict[pix]
-                    time_series = np.array(time_series)
-                    time_series_gs = np.reshape(time_series, (-1, 12))
-
-                elif SeasType == 1:
-                    time_series = spatial_dict[pix]
-                    time_series = np.array(time_series)
-                    time_series_gs = np.reshape(time_series, (-1, 12))
 
 
-                else:
-                    SeasClss = phenology_dic[pix]['SeasClss']
-                    print(SeasType, SeasClss)
-                    continue
-                spatial_dict_gs_count[pix] = time_series_gs.shape[1]
-                result_dic[pix] = time_series_gs
-            # print(spatial_dict_gs_count)
-            # arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict_gs_count)
-            # # arr[arr<6] = np.nan
-            # plt.imshow(arr,interpolation='nearest',cmap='jet',vmin=0,vmax=12)
-            # plt.colorbar()
-            # plt.show()
-            np.save(outf, result_dic)
-
-
-    def extract_growing_season_LAI_mean(self):  ## extract LAI average
-        fdir = data_root+r'Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_monthly'
-
-        outdir = data_root+r'\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean_whole_period\\'
-
-
-        T.mk_dir(outdir, force=True)
-
-        spatial_dic = T.load_npy_dir(fdir)
-        result_dic = {}
-
-        for pix in tqdm(spatial_dic):
-            ### ui==if northern hemisphere
-            r, c = pix
-
-            ### annual year
-
-            # vals_growing_season = spatial_dic[pix][24:]
-            vals_growing_season = spatial_dic[pix]
-            print(vals_growing_season.shape[0])
-            # plt.imshow(vals_growing_season)
-            # plt.colorbar()
-            # plt.show()
-            growing_season_mean_list = []
-
-            for val in vals_growing_season:
-                if T.is_all_nan(val):
-                    continue
-                val = np.array(val)
-
-                sum_growing_season = np.nanmean(val)
-
-                growing_season_mean_list.append(sum_growing_season)
-
-            result_dic[pix] = {
-                'growing_season': growing_season_mean_list,
-            }
-
-        outf = outdir + 'growing_season_SPEI12_mean.npy'
-
-        np.save(outf, result_dic)
 
     def trend_analysis(self):
 
@@ -726,7 +540,7 @@ class SPEI_calculation:
 
 
         fdir = data_root + r'Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\'
-        outdir = result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\trend_2003_2024\\'
+        outdir = result_root + r'\Terraclimate\SPEI\\calculating_annual_mean\\trend_2003_2024\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -749,7 +563,7 @@ class SPEI_calculation:
 
 
 
-                time_series = dic[pix][46:] # 2003-2024
+                time_series = dic[pix][45:] # 2003-2024
                 # plt.plot(time_series)
                 # plt.show()
                 time_series = np.array(time_series)
@@ -776,10 +590,12 @@ class SPEI_calculation:
                 except:
                     continue
 
+            # arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
             arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
-
-
             p_value_arr = D.pix_dic_to_spatial_arr(p_value_dic)
+
+
+
             fpath=data_root + rf'basedata\Phenology_extraction\SeasType.tif'
             ll,lr,ul,ur=RasterIO_Func().get_tif_bounds(fpath)
             print(ll,lr,ul,ur)

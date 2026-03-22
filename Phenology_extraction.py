@@ -579,7 +579,7 @@ class Extraction_annual_growing_season:
         # -----------------------------
         os.makedirs(outdir, exist_ok=True)
 
-        np.save(os.path.join(outdir, "annual_gs_dic_max.npy"), annual_gs_dic)
+        np.save(os.path.join(outdir, "annual_gs_dic_mean.npy"), annual_gs_dic)
 
 
 
@@ -668,8 +668,8 @@ class Extraction_annual_growing_season:
                 else:
                     gs1 = np.concatenate([ts[sos1:], ts[:eos1]])
 
-                # s1_series.append(np.nanmean(gs1))
-                s1_series.append(np.nanmax(gs1))
+                s1_series.append(np.nanmean(gs1))
+                # s1_series.append(np.nanmax(gs1))
 
                 # -------- season2 --------
                 if cls == 2 and result["season2"] is not None:
@@ -683,8 +683,8 @@ class Extraction_annual_growing_season:
                     else:
                         gs2 = np.concatenate([ts[sos2:], ts[:eos2]])
 
-                    # s2_series.append(np.nanmean(gs2))
-                    s2_series.append(np.nanmax(gs2))
+                    s2_series.append(np.nanmean(gs2))
+                    # s2_series.append(np.nanmax(gs2))
                 else:
                     s2_series.append(np.nan)
 
@@ -705,7 +705,9 @@ class extraction_calendar_year_LAI:  ## this is test, no growing season just ann
 
     def run(self):
         # self.run_interp_time_to_92()
-        self.tif_to_dic()
+        # self.tif_to_dic()
+        # self.relative_change()
+        self.trend_analysis()
         pass
     def run_interp_time_to_92(self):
 
@@ -748,7 +750,7 @@ class extraction_calendar_year_LAI:  ## this is test, no growing season just ann
 
         for year in year_stack:
 
-            calendar_year_LAI=np.nanmean(year_stack[year],axis=0)
+            calendar_year_LAI=np.nanmax(year_stack[year],axis=0)
             out_path = data_root + rf'\MODIS_LAI\calendar_year\{year:03d}.tif'
             arr= calendar_year_LAI
             arr[np.isnan(arr)] = -9999
@@ -880,6 +882,172 @@ class extraction_calendar_year_LAI:  ## this is test, no growing season just ann
                 np.save(outdir + rf'per_pix_dic_%03d' % (flag / 10000), temp_dic)
                 temp_dic = {}
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
+
+    def relative_change(self):
+
+        fdir=data_root + r'\MODIS_LAI\calendar_year\dic\\'
+        outdir = result_root + rf'greening_analysis\MODIS_LAI\\calendar_year\\relative_change\\'
+        Tools().mk_dir(outdir, force=True)
+
+        outf = outdir + 'MODIS_LAI_calendar_year_max.npy'
+        # print(outf);exit()
+
+
+        dic = T.load_npy_dir(fdir)
+
+        zscore_dic = {}
+
+        for pix in tqdm(dic):
+
+
+
+            # print(len(dic[pix]))
+            time_series = dic[pix]
+
+
+            time_series = np.array(time_series)
+
+
+            print(len(time_series));exit()
+
+            if np.isnan(np.nanmean(time_series)):
+                continue
+
+            time_series = time_series
+            mean = np.nanmean(time_series)
+            relative_change = (time_series - mean) / mean * 100
+            anomaly = time_series - mean
+            zscore_dic[pix] = relative_change
+          # plot
+          #   plt.plot(anomaly)
+          #   # plt.legend(['anomaly'])
+          #   plt.show()
+          #
+          #   plt.plot(relative_change)
+          #   plt.legend(['relative_change'])
+          #   plt.legend(['anomaly','relative_change'])
+          #   plt.show()
+
+                ## save
+        T.save_npy( zscore_dic, outf)
+
+    def trend_analysis(self):
+
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.pyplot as plt
+        ##each window average trend
+
+
+        fdir = result_root + r'greening_analysis/MODIS_LAI/calendar_year/relative_change/'
+        outdir = result_root + r'greening_analysis/MODIS_LAI/calendar_year/relative_change//trend/'
+        Tools().mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+
+
+            outf = outdir + f.split('.')[0]
+            # if os.path.isfile(outf + '_trend.tif'):
+            #     continue
+            print(outf)
+
+
+            if not f.endswith('.npy'):
+                continue
+            dic = np.load(fdir + f, allow_pickle=True, encoding='latin1').item()
+
+            trend_dic = {}
+            p_value_dic = {}
+            for pix in tqdm(dic):
+                r, c = pix
+
+
+                time_series = dic[pix]
+                # print(time_series)
+                time_series = np.array(time_series)
+                # print(time_series)
+
+                if len(time_series) == 0:
+                    continue
+                # print(time_series)
+                ### if all valus are the same, then skip
+                # if len(set(time_series)) == 1:
+                #     continue
+                # print(time_series)
+
+                if np.nanstd(time_series) == 0:
+                    continue
+                try:
+
+                    # slope, intercept, r_value, p_value, std_err = stats.linregress(np.arange(len(time_series)), time_series)
+                    slope, b, r, p_value = T.nan_line_fit(np.arange(len(time_series)), time_series)
+                    trend_dic[pix] = slope
+                    p_value_dic[pix] = p_value
+                except:
+                    continue
+
+            arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
+
+
+            p_value_arr = D.pix_dic_to_spatial_arr(p_value_dic)
+            fpath=result_root+rf'/greening_analysis/relative_change/trend/SNU_LAI_trend.tif'
+            ll,lr,ul,ur=RasterIO_Func().get_tif_bounds(fpath)
+            print(ll,lr,ul,ur)
+
+            ax = plt.axes(projection=ccrs.PlateCarree())
+
+            # --- 画趋势图 ---
+            im = ax.imshow(
+                arr_trend,
+                cmap='RdBu',
+                vmin=-1,
+                vmax=1,
+                extent=[-124.55, -102.04, 25.59,49],
+                transform=ccrs.PlateCarree()
+            )
+
+            # --- 加 continent ---
+            ax.add_feature(
+                cfeature.LAND,
+                facecolor='none',  #
+                edgecolor='black',
+                linewidth=0.5,
+                zorder=2
+            )
+            ax.add_feature(cfeature.STATES, linewidth=0.3)
+
+            lon_min_box = -125
+            lon_max_box = -105
+            lat_min_box = 30
+            lat_max_box = 45
+
+            rect = mpatches.Rectangle(
+                (lon_min_box, lat_min_box),  # 左下角 (lon, lat)
+                lon_max_box - lon_min_box,  # 宽度
+                lat_max_box - lat_min_box,  # 高度
+                linewidth=1.5,
+                edgecolor='black',
+                facecolor='none',
+                transform=ccrs.PlateCarree(),  # ⭐关键
+                zorder=10
+            )
+
+            ax.add_patch(rect)
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+
+            cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+            cbar.set_label('Trend (relative_change, %)')
+
+            plt.title(f)
+            plt.show()
+
+            # D.arr_to_tif(arr_trend, outf + '_trend.tif')
+            # D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
+            #
+            # np.save(outf + '_trend', arr_trend)
+            # np.save(outf + '_p_value', p_value_arr)
+
 
 
 

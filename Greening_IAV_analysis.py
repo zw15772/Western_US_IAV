@@ -10,7 +10,7 @@ class greening_analysis:
     def __init__(self):
         pass
     def run(self):
-        self.relative_change()
+        # self.relative_change()
         self.trend_analysis()
         pass
     def relative_change(self):
@@ -95,7 +95,7 @@ class greening_analysis:
                 time_series = dic[pix]
                 # print(time_series)
                 time_series = np.array(time_series)
-                # print(time_series)
+                print(len(time_series));exit()
 
                 if len(time_series) == 0:
                     continue
@@ -130,8 +130,8 @@ class greening_analysis:
             im = ax.imshow(
                 arr_trend,
                 cmap='RdBu',
-                vmin=-1,
-                vmax=1,
+                vmin=-1.5,
+                vmax=1.5,
                 extent=[-124.55, -102.04, 25.59,49],
                 transform=ccrs.PlateCarree()
             )
@@ -172,11 +172,11 @@ class greening_analysis:
             plt.title(f)
             plt.show()
 
-            # D.arr_to_tif(arr_trend, outf + '_trend.tif')
-            # D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
-            #
-            # np.save(outf + '_trend', arr_trend)
-            # np.save(outf + '_p_value', p_value_arr)
+            D.arr_to_tif(arr_trend, outf + '_trend.tif')
+            D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
+
+            np.save(outf + '_trend', arr_trend)
+            np.save(outf + '_p_value', p_value_arr)
 
 
 class area_weighted_average():
