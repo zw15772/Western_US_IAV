@@ -35,10 +35,9 @@ class build_dataframe():
         # df=self.append_cluster(df)  ## 加属性
         # df=self.append_value(df)   ## insert or append value
 
+        df = self.add_detrend_zscore_to_df(df)
 
-        # df = self.add_detrend_zscore_to_df(df)
-
-        df=self.add_trend_to_df(df)
+        # df=self.add_trend_to_df(df)
         # df=self.add_phenology_type_to_df(df)
 
         # df=self.add_mean_to_df(df)
@@ -295,16 +294,14 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=result_root+rf'\greening_analysis\MODIS_LAI\relative_change\\'
+        fdir=rf'D:\Western_US_IAV\Data\MODIS_LAI\dic\\'
 
 
         for f in os.listdir(fdir):
-            if not 'MODIS_LAI_mean_season1' in f:
-                continue
-
-
 
             variable= f.split('.')[0]
+            if not 'max' in variable:
+                continue
 
 
             print(variable)
@@ -326,7 +323,7 @@ class build_dataframe():
                     NDVI_list.append(np.nan)
                     continue
 
-                vals = val_dic[pix]
+                vals = val_dic[pix]['season1']
                 # print(vals)
                 print(len(vals))
 
@@ -347,7 +344,8 @@ class build_dataframe():
                 NDVI_list.append(v1)
 
 
-            df[f'{variable}'] = NDVI_list
+            # df[f'{variable}'] = NDVI_list
+            df['MODIS_LAI_max_season1_original'] = NDVI_list
         # exit()
         return df
 

@@ -371,10 +371,10 @@ class SPEI_Greening_ecoregion:
     def plot_time_series(self):
         dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe.df'
         df=T.load_df(dff)
-        print(len(df))
+
         df=self.df_clean(df)
 
-        print(len(df))
+
         year_list=list(range(2003, 2025))
         result_dic = {}
         eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
@@ -401,10 +401,12 @@ class SPEI_Greening_ecoregion:
 
             mean_dic = {}
             std_dic = {}
+
             for year in year_list:
                 df_ii = df_i[df_i['year'] == year]
                 ## scheme1
-                vals = np.array(df_ii['MODIS_LAI_max_season1'].tolist(), dtype=float)
+                vals = np.array(df_ii['MODIS_LAI_mean_season1'].tolist(), dtype=float)
+                vals_len = len(vals)
                 # weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
                 # weighted_mean = (
                 #         np.nansum(vals * weight)
@@ -426,6 +428,7 @@ class SPEI_Greening_ecoregion:
 
             result_dic[eco] = mean_dic
             result_dic[f'{eco}_std'] = std_dic
+            result_dic[f'{eco}_len'] = vals_len
 
             # 转成 DataFrame
         df_new = pd.DataFrame(result_dic).reset_index()
@@ -433,27 +436,38 @@ class SPEI_Greening_ecoregion:
         # T.print_head_n(df_new);exit()
 
         flag = 0
-        plt.figure(figsize=(self.map_width, self.map_height))
+
 
         for eco in eco_region_list:
+            plt.figure(figsize=(self.map_width, self.map_height))
             mean_vals = df_new[eco]
             std_vals = df_new[f'{eco}_std']
+            vals_len=df_new[f'{eco}_len'][0]
 
             plt.plot(year_list, mean_vals)
 
-            plt.fill_between(year_list,
-                             mean_vals - std_vals,
-                             mean_vals + std_vals,
-
-                             alpha=0.2)
+            # plt.fill_between(year_list,
+            #                  mean_vals - std_vals,
+            #                  mean_vals + std_vals,
+            #
+            #                  alpha=0.2)
 
             slope, intercept, r_value, p_value, std_err = stats.linregress(year_list, mean_vals)
             print(eco, slope, p_value)
 
+            # --- 新增：在右上角显示文本 ---
+
+            stats_text = f'Slope: {slope:.2f}\np-value: {p_value:.2f}'
+            plt.text(0.95, 0.95, stats_text,
+                     transform=plt.gca().transAxes,
+                     verticalalignment='top',
+                     horizontalalignment='right',
+                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))  # 加个半透明背景框，看得更清楚
+
             flag += 1
-            plt.ylabel('LAI_max')
-            plt.title(f'{eco}')
-            ## add y=0 line
+            plt.ylabel('LAI_mean_gs')
+
+            plt.title(f'{eco}_n={vals_len}', fontsize=12)
             # plt.axhline(y=-1, linestyle='--')
             # plt.axhline(y=1, linestyle='--')
 
@@ -461,6 +475,7 @@ class SPEI_Greening_ecoregion:
 
             # plt.legend()
             plt.show()
+            plt.close()
             # out_pdf_fdir = result_root + rf'\Figure\\weighted_area\\Figure1a\\'
             # T.mk_dir(out_pdf_fdir, force=True)
             # plt.savefig(out_pdf_fdir + 'time_series_relative_change_mean.pdf', dpi=300, bbox_inches='tight')

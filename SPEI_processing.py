@@ -323,7 +323,8 @@ class SPEI_calculation:
 
         # self.extract_growing_season_monthly()
         # self.extract_growing_season_LAI_mean()
-        self.trend_analysis()
+        # self.trend_analysis()
+        self.crop_dic_spatiotemporal()
         pass
 
     def calculate_SPEI(self):
@@ -483,6 +484,8 @@ class SPEI_calculation:
             save_path = os.path.join(outdir, f)
             np.save(save_path, SPEI_12)
 
+
+
     def calculating_annual_mean(self):
         fdir = data_root + rf'\SPEI12_official\dic\\'
 
@@ -529,6 +532,63 @@ class SPEI_calculation:
 
         pass
 
+    def crop_dic_spatiotemporal(self):
+
+        from tqdm import tqdm
+
+        f = r'D:\Western_US_IAV\Data\Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\'
+        SPEI_dic = T.load_npy(f + 'SPEI12_annual_mean.npy')
+
+        outf = f + 'SPEI12_annual_mean_WUS_2003_2024.npy'
+
+        # ===== 时间裁剪 =====
+        start_idx = 2003 - 1958  # 45
+        end_idx = start_idx + 22  # 67
+
+        # ===== 空间范围 =====
+        lon_min, lon_max = -125, -105
+        lat_min, lat_max = 30, 45
+
+        # ===== 生成 lat/lon grid（关键）=====
+
+        # 👉 先获取 rows / cols
+        spatial_region = {}
+        for pix in SPEI_dic:
+            vals=SPEI_dic[pix][45:]
+            spatial_region[pix] = np.nanmean(vals)
+        array=D.pix_dic_to_spatial_arr(spatial_region)
+        rows, cols = array.shape
+
+
+        lat_1d = np.linspace(50, 25, rows)
+        lon_1d = np.linspace(-125, -100, cols)
+
+        new_dic = {}
+
+        for (r, c) in tqdm(SPEI_dic):
+
+            lat = lat_1d[r]
+            lon = lon_1d[c]
+
+            # ===== 空间筛选 =====
+            if not (lon_min <= lon <= lon_max and lat_min <= lat <= lat_max):
+                continue
+
+            # ===== 时间裁剪 =====
+            ts = SPEI_dic[(r, c)][start_idx:end_idx]
+
+            # 👉 防止异常长度
+            if len(ts) != 22:
+                continue
+
+            new_dic[(r, c)] = ts
+
+        array_new=D.pix_dic_to_spatial_arr(new_dic)
+        plt.imshow(array_new,interpolation='nearest',cmap='jet',vmin=0,vmax=12)
+        plt.colorbar()
+        plt.show()
+
+        T.save_npy(new_dic, outf)
 
 
     def trend_analysis(self):

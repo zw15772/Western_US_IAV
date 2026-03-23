@@ -706,6 +706,7 @@ class extraction_calendar_year_LAI:  ## this is test, no growing season just ann
     def run(self):
         # self.run_interp_time_to_92()
         # self.tif_to_dic()
+
         # self.relative_change()
         self.trend_analysis()
         pass
@@ -748,14 +749,23 @@ class extraction_calendar_year_LAI:  ## this is test, no growing season just ann
             year_stack[year] = stack
 
 
+        # for year in year_stack:
+        #
+        #     calendar_year_LAI=np.nanmax(year_stack[year],axis=0)
+        #     out_path = data_root + rf'\MODIS_LAI\calendar_year\{year:03d}.tif'
+        #     arr= calendar_year_LAI
+        #     arr[np.isnan(arr)] = -9999
+        #     D.arr_to_tif(arr, out_path)
+        #     plt.imshow(calendar_year_LAI)
+
         for year in year_stack:
 
-            calendar_year_LAI=np.nanmax(year_stack[year],axis=0)
-            out_path = data_root + rf'\MODIS_LAI\calendar_year\{year:03d}.tif'
-            arr= calendar_year_LAI
+            gs_LAI=np.nanmax(year_stack[year][30:77],axis=0)   ## May 1st to oct 31
+            out_path = data_root + rf'\MODIS_LAI\growing_season\{year:03d}.tif'
+            arr= gs_LAI
             arr[np.isnan(arr)] = -9999
             D.arr_to_tif(arr, out_path)
-            plt.imshow(calendar_year_LAI)
+            plt.imshow(gs_LAI)
 
 
         # -----------------------------
@@ -804,8 +814,8 @@ class extraction_calendar_year_LAI:  ## this is test, no growing season just ann
 
     def tif_to_dic(self):
 
-        fdir_all = data_root + rf'\MODIS_LAI\calendar_year\\tiff\\'
-        outdir=data_root + '\MODIS_LAI\calendar_year\dic\\'
+        fdir_all = data_root + rf'\MODIS_LAI\growing_season\tiff_mean\\'
+        outdir=data_root + '\MODIS_LAI\cgrowing_season\dic_mean\\'
         T.mk_dir(outdir, force=True)
 
         year_list = list(range(2003, 2025))
@@ -883,13 +893,15 @@ class extraction_calendar_year_LAI:  ## this is test, no growing season just ann
                 temp_dic = {}
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
 
+
+
     def relative_change(self):
 
-        fdir=data_root + r'\MODIS_LAI\calendar_year\dic\\'
-        outdir = result_root + rf'greening_analysis\MODIS_LAI\\calendar_year\\relative_change\\'
+        fdir=data_root + r'\MODIS_LAI\growing_season\dic_mean\\'
+        outdir = result_root + rf'greening_analysis\MODIS_LAI\\growing_season\\relative_change\\'
         Tools().mk_dir(outdir, force=True)
 
-        outf = outdir + 'MODIS_LAI_calendar_year_max.npy'
+        outf = outdir + 'MODIS_LAI_growing_season_mean.npy'
         # print(outf);exit()
 
 
@@ -908,7 +920,7 @@ class extraction_calendar_year_LAI:  ## this is test, no growing season just ann
             time_series = np.array(time_series)
 
 
-            print(len(time_series));exit()
+            # print(len(time_series));exit()
 
             if np.isnan(np.nanmean(time_series)):
                 continue
@@ -939,8 +951,8 @@ class extraction_calendar_year_LAI:  ## this is test, no growing season just ann
         ##each window average trend
 
 
-        fdir = result_root + r'greening_analysis/MODIS_LAI/calendar_year/relative_change/'
-        outdir = result_root + r'greening_analysis/MODIS_LAI/calendar_year/relative_change//trend/'
+        fdir = result_root + r'greening_analysis/MODIS_LAI/growing_season/relative_change/'
+        outdir = result_root + r'greening_analysis/MODIS_LAI/growing_season/relative_change//trend/'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -990,7 +1002,7 @@ class extraction_calendar_year_LAI:  ## this is test, no growing season just ann
 
 
             p_value_arr = D.pix_dic_to_spatial_arr(p_value_dic)
-            fpath=result_root+rf'/greening_analysis/relative_change/trend/SNU_LAI_trend.tif'
+            fpath=result_root+rf'\greening_analysis\MODIS_LAI\phenology_growing_Season\trend\MODIS_LAI_max_season1_trend.tif'
             ll,lr,ul,ur=RasterIO_Func().get_tif_bounds(fpath)
             print(ll,lr,ul,ur)
 
