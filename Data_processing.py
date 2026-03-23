@@ -12,11 +12,12 @@ D=DIC_and_TIF(tif_template=tif_template)
 class Data_processing_vegetation:
     def run(self):
         # self.nc_to_tif_time_series_fast2()
+        self.nc_to_tif_time_series_fast2_VOD()
         # self.extract_tif_from_shp()
         # self.tif_to_dic()
         ## 4 extract phenology based 4GST using GST_phenology_Wen.py
         ## 5 现在用SOS EOS extract growing season and return monthly data during growing season
-        self.extract_growing_season_monthly()
+        # self.extract_growing_season_monthly()
         # self.extract_growing_season_LAI_mean()
         # self.extract_growing_season_LAI_min()
         # self.extract_growing_season_LAI_max()
@@ -27,8 +28,8 @@ class Data_processing_vegetation:
         pass
     def nc_to_tif_time_series_fast2(self):
 
-        fdir=rf'/Users/wenzhang/Downloads/Western US IAV/Data/SNU_LAI/nc/'
-        outdir=rf'/Users/wenzhang/Downloads/Western US IAV/Data/SNU_LAI/tif/'
+        fdir=rf'D:\Western_US_IAV\Data\VOD\\nc\\'
+        outdir=rf'D:\Western_US_IAV\Data\VOD\tiff\\'
         Tools().mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
 
@@ -44,14 +45,63 @@ class Data_processing_vegetation:
 
 
             outf = join(outdir,outdir_name+'.tif')
-            array = nc_in['LAI']
+            array = nc_in['VOD']
+            # plt.imshow(array[0])
+            # plt.show()
             array = np.array(array).T
 
-            array[array < 0] = np.nan
-            longitude_start, latitude_start, pixelWidth, pixelHeight = -180, 90, 0.05, -0.05
+
+            # array[array < 0] = np.nan
+            longitude_start, latitude_start, pixelWidth, pixelHeight = -180, 90, 0.25, -0.25
             ToRaster().array2raster(outf, longitude_start, latitude_start,
                                     pixelWidth, pixelHeight, array, ndv=-999999)
                 # exit()
+
+    def nc_to_tif_time_series_fast2_VOD(self):
+        from rasterio.transform import from_origin
+        fdir = rf'D:\Western_US_IAV\Data\VOD\\nc\\'
+        outdir = rf'D:\Western_US_IAV\Data\VOD\tiff\\'
+        Tools().mk_dir(outdir, force=True)
+
+        for f in tqdm(os.listdir(fdir)):
+
+            fpath = join(fdir, f)
+            nc_in = xarray.open_dataset(fpath)
+            spei = nc_in['VOD']  # (time, lat, lon)
+            lats = nc_in['lat'].values
+            lons = nc_in['lon'].values
+            time = nc_in['time'].values
+            for i in range(len(lats)):
+                print(lats[i+1]-lats[i])
+
+
+            lat_res = abs(lats[1] - lats[0])
+            lon_res = abs(lons[1] - lons[0])
+            # print(lats[0], lats[-1]);exit()
+
+
+            for i in range(len(time)):
+                data = spei[i].values
+
+                data = np.flipud(data)
+                plt.imshow(data)
+                plt.show()
+
+                # 把 nan 设成 nodata
+                data = data.astype(np.float32)
+
+                year = str(nc_in['time.year'][i].values)
+                month = str(nc_in['time.month'][i].values)
+                month = int(month)
+
+                outf = os.path.join(outdir, f'{year}{month:02d}.tif')
+
+                longitude_start, latitude_start, pixelWidth, pixelHeight = -51.904212951660156 , 75.91789245605469, 0.25, -0.25
+                ToRaster().array2raster(outf, longitude_start, latitude_start,
+                                        pixelWidth, pixelHeight, data, ndv=-999999)
+                # exit()
+
+    pass
 
     def extract_tif_from_shp(self):
         shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
@@ -958,9 +1008,9 @@ class check_data:
 
 def main():
 
-     # Data_processing_vegetation().run()
+     Data_processing_vegetation().run()
     # area_weighted_average().run()
-    Data_processing_MODIS_LAI().run()
+    # Data_processing_MODIS_LAI().run()
 
      # check_data().run()
     # convert_dic_to_tiff().run()

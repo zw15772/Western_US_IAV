@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\\')
+                result_root +  rf'\SPEI_Greening\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'drought_events_annual.df'
+        self.dff = self.this_class_arr + rf'Dataframe\\Dataframe.df'
 
 
         pass
@@ -38,11 +38,10 @@ class build_dataframe():
 
         # df = self.add_detrend_zscore_to_df(df)
 
-        # df=self.add_trend_to_df(df)
-        df=self.add_phenology_type_to_df(df)
+        df=self.add_trend_to_df(df)
+        # df=self.add_phenology_type_to_df(df)
 
         # df=self.add_mean_to_df(df)
-
 
         # # #
         # df=self.add_aridity_to_df(df)
@@ -54,7 +53,7 @@ class build_dataframe():
         # df=self.add_maxmium_LC_change(df)
         # df=self.add_row(df)
         # df=self.add_Ecoregion_level_II_raster_to_df(df)
-        # # # # # # # # # # # # # #
+        # # # # # # # # # # # # # # #
         # df=self.add_lat_lon_to_df(df)
         # df=self.add_continent_to_df(df)
         # df=self.add_residual_to_df(df)
@@ -62,7 +61,7 @@ class build_dataframe():
         # # # #
         # df=self.add_rooting_depth_to_df(df)
         # #
-        # df=self.add_area_to_df(df)
+        # df=self.add_area_weighted_to_df(df)
 
 
         # df=self.rename_columns(df)
@@ -234,7 +233,7 @@ class build_dataframe():
 
 
     def foo1(self, df):
-        f=result_root+rf'\greening_analysis\relative_change\\SNU_LAI.npy'
+        f=result_root+rf'\greening_analysis\MODIS_LAI\relative_change\\MODIS_LAI_max_season1.npy'
 
 
 
@@ -247,7 +246,7 @@ class build_dataframe():
         for pix in tqdm(dic):
             time_series = dic[pix]
 
-            y = 1982
+            y = 2003
             for val in time_series:
                 pix_list.append(pix)
                 change_rate_list.append(val)
@@ -296,10 +295,12 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=data_root+rf'\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\'
+        fdir=result_root+rf'\greening_analysis\MODIS_LAI\relative_change\\'
 
 
         for f in os.listdir(fdir):
+            if not 'MODIS_LAI_mean_season1' in f:
+                continue
 
 
 
@@ -325,7 +326,7 @@ class build_dataframe():
                     NDVI_list.append(np.nan)
                     continue
 
-                vals = val_dic[pix]['growing_season']
+                vals = val_dic[pix]
                 # print(vals)
                 print(len(vals))
 
@@ -339,11 +340,8 @@ class build_dataframe():
                 #     nan_list=np.array([np.nan]*5)
                 #     vals=np.append(vals,nan_list)
 
-                if len(vals)==42:
-                    vals = np.append(vals,np.nan)
 
-
-                v1= vals[year - 1982]
+                v1= vals[year - 2003]
                 # print(v1,year,len(vals))
 
                 NDVI_list.append(v1)
@@ -470,70 +468,15 @@ class build_dataframe():
         return df
 
 
-    def add_area_to_df(self, df):
-        area_dic=DIC_and_TIF(pixelsize=0.25).calculate_pixel_area()
-        f_name = 'pixel_area'
-        print(f_name)
-
-        val_list = []
-        for i, row in tqdm(df.iterrows(), total=len(df)):
-            pix = row['pix']
-            if not pix in area_dic:
-                val_list.append(np.nan)
-                continue
-            val = area_dic[pix]
-            if val < -99:
-                val_list.append(np.nan)
-                continue
-            val_list.append(val)
-        df[f_name] = val_list
-        return df
-
-
-
-
-    def add_phenology_type_to_df(self, df):
-        f = data_root+rf'/basedata/Phenology_extraction/SeasType.tif'
-
-        array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
-        array = np.array(array, dtype=float)
-
-        val_dic = D.spatial_arr_to_dic(array)
-
-
-        f_name ='SeasType'
-        print(f_name)
-
-        val_list = []
-        for i, row in tqdm(df.iterrows(), total=len(df)):
-            pix = row['pix']
-            if not pix in val_dic:
-                val_list.append(np.nan)
-                continue
-            val = val_dic[pix]
-            if val < -9999:
-                val_list.append(np.nan)
-                continue
-            if val > 9999:
-                val_list.append(np.nan)
-                continue
-            val_list.append(val)
-
-
-        df[f'{f_name}'] = val_list
-
-
-        return df
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\Terraclimate\SPEI\SPEI_12_NOAA\trend\\'
+        fdir = result_root + rf'\Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\trend_2003_2024\\'
 
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
                 continue
-            if not 'growing_season_SPEI12_mean_p_value' in f:
-                continue
+
 
 
             variable = (f.split('.')[0])
@@ -621,15 +564,7 @@ class build_dataframe():
 
 
     def rename_columns(self, df):
-        df = df.rename(columns={rf'growing_season_SPEI12_mean_trend': 'SNU_LAI_relative_change',
-
-
-
-
-
-
-
-
+        df = df.rename(columns={rf'D:\Western_US_IAV\\Result\\\greening_analysis\MODIS_LAI\relative_change\\MODIS_LAI_max_season1': 'MODIS_LAI_max_season1',
 
                                }
 
@@ -807,8 +742,9 @@ class build_dataframe():
         df[f'{f_name}']=val_list
 
         return df
-
-
+    def add_area_weighted_to_df(self, df):
+        df['area_weight'] = np.cos(np.deg2rad(df['lat']))
+        return df
 
 
     def add_AI_classfication(self, df):

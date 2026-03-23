@@ -281,15 +281,23 @@ class SPEI_Greening_categorize:
         return df
 
 class SPEI_Greening_ecoregion:
+    def __init__(self):
+
+        self.map_width = 13 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+        pass
     def run(self):
-        self.barplot_by_ecoregion_SPEI()
+        # self.barplot_by_ecoregion_LAI()
+        # self.barplot_by_ecoregion_SPEI()
+        # self.weighted_average_variable()
+        self.plot_time_series()
         pass
     def df_clean(self, df):
         T.print_head_n(df)
         # df = df.dropna(subset=[self.y_variable])
         # T.print_head_n(df)
         # exit()
-        df = df[df['SeasType'] != 3]
+
         df = df[df['lon'] > -125]
         df = df[df['lon'] < -105]
         df = df[df['lat'] > 30]
@@ -297,6 +305,169 @@ class SPEI_Greening_ecoregion:
         #
         # df = df[df['landcover_classfication'] != 'Cropland']
         return df
+
+    def weighted_average_variable(self):  ###add weighted average LAI in dataframe
+        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe_area_weighted.df'
+        df=T.load_df(dff)
+        df=self.df_clean(df)
+
+        vars_to_weight = [
+            'MODIS_LAI_max_season1',
+
+        ]
+
+        df['area_weight'] = np.cos(np.deg2rad(df['lat']))
+
+        df_aw_year = (
+            df
+            .groupby('year')
+            .apply(
+                lambda x: pd.Series({
+                    f'{v}_area_weighted':
+                        (x[v] * x['area_weight']).sum() / x['area_weight'].sum()
+                    for v in vars_to_weight
+                })
+            )
+            .reset_index()
+        )
+
+
+        df = df.merge(df_aw_year, on='year', how='left')
+
+
+
+        # plt.figure(figsize=(6, 4))
+        #
+        # plt.plot(
+        #     df_aw_year['year'],
+        #     df_aw_year['SNU_LAI_relative_change_area_weighted'],
+        #     color='black',
+        #     lw=2
+        # )
+        #
+        # plt.xlabel('Year')
+        # plt.ylabel('Area-weighted LAI change')
+        # plt.title('Dryland vegetation change (area-weighted)')
+        # plt.tight_layout()
+        # plt.show()
+
+        # df[df['year'] == 1982][
+        #     ['SNU_LAI_relative_change_area_weighted',
+        #      'LAI4g_relative_change_area_weighted',
+        #      'composite_LAI_mean_relative_change_area_weighted',
+        #      'GLOBMAP_LAI_relative_change_area_weighted',
+        #
+        #      ]
+        # ].head()
+        # T.print_head_n(df)
+
+
+        outf=result_root + rf'\SPEI_Greening\Dataframe\Dataframe_area_weighted.df'
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+
+        pass
+
+    def plot_time_series(self):
+        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe.df'
+        df=T.load_df(dff)
+        print(len(df))
+        df=self.df_clean(df)
+
+        print(len(df))
+        year_list=list(range(2003, 2025))
+        result_dic = {}
+        eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
+        eco_region_list.append('Western US')
+
+        for eco in eco_region_list:
+            if eco == 'Western US':
+                # 2. Use a single '=' for assignment, and handle the logic
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            pix_list = df_i['pix'].tolist()
+            unique_pix_list = list(set(pix_list))
+            spatial_dic = {}
+
+            for pix in unique_pix_list:
+                spatial_dic[pix] = 1
+            arr = D.pix_dic_to_spatial_arr(spatial_dic)
+            # plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+            # plt.colorbar()
+            # plt.title(f'{eco}')
+            # plt.show()
+
+            mean_dic = {}
+            std_dic = {}
+            for year in year_list:
+                df_ii = df_i[df_i['year'] == year]
+                ## scheme1
+                vals = np.array(df_ii['MODIS_LAI_max_season1'].tolist(), dtype=float)
+                # weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
+                # weighted_mean = (
+                #         np.nansum(vals * weight)
+                #         / np.nansum(weight * np.isfinite(vals))
+                # )
+                weighted_mean=np.nanmean(vals)
+                weighted_std = np.nanstd(vals)
+
+                # 加权方差
+                # weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+                #
+                # weighted_std = np.sqrt(weighted_var)
+
+                mean_dic[year] = weighted_mean
+                std_dic[year] = weighted_std
+                print(weighted_std)
+
+
+
+            result_dic[eco] = mean_dic
+            result_dic[f'{eco}_std'] = std_dic
+
+            # 转成 DataFrame
+        df_new = pd.DataFrame(result_dic).reset_index()
+
+        # T.print_head_n(df_new);exit()
+
+        flag = 0
+        plt.figure(figsize=(self.map_width, self.map_height))
+
+        for eco in eco_region_list:
+            mean_vals = df_new[eco]
+            std_vals = df_new[f'{eco}_std']
+
+            plt.plot(year_list, mean_vals)
+
+            plt.fill_between(year_list,
+                             mean_vals - std_vals,
+                             mean_vals + std_vals,
+
+                             alpha=0.2)
+
+            slope, intercept, r_value, p_value, std_err = stats.linregress(year_list, mean_vals)
+            print(eco, slope, p_value)
+
+            flag += 1
+            plt.ylabel('LAI_max')
+            plt.title(f'{eco}')
+            ## add y=0 line
+            # plt.axhline(y=-1, linestyle='--')
+            # plt.axhline(y=1, linestyle='--')
+
+            plt.grid(True, axis='x')  # 只画竖线（随 x 刻度）
+
+            # plt.legend()
+            plt.show()
+            # out_pdf_fdir = result_root + rf'\Figure\\weighted_area\\Figure1a\\'
+            # T.mk_dir(out_pdf_fdir, force=True)
+            # plt.savefig(out_pdf_fdir + 'time_series_relative_change_mean.pdf', dpi=300, bbox_inches='tight')
+            # plt.close()
+
+
+        pass
 
     def barplot_by_ecoregion_LAI(self):
         dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe.df'
@@ -326,17 +497,17 @@ class SPEI_Greening_ecoregion:
             if total == 0:
                 continue
 
-            sig_greening = ((subset['SNU_LAI_trend'] > 0) &
-                            (subset['SNU_LAI_p_value'] < 0.05)).sum() / total
+            sig_greening = ((subset['MODIS_LAI_mean_season1_trend'] > 0) &
+                            (subset['MODIS_LAI_mean_season1_p_value'] < 0.05)).sum() / total
 
-            non_sig_greening = ((subset['SNU_LAI_trend'] > 0) &
-                                (subset['SNU_LAI_p_value'] >= 0.05)).sum() / total
+            non_sig_greening = ((subset['MODIS_LAI_mean_season1_trend'] > 0) &
+                                (subset['MODIS_LAI_mean_season1_p_value'] >= 0.05)).sum() / total
 
-            sig_browning = ((subset['SNU_LAI_trend'] < 0) &
-                            (subset['SNU_LAI_p_value'] < 0.05)).sum() / total
+            sig_browning = ((subset['MODIS_LAI_mean_season1_trend'] < 0) &
+                            (subset['MODIS_LAI_mean_season1_p_value'] < 0.05)).sum() / total
 
-            non_sig_browning = ((subset['SNU_LAI_trend'] < 0) &
-                                (subset['SNU_LAI_p_value'] >= 0.05)).sum() / total
+            non_sig_browning = ((subset['MODIS_LAI_mean_season1_trend'] < 0) &
+                                (subset['MODIS_LAI_mean_season1_p_value'] >= 0.05)).sum() / total
 
             result.append({
                 'ecoregion': eco,
@@ -402,17 +573,18 @@ class SPEI_Greening_ecoregion:
         result = []
 
         eco_order = [
-            "West-Central Semiarid Prairies",
-            "Western Pacific Coastal Plain, Hills and Canyons",
             "Marine West Coast Forest",
-            "Cold Desert",
-            "Western Cordillera",
-            "South Central Semiarid Prairies",
-            "Mediterranean California",
-            "Western Sierra Madre",
-            "Western Sierra Madre Piedmont",
             "Upper Gila Mountains",
-            "Warm Desert"
+            "Western Sierra Madre",
+            "Western Cordillera",
+            "West-Central Semiarid Prairies",
+            "Western Sierra Madre Piedmont",
+            "Cold Desert",
+            "Mediterranean California",
+            "Warm Desert",
+            "South Central Semiarid Prairies",
+            "Western Pacific Coastal Plain, Hills and Canyons",
+
         ]
 
         for eco in df['Ecoregion_level_II'].dropna().unique():
@@ -424,17 +596,17 @@ class SPEI_Greening_ecoregion:
             if total == 0:
                 continue
 
-            sig_wetting = ((subset['growing_season_SPEI12_mean_trend'] > 0) &
-                            (subset['growing_season_SPEI12_mean_p_value'] < 0.05)).sum() / total
+            sig_wetting = ((subset['SPEI12_annual_mean_trend'] > 0) &
+                            (subset['SPEI12_annual_mean_p_value'] < 0.05)).sum() / total
 
-            non_sig_wetting = ((subset['growing_season_SPEI12_mean_trend'] > 0) &
-                                (subset['growing_season_SPEI12_mean_p_value'] >= 0.05)).sum() / total
+            non_sig_wetting = ((subset['SPEI12_annual_mean_trend'] > 0) &
+                                (subset['SPEI12_annual_mean_p_value'] >= 0.05)).sum() / total
 
-            sig_drying = ((subset['growing_season_SPEI12_mean_trend'] < 0) &
-                            (subset['growing_season_SPEI12_mean_p_value'] < 0.05)).sum() / total
+            sig_drying = ((subset['SPEI12_annual_mean_trend'] < 0) &
+                            (subset['SPEI12_annual_mean_p_value'] < 0.05)).sum() / total
 
-            non_sig_drying= ((subset['growing_season_SPEI12_mean_trend'] < 0) &
-                                (subset['growing_season_SPEI12_mean_p_value'] >= 0.05)).sum() / total
+            non_sig_drying= ((subset['SPEI12_annual_mean_trend'] < 0) &
+                                (subset['SPEI12_annual_mean_p_value'] >= 0.05)).sum() / total
 
             result.append({
                 'ecoregion': eco,
@@ -454,6 +626,7 @@ class SPEI_Greening_ecoregion:
         result_df = result_df.sort_values('ecoregion')
 
         plt.figure(figsize=(8, 6))
+
 
         plt.barh(result_df['ecoregion'],
                  result_df['sig_wetting'],
