@@ -1024,8 +1024,8 @@ class PLOT_SPEI:
 class statistics_drought_analysis:
     def run(self):
         # self.call_extract_extreme_events()
-        # self.call_extract_extreme_events_annual_table()
-        # self.spatial_map_freq()
+        # self.call_extract_extreme_events_annual_table() ## use this
+        self.spatial_map_freq()
         # self.diff_spatial_map()
         # self.spatial_map_severity()
         # self.generate_annual_spatial_map()
@@ -1042,7 +1042,7 @@ class statistics_drought_analysis:
         all_events_dry = []
 
         for pix in tqdm(dic):
-            start_index_1982 = (1982 - 1958) * 12
+            start_index_1982 = (2003 - 1958) * 12
             ts = dic[pix][start_index_1982:]  ## only analyze the growing season period
             # print((len(ts)))
             # exit()
@@ -1052,14 +1052,14 @@ class statistics_drought_analysis:
             drought_events = self.extract_events_no_gap(pix,
                 ts,
                 threshold=-1.5,
-                min_duration=1,
+                min_duration=3,
 
             )
 
             wet_events = self.extract_events_no_gap(pix,
                 ts,
                 threshold=1.5,
-                min_duration=1,
+                min_duration=3,
 
             )
 
@@ -1067,7 +1067,7 @@ class statistics_drought_analysis:
                 duration = end - start + 1
                 intensity = float(np.min(ts[start:end + 1]))
                 peak_index = start + int(np.argmin(ts[start:end + 1]))
-                peak_year = 1982 + peak_index // 12
+                peak_year = 2003 + peak_index // 12
                 peak_month = peak_index % 12 + 1
 
                 severity = float(np.sum(-1.5 - ts[start:end + 1]))
@@ -1092,7 +1092,7 @@ class statistics_drought_analysis:
                 duration = end - start + 1
                 intensity = float(np.min(ts[start:end + 1]))
                 peak_index = start + int(np.argmin(ts[start:end + 1]))
-                peak_year = 1982 + peak_index // 12
+                peak_year = 2003 + peak_index // 12
                 peak_month = peak_index % 12 + 1
 
                 severity = float(np.sum(ts[start:end + 1] - 1.5))
@@ -1132,7 +1132,7 @@ class statistics_drought_analysis:
 
     def call_extract_extreme_events_annual_table(self):
         fdir=data_root + r'\Terraclimate\SPEI\SPEI_12_NOAA\dic\\'
-        outdir=result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\\'
+        outdir=result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events_2003_2024\\'
         T.mk_dir(outdir, force=True)
         dic=T.load_npy_dir(fdir)
 
@@ -1140,7 +1140,8 @@ class statistics_drought_analysis:
         all_events_dry = []
 
         for pix in tqdm(dic):
-            start_index_1982 = (1982 - 1958) * 12
+            # print(len(dic[pix]));exit()
+            start_index_1982 = (2003 - 1958) * 12
             ts = dic[pix][start_index_1982:]  ## only analyze the growing season period
             # print((len(ts)))
             # exit()
@@ -1150,14 +1151,14 @@ class statistics_drought_analysis:
             drought_events = self.extract_events_no_gap(pix,
                 ts,
                 threshold=-1.5,
-                min_duration=1,
+                min_duration=3,
 
             )
 
             wet_events = self.extract_events_no_gap(pix,
                 ts,
                 threshold=1.5,
-                min_duration=1,
+                min_duration=3,
 
             )
 
@@ -1165,7 +1166,7 @@ class statistics_drought_analysis:
                 duration = end - start + 1
                 intensity = float(np.min(ts[start:end + 1]))
                 peak_index = start + int(np.argmin(ts[start:end + 1]))
-                peak_year = 1982 + peak_index // 12
+                peak_year = 2003 + peak_index // 12
                 peak_month = peak_index % 12 + 1
 
                 severity = float(np.sum(-1.5 - ts[start:end + 1]))
@@ -1190,7 +1191,7 @@ class statistics_drought_analysis:
                 duration = end - start + 1
                 intensity = float(np.min(ts[start:end + 1]))
                 peak_index = start + int(np.argmin(ts[start:end + 1]))
-                peak_year = 1982 + peak_index // 12
+                peak_year = 2003 + peak_index // 12
                 peak_month = peak_index % 12 + 1
 
                 severity = float(np.sum(ts[start:end + 1] - 1.5))
@@ -1220,7 +1221,7 @@ class statistics_drought_analysis:
             "peak_index": "frequency"
         })
 
-        years = list(range(1982, 2025))
+        years = list(range(2003, 2025))
         all_pix = df_dry_event["pix"].unique()
 
         full_index = pd.MultiIndex.from_product(
@@ -1258,7 +1259,7 @@ class statistics_drought_analysis:
             "peak_index": "frequency"
         })
 
-        years = list(range(1982, 2025))
+        years = list(range(2003, 2025))
         all_pix = df_wet_event["pix"].unique()
 
         full_index = pd.MultiIndex.from_product(
@@ -1293,7 +1294,7 @@ class statistics_drought_analysis:
 
     def extract_events_no_gap(self,pix,ts,
                               threshold=-1.5,
-                              min_duration=1):
+                              min_duration=3):
 
         if threshold < 0:
             mask = ts <= threshold
@@ -1325,18 +1326,19 @@ class statistics_drought_analysis:
 
 
     def spatial_map_freq(self):
-        fdir=result_root + r'\Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\\'
-        outdir=result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events\spatial_map\\'
+        fdir=result_root + r'\Terraclimate\SPEI\SPEI_12_NOAA\extreme_events_2003_2024\\'
+        outdir=result_root + r'Terraclimate\SPEI\SPEI_12_NOAA\extreme_events_2003_2024\spatial_map\\'
         T.mk_dir(outdir, force=True)
-        df_dry = T.load_df(fdir + 'drought_events_df.df')
+        df_dry = T.load_df(fdir + 'drought_events_annual.df')
+        freq_df_dry = df_dry.groupby("pix")["severity"].count().reset_index(name="frequency")
 
-        freq_df_dry = df_dry.groupby("pix").size().reset_index(name="frequency")
+
         spatial_dic = dict(zip(freq_df_dry["pix"], freq_df_dry["frequency"]))
         arr = D.pix_dic_to_spatial_arr(spatial_dic)
         D.arr_to_tif(arr, outdir + 'drought_events_frequency.tif')
 
-        df_wet = T.load_df(fdir + 'wet_events_df.df')
-        freq_df_wet = df_wet.groupby("pix").size().reset_index(name="frequency")
+        df_wet = T.load_df(fdir + 'wet_events_annual.df')
+        freq_df_wet = df_wet.groupby("pix")["severity"].count().reset_index(name="frequency")
         spatial_dic_wet = dict(zip(freq_df_wet["pix"], freq_df_wet["frequency"]))
         arr_wet = D.pix_dic_to_spatial_arr(spatial_dic_wet)
         D.arr_to_tif(arr_wet, outdir + 'wet_events_frequency.tif')
@@ -1587,9 +1589,9 @@ def main():
     # download_data().run()
 
     # Processing_data_SPEI().run()
-    SPEI_calculation().run()
+    # SPEI_calculation().run()
     # PLOT_SPEI().run()
-    # statistics_drought_analysis().run()
+    statistics_drought_analysis().run()
     # PLOT_events().run()
 
 
