@@ -39,6 +39,15 @@ class Pick_wet_dry:
         years = np.array(year_list)
 
         events, labeled_dry, labeled_wet = self.detect_voxel_events(spei, years)
+        outdir=result_root+r'greening_analysis\Pick_wet_dry\\'
+        T.mkdir(outdir)
+        # T.save_npy(labeled_dry, outdir + 'labeled_dry.npy')
+        # T.save_npy(labeled_wet, outdir + 'labeled_wet.npy')
+        df = pd.DataFrame(events)
+
+        outf =result_root+r'greening_analysis\Pick_wet_dry\\'
+        T.save_df(df, outf + 'events.df')
+        T.df_to_excel(df, outf + 'events.xlsx')
 
         # ===== Step 3 =====
         df = pd.DataFrame(events)
@@ -330,10 +339,152 @@ class Pick_wet_dry:
 
         plt.show()
     pass
+class vegetation_analysis:
+    def __init__(self):
+        self.map_width = 13 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+
+    def run(self):
+        LAI_dic=T.load_npy(result_root+r'greening_analysis\MODIS_LAI\growing_season\relative_change\MODIS_LAI_growing_season_mean.npy')
+
+        outf = result_root + rf'greening_analysis\Pick_wet_dry\\'
+
+        labeled_dry = np.load(outf + 'labeled_dry.npy')
+        labeled_wet = np.load(outf + 'labeled_wet.npy')
+        events = T.load_df(outf + 'events.df')
+
+
+
+        # 1️⃣ 转3D
+        average_dic = {}
+        for pix in LAI_dic:
+            LAI_values = LAI_dic[pix]
+            average_dic[pix] = np.nanmean(LAI_values)
+        array = D.pix_dic_to_spatial_arr(average_dic)
+        rows, cols = array.shape[0], array.shape[1]
+
+        # lat, lon = self.get_lat_lon_from_tif()
+        LAI_ts = self.dic_to_3d(LAI_dic, rows, cols)
+
+
+        year_list = range(2003, 2025)
+        years = np.array(year_list)
+
+
+        results = self.get_top_events(events)
+
+        top_events = results['top_S_dry']
+
+        y0_list, y1_list, y2_list = [], [], []
+
+        for _, row in top_events.iterrows():
+            v0, v1, v2 = self.extract_event_year_response_3yr(
+                row,
+                labeled_dry,
+                LAI_ts,
+                years
+            )
+
+            values = [v0, v1, v2]
+            labels = ['Year 0', 'Year +1', 'Year +2']
+
+            plt.figure(figsize=(5, 4))
+
+            plt.bar(labels, values)
+
+            plt.axhline(0, linestyle='--', color='gray')
+
+            plt.ylabel('LAI anomaly')
+            # plt.title(f"Event {int(events['eid_num'])} (Year {int(events['start_year'])})")
+
+            plt.tight_layout()
+            plt.show()
+
+
+
+    def dic_to_3d(self, dic, rows, cols):
+
+        sample_pix = list(dic.keys())[0]
+        T = len(dic[sample_pix])
+
+        data = np.full((T, rows, cols), np.nan, dtype=np.float32)
+
+        for (r, c), ts in dic.items():
+            data[:, r, c] = ts
+
+        return data
+
+    def extract_event_year_response_3yr(self, event_row, labeled, LAI_anom, years):
+
+        eid = event_row['eid_num']
+        start_year = int(event_row['start_year'])
+
+        if start_year not in years:
+            return np.nan, np.nan, np.nan
+
+        idx = np.where(years == start_year)[0][0]
+
+        if idx + 2 >= len(years):
+            return np.nan, np.nan, np.nan
+
+        # ⚠️ 固定 mask（非常重要）
+        mask = (labeled[idx] == eid)
+
+        if not np.any(mask):
+            return np.nan, np.nan, np.nan
+
+        vals = []
+
+        for offset in [0, 1, 2]:
+            t = idx + offset
+
+            val = np.nanmean(LAI_anom[t][mask])
+            vals.append(val)
+
+        return tuple(vals)
+
+    def get_top_events(self, df):
+
+        df = df.copy()
+
+        # 👉 drought severity 转正
+        df['severity_adj'] = df['severity']
+        df.loc[df['type'] == 'dry', 'severity_adj'] *= -1
+
+        results = {}
+
+        # ===== S =====
+        results['top_S_dry'] = df[df['type'] == 'dry'] \
+            .sort_values('severity_adj', ascending=False).head(10)
+
+        results['top_S_wet'] = df[df['type'] == 'wet'] \
+            .sort_values('severity_adj', ascending=False).head(10)
+
+        # ===== A =====
+        results['top_A_dry'] = df[df['type'] == 'dry'] \
+            .sort_values('area', ascending=False).head(10)
+
+        results['top_A_wet'] = df[df['type'] == 'wet'] \
+            .sort_values('area', ascending=False).head(10)
+
+        # ===== T =====
+        results['top_T_dry'] = df[df['type'] == 'dry'] \
+            .sort_values('duration', ascending=False).head(10)
+
+        results['top_T_wet'] = df[df['type'] == 'wet'] \
+            .sort_values('duration', ascending=False).head(10)
+
+        results['df'] = df
+
+        T.save_df(results['df'], result_root + rf'greening_analysis\Dataframe\wet_dry_events.df')
+        T.df_to_excel(results['df'], result_root + rf'greening_analysis\Dataframe\wet_dry_events.xlsx')
+
+        return results
 
 
 def main ():
-    Pick_wet_dry().run()
+    # Pick_wet_dry().run()
+    vegetation_analysis().run()
 
 if __name__ == '__main__':
     main()
