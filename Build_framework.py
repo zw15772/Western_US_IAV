@@ -17,7 +17,7 @@ class build_dataframe():
                 result_root +  rf'\SPEI_Greening\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'Dataframe\\Dataframe.df'
+        self.dff = self.this_class_arr + rf'\Dataframe\\Dataframe_1982_2024.df'
 
 
         pass
@@ -35,7 +35,7 @@ class build_dataframe():
         # df=self.append_cluster(df)  ## 加属性
         # df=self.append_value(df)   ## insert or append value
 
-        df = self.add_detrend_zscore_to_df(df)
+        # df = self.add_detrend_zscore_to_df(df)
 
         # df=self.add_trend_to_df(df)
         # df=self.add_phenology_type_to_df(df)
@@ -52,7 +52,7 @@ class build_dataframe():
         # df=self.add_maxmium_LC_change(df)
         # df=self.add_row(df)
         # df=self.add_Ecoregion_level_II_raster_to_df(df)
-        # # # # # # # # # # # # # # #
+        # # # # # # # # # # # # # #
         # df=self.add_lat_lon_to_df(df)
         # df=self.add_continent_to_df(df)
         # df=self.add_residual_to_df(df)
@@ -60,7 +60,7 @@ class build_dataframe():
         # # # #
         # df=self.add_rooting_depth_to_df(df)
         # #
-        # df=self.add_area_weighted_to_df(df)
+        df=self.add_area_weighted_to_df(df)
 
 
         # df=self.rename_columns(df)
@@ -232,7 +232,7 @@ class build_dataframe():
 
 
     def foo1(self, df):
-        f=result_root+rf'\greening_analysis\MODIS_LAI\relative_change\\MODIS_LAI_max_season1.npy'
+        f=result_root+rf'\greening_analysis\SNU_LAI\\SNU_LAI.npy'
 
 
 
@@ -245,7 +245,7 @@ class build_dataframe():
         for pix in tqdm(dic):
             time_series = dic[pix]
 
-            y = 2003
+            y = 1982
             for val in time_series:
                 pix_list.append(pix)
                 change_rate_list.append(val)
@@ -294,14 +294,15 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Data\MODIS_LAI\dic\\'
+        fdir=rf'D:\Western_US_IAV\Data\Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\'
 
 
         for f in os.listdir(fdir):
+            if 'WUS' in f:
+                continue
 
             variable= f.split('.')[0]
-            if not 'max' in variable:
-                continue
+
 
 
             print(variable)
@@ -323,7 +324,7 @@ class build_dataframe():
                     NDVI_list.append(np.nan)
                     continue
 
-                vals = val_dic[pix]['season1']
+                vals = val_dic[pix][24:]
                 # print(vals)
                 print(len(vals))
 
@@ -338,14 +339,14 @@ class build_dataframe():
                 #     vals=np.append(vals,nan_list)
 
 
-                v1= vals[year - 2003]
+                v1= vals[year - 1982]
                 # print(v1,year,len(vals))
 
                 NDVI_list.append(v1)
 
 
-            # df[f'{variable}'] = NDVI_list
-            df['MODIS_LAI_max_season1_original'] = NDVI_list
+            df[f'{variable}'] = NDVI_list
+
         # exit()
         return df
 
@@ -562,7 +563,7 @@ class build_dataframe():
 
 
     def rename_columns(self, df):
-        df = df.rename(columns={rf'D:\Western_US_IAV\\Result\\\greening_analysis\MODIS_LAI\relative_change\\MODIS_LAI_max_season1': 'MODIS_LAI_max_season1',
+        df = df.rename(columns={rf'D:\Western_US_IAV\\Result\\\greening_analysis\SNU_LAI\\SNU_LAI': 'SNU_LAI',
 
                                }
 

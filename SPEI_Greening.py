@@ -312,7 +312,7 @@ class SPEI_Greening_ecoregion:
         df=self.df_clean(df)
 
         vars_to_weight = [
-            'MODIS_LAI_max_season1',
+            'SNU_LAI',
 
         ]
 
@@ -369,13 +369,13 @@ class SPEI_Greening_ecoregion:
         pass
 
     def plot_time_series(self):
-        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe.df'
+        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe_1982_2024.df'
         df=T.load_df(dff)
 
         df=self.df_clean(df)
 
 
-        year_list=list(range(2003, 2025))
+        year_list=list(range(1982, 2025))
         result_dic = {}
         eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
         eco_region_list.append('Western US')
@@ -405,20 +405,20 @@ class SPEI_Greening_ecoregion:
             for year in year_list:
                 df_ii = df_i[df_i['year'] == year]
                 ## scheme1
-                vals = np.array(df_ii['MODIS_LAI_mean_season1'].tolist(), dtype=float)
+                vals = np.array(df_ii['SNU_LAI'].tolist(), dtype=float)
                 vals_len = len(vals)
-                # weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
-                # weighted_mean = (
-                #         np.nansum(vals * weight)
-                #         / np.nansum(weight * np.isfinite(vals))
-                # )
-                weighted_mean=np.nanmean(vals)
-                weighted_std = np.nanstd(vals)
+                weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
+                weighted_mean = (
+                        np.nansum(vals * weight)
+                        / np.nansum(weight * np.isfinite(vals))
+                )
+                # weighted_mean=np.nanmean(vals)
+                # weighted_std = np.nanstd(vals)
 
-                # 加权方差
-                # weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
-                #
-                # weighted_std = np.sqrt(weighted_var)
+                #####加权方差
+                weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+
+                weighted_std = np.sqrt(weighted_var)
 
                 mean_dic[year] = weighted_mean
                 std_dic[year] = weighted_std
@@ -465,7 +465,7 @@ class SPEI_Greening_ecoregion:
                      bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))  # 加个半透明背景框，看得更清楚
 
             flag += 1
-            plt.ylabel('LAI_mean_gs')
+            plt.ylabel('SPEI12')
 
             plt.title(f'{eco}_n={vals_len}', fontsize=12)
             # plt.axhline(y=-1, linestyle='--')
