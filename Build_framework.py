@@ -17,7 +17,7 @@ class build_dataframe():
                 result_root +  rf'\SPEI_Greening\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'\Dataframe\\Dataframe_1982_2024.df'
+        self.dff = self.this_class_arr + rf'\Dataframe\\Dataframe_2003_2024.df'
 
 
         pass
@@ -50,17 +50,17 @@ class build_dataframe():
         # df=self.add_landcover_classfication_to_df(df)
         # # # # # # # # # # df=self.dummies(df)
         # df=self.add_maxmium_LC_change(df)
-        # df=self.add_row(df)
-        # df=self.add_Ecoregion_level_II_raster_to_df(df)
+        # df=self.add_row(df)  ## use this
+        # df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
         # # # # # # # # # # # # # #
-        # df=self.add_lat_lon_to_df(df)
+        # df=self.add_lat_lon_to_df(df)  ## use this
         # df=self.add_continent_to_df(df)
         # df=self.add_residual_to_df(df)
 
         # # # #
         # df=self.add_rooting_depth_to_df(df)
         # #
-        df=self.add_area_weighted_to_df(df)
+        # df=self.add_area_weighted_to_df(df)
 
 
         # df=self.rename_columns(df)
@@ -232,34 +232,35 @@ class build_dataframe():
 
 
     def foo1(self, df):
-        f=result_root+rf'\greening_analysis\SNU_LAI\\SNU_LAI.npy'
+        fdir=result_root+rf'\greening_analysis\MODIS_LAI\relative_change\\'
+        for f in os.listdir(fdir):
 
 
 
-        dic = T.load_npy(f)
+            dic = T.load_npy(fdir + f)
 
-        pix_list = []
-        change_rate_list = []
-        year = []
+            pix_list = []
+            change_rate_list = []
+            year = []
 
-        for pix in tqdm(dic):
-            time_series = dic[pix]
+            for pix in tqdm(dic):
+                time_series = dic[pix]
 
-            y = 1982
-            for val in time_series:
-                pix_list.append(pix)
-                change_rate_list.append(val)
-                year.append(y)
-                y += 1
-
-
-        df['pix'] = pix_list
-
-        df['year'] = year
-        fname=f.split('.')[0]
+                y = 2003
+                for val in time_series:
+                    pix_list.append(pix)
+                    change_rate_list.append(val)
+                    year.append(y)
+                    y += 1
 
 
-        df[fname] = change_rate_list
+            df['pix'] = pix_list
+
+            df['year'] = year
+            fname=f.split('.')[0]
+
+
+            df[fname] = change_rate_list
         return df
 
     def foo2(self, df):  # 新建trend
@@ -294,10 +295,12 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Result\greening_analysis\SNU_LAI\relative_change\\'
+        fdir=rf'D:\Western_US_IAV\Data\Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\'
 
 
         for f in os.listdir(fdir):
+            if not 'SPEI12_annual_mean_WUS_2003_2024' in f:
+                continue
 
 
             variable= f.split('.')[0]
@@ -325,7 +328,7 @@ class build_dataframe():
 
                 vals = val_dic[pix]
                 # print(vals)
-                print(len(vals))
+                # print(len(vals)); exit()
 
                 ##### if len vals is 38, the end of list add np.nan
 
@@ -338,7 +341,7 @@ class build_dataframe():
                 #     vals=np.append(vals,nan_list)
 
 
-                v1= vals[year - 1982]
+                v1= vals[year - 2003]
                 # print(v1,year,len(vals))
 
                 NDVI_list.append(v1)
@@ -562,9 +565,8 @@ class build_dataframe():
 
 
     def rename_columns(self, df):
-        df = df.rename(columns={rf'D:\Western_US_IAV\\Result\\\greening_analysis\SNU_LAI\\SNU_LAI': 'SNU_LAI',
+        df = df.rename(columns={rf'spring_March_May': 'spring_March_May_MODIS',}
 
-                               }
 
 
                                )
@@ -576,22 +578,7 @@ class build_dataframe():
         for col in df.columns:
             print(col)
         # exit()
-        df = df.drop(columns=['category_9_percentile5',
-                              'category_9_percentile95',
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        df = df.drop(columns=['summer_July_Sept',
 
 
 

@@ -562,12 +562,541 @@ class SPEI_Greening_ecoregion:
 
 
 
+class PLOT_vegetation_change():
+    def __init__(self):
+        self.map_width = 13 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+        pass
+    def run(self):
+        self.plot_time_series_MODIS_record()
+        # self.plot_time_series_SNU_record()
+        pass
 
+    def plot_time_series_MODIS_record(self):
+        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe_2003_2024.df'
+        df=T.load_df(dff)
+
+        df=self.df_clean(df)
+
+
+        year_list=list(range(2003, 2025))
+        result_dic = {}
+        eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
+        eco_region_list.append('Western US')
+
+        eco_region_list=['Western US','Western Cordillera','Upper Gila Mountains',
+        'Warm Desert','Cold Desert','Western Sierra Madre Piedmont']
+
+        for eco in eco_region_list:
+
+            if eco == 'Western US':
+                # 2. Use a single '=' for assignment, and handle the logic
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            pix_list = df_i['pix'].tolist()
+            unique_pix_list = list(set(pix_list))
+            spatial_dic = {}
+
+            # for pix in unique_pix_list:
+            #     spatial_dic[pix] = 1
+            # arr = D.pix_dic_to_spatial_arr(spatial_dic)
+            # plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+            # plt.colorbar()
+            # plt.title(f'{eco}')
+            # plt.show()
+
+
+            for season in ['spring_March_May_MODIS', 'summer_July_Sept_MODIS']:
+                mean_dic = {}
+                std_dic = {}
+
+                for year in year_list:
+                    df_ii = df_i[df_i['year'] == year]
+                    ## scheme1
+                    vals = np.array(df_ii[season].tolist(), dtype=float)
+                    vals_len = len(vals)
+                    weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
+                    weighted_mean = (
+                            np.nansum(vals * weight)
+                            / np.nansum(weight * np.isfinite(vals))
+                    )
+                    # weighted_mean=np.nanmean(vals)
+                    # weighted_std = np.nanstd(vals)
+
+                    #####加权方差
+                    weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+
+                    weighted_std = np.sqrt(weighted_var)
+
+                    mean_dic[year] = weighted_mean
+                    std_dic[year] = weighted_std
+                    # print(weighted_std)
+
+                result_dic[f'{eco}_{season}'] = mean_dic
+                result_dic[f'{eco}_{season}_std'] = std_dic
+
+                # 只存一次长度
+                result_dic[f'{eco}_len'] = len(df_i)
+
+            # 转成 DataFrame
+        df_new = pd.DataFrame(result_dic).reset_index()
+
+        # T.print_head_n(df_new);exit()
+
+        flag = 0
+
+
+
+
+        for eco in eco_region_list:
+            plt.figure(figsize=(self.map_width, self.map_height))
+
+
+            spring_vals = df_new[f'{eco}_spring_March_May_MODIS']
+            summer_vals = df_new[f'{eco}_summer_July_Sept_MODIS']
+
+            vals_len = df_new[f'{eco}_len'][0]
+
+
+            plt.plot(year_list, spring_vals, label='Spring', linewidth=2)
+            plt.plot(year_list, summer_vals, label='Summer', linewidth=2)
+
+
+            slope_s, _, _, p_s, _ = stats.linregress(year_list, spring_vals)
+            slope_sum, _, _, p_sum, _ = stats.linregress(year_list, summer_vals)
+
+            stats_text = (
+                f'Spring: slope={slope_s:.2f}, p={p_s:.2f}\n'
+                f'Summer: slope={slope_sum:.2f}, p={p_sum:.2f}'
+            )
+
+            plt.text(0.95, 0.95, stats_text,
+                     transform=plt.gca().transAxes,
+                     verticalalignment='top',
+                     horizontalalignment='right',
+                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+            plt.ylabel('MODIS_LAI_relative_change (%)', fontsize=12)
+
+            plt.title(f'{eco}_n={vals_len}', fontsize=12)
+
+            plt.legend()
+            plt.grid(True, axis='x')
+
+            plt.show()
+            plt.close()
+
+
+        pass
+
+    def plot_time_series_SNU_record(self):
+        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe_1982_2024.df'
+        df=T.load_df(dff)
+
+        df=self.df_clean(df)
+
+
+        year_list=list(range(1982, 2025))
+        result_dic = {}
+        eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
+        eco_region_list.append('Western US')
+
+        eco_region_list=['Western US','Western Cordillera','Upper Gila Mountains',
+        'Warm Desert','Cold Desert','Western Sierra Madre Piedmont']
+
+        for eco in eco_region_list:
+
+            if eco == 'Western US':
+                # 2. Use a single '=' for assignment, and handle the logic
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            pix_list = df_i['pix'].tolist()
+            unique_pix_list = list(set(pix_list))
+            spatial_dic = {}
+
+            # for pix in unique_pix_list:
+            #     spatial_dic[pix] = 1
+            # arr = D.pix_dic_to_spatial_arr(spatial_dic)
+            # plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+            # plt.colorbar()
+            # plt.title(f'{eco}')
+            # plt.show()
+
+
+            for season in ['spring_March_May', 'summer_July_Sept']:
+                mean_dic = {}
+                std_dic = {}
+
+                for year in year_list:
+                    df_ii = df_i[df_i['year'] == year]
+                    ## scheme1
+                    vals = np.array(df_ii[season].tolist(), dtype=float)
+
+                    weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
+                    weighted_mean = (
+                            np.nansum(vals * weight)
+                            / np.nansum(weight * np.isfinite(vals))
+                    )
+                    # weighted_mean=np.nanmean(vals)
+                    # weighted_std = np.nanstd(vals)
+
+                    #####加权方差
+                    weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+
+                    weighted_std = np.sqrt(weighted_var)
+
+                    mean_dic[year] = weighted_mean
+                    std_dic[year] = weighted_std
+                    # print(weighted_std)
+
+                result_dic[f'{eco}_{season}'] = mean_dic
+                result_dic[f'{eco}_{season}_std'] = std_dic
+
+                # 只存一次长度
+                result_dic[f'{eco}_len'] = len(df_i)
+
+            # 转成 DataFrame
+        df_new = pd.DataFrame(result_dic).reset_index()
+
+        # T.print_head_n(df_new);exit()
+
+        flag = 0
+
+
+
+
+        for eco in eco_region_list:
+            plt.figure(figsize=(self.map_width, self.map_height))
+
+
+            spring_vals = df_new[f'{eco}_spring_March_May']
+            summer_vals = df_new[f'{eco}_summer_July_Sept']
+
+            vals_len = df_new[f'{eco}_len'][0]
+
+
+            plt.plot(year_list, spring_vals, label='Spring', linewidth=2)
+            plt.plot(year_list, summer_vals, label='Summer', linewidth=2)
+
+
+            slope_s, _, _, p_s, _ = stats.linregress(year_list, spring_vals)
+            slope_sum, _, _, p_sum, _ = stats.linregress(year_list, summer_vals)
+
+            stats_text = (
+                f'Spring: slope={slope_s:.2f}, p={p_s:.2f}\n'
+                f'Summer: slope={slope_sum:.2f}, p={p_sum:.2f}'
+            )
+
+            plt.text(0.95, 0.95, stats_text,
+                     transform=plt.gca().transAxes,
+                     verticalalignment='top',
+                     horizontalalignment='right',
+                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+            plt.ylabel('SNU_LAI_relative_change (%)')
+            plt.title(f'{eco}_n={vals_len}', fontsize=12)
+
+            plt.legend()
+            plt.grid(True, axis='x')
+
+            plt.show()
+            plt.close()
+
+
+        pass
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+        return df
+
+class PLOT_SPEI():
+    def __init__(self):
+        self.map_width = 13 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+        pass
+    def run(self):
+        self.plot_time_series_SPEI()
+        # self.plot_time_series_SNU_record()
+        pass
+
+    def plot_time_series_SPEI(self):
+        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe_2003_2024.df'
+        df=T.load_df(dff)
+
+        df=self.df_clean(df)
+
+
+        year_list=list(range(2003, 2025))
+        result_dic = {}
+        eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
+        eco_region_list.append('Western US')
+
+        eco_region_list=['Western US','Western Cordillera','Upper Gila Mountains',
+        'Warm Desert','Cold Desert','Western Sierra Madre Piedmont']
+
+        for eco in eco_region_list:
+
+            if eco == 'Western US':
+                # 2. Use a single '=' for assignment, and handle the logic
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            pix_list = df_i['pix'].tolist()
+            unique_pix_list = list(set(pix_list))
+            spatial_dic = {}
+
+            # for pix in unique_pix_list:
+            #     spatial_dic[pix] = 1
+            # arr = D.pix_dic_to_spatial_arr(spatial_dic)
+            # plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+            # plt.colorbar()
+            # plt.title(f'{eco}')
+            # plt.show()
+
+
+
+            mean_dic = {}
+            std_dic = {}
+
+            for year in year_list:
+                df_ii = df_i[df_i['year'] == year]
+                ## scheme1
+                vals = np.array(df_ii['SPEI12_annual_mean_WUS_2003_2024'].tolist(), dtype=float)
+
+                weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
+                weighted_mean = (
+                        np.nansum(vals * weight)
+                        / np.nansum(weight * np.isfinite(vals))
+                )
+                # weighted_mean=np.nanmean(vals)
+                # weighted_std = np.nanstd(vals)
+
+                #####加权方差
+                weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+
+                weighted_std = np.sqrt(weighted_var)
+
+                mean_dic[year] = weighted_mean
+
+                std_dic[year] = weighted_std
+                # print(weighted_std)
+
+            result_dic[f'{eco}'] = mean_dic
+            result_dic[f'{eco}_std'] = std_dic
+
+            # 只存一次长度
+            result_dic[f'{eco}_len'] = len(df_i)
+
+            # 转成 DataFrame
+        df_new = pd.DataFrame(result_dic).reset_index()
+
+        # T.print_head_n(df_new);exit()
+
+        flag = 0
+
+
+
+
+        for eco in eco_region_list:
+            plt.figure(figsize=(self.map_width, self.map_height))
+
+
+            vals = df_new[f'{eco}']
+            std_vals = df_new[f'{eco}_std']
+
+            vals_len = df_new[f'{eco}_len'][0]
+
+
+            plt.plot(year_list, vals,   linewidth=2)
+
+            plt.fill_between(year_list,
+                                vals - std_vals,
+                                vals + std_vals,
+
+                             alpha=0.2)
+
+
+            slope_s, _, _, p_s, _ = stats.linregress(year_list, vals)
+
+
+            stats_text = (
+                f'SPEI12: slope={slope_s:.2f}, p={p_s:.2f}\n'
+
+            )
+
+            plt.text(0.95, 0.95, stats_text,
+                     transform=plt.gca().transAxes,
+                     verticalalignment='top',
+                     horizontalalignment='right',
+                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+            plt.ylabel('SPEI12 (%)', fontsize=12)
+
+            plt.title(f'{eco}_n={vals_len}', fontsize=12)
+
+            plt.legend()
+            plt.grid(True, axis='x')
+
+            plt.show()
+            plt.close()
+
+
+        pass
+
+    def plot_time_series_SNU_record(self):
+        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe_1982_2024.df'
+        df=T.load_df(dff)
+
+        df=self.df_clean(df)
+
+
+        year_list=list(range(1982, 2025))
+        result_dic = {}
+        eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
+        eco_region_list.append('Western US')
+
+        eco_region_list=['Western US','Western Cordillera','Upper Gila Mountains',
+        'Warm Desert','Cold Desert','Western Sierra Madre Piedmont']
+
+        for eco in eco_region_list:
+
+            if eco == 'Western US':
+                # 2. Use a single '=' for assignment, and handle the logic
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            pix_list = df_i['pix'].tolist()
+            unique_pix_list = list(set(pix_list))
+            spatial_dic = {}
+
+            # for pix in unique_pix_list:
+            #     spatial_dic[pix] = 1
+            # arr = D.pix_dic_to_spatial_arr(spatial_dic)
+            # plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+            # plt.colorbar()
+            # plt.title(f'{eco}')
+            # plt.show()
+
+
+            for season in ['spring_March_May', 'summer_July_Sept']:
+                mean_dic = {}
+                std_dic = {}
+
+                for year in year_list:
+                    df_ii = df_i[df_i['year'] == year]
+                    ## scheme1
+                    vals = np.array(df_ii[season].tolist(), dtype=float)
+
+                    weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
+                    weighted_mean = (
+                            np.nansum(vals * weight)
+                            / np.nansum(weight * np.isfinite(vals))
+                    )
+                    # weighted_mean=np.nanmean(vals)
+                    # weighted_std = np.nanstd(vals)
+
+                    #####加权方差
+                    weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+
+                    weighted_std = np.sqrt(weighted_var)
+
+                    mean_dic[year] = weighted_mean
+                    std_dic[year] = weighted_std
+                    # print(weighted_std)
+
+                result_dic[f'{eco}_{season}'] = mean_dic
+                result_dic[f'{eco}_{season}_std'] = std_dic
+
+                # 只存一次长度
+                result_dic[f'{eco}_len'] = len(df_i)
+
+            # 转成 DataFrame
+        df_new = pd.DataFrame(result_dic).reset_index()
+
+        # T.print_head_n(df_new);exit()
+
+        flag = 0
+
+
+
+
+        for eco in eco_region_list:
+            plt.figure(figsize=(self.map_width, self.map_height))
+
+
+            spring_vals = df_new[f'{eco}_spring_March_May']
+            summer_vals = df_new[f'{eco}_summer_July_Sept']
+
+            vals_len = df_new[f'{eco}_len'][0]
+
+
+            plt.plot(year_list, spring_vals, label='Spring', linewidth=2)
+            plt.plot(year_list, summer_vals, label='Summer', linewidth=2)
+
+
+            slope_s, _, _, p_s, _ = stats.linregress(year_list, spring_vals)
+            slope_sum, _, _, p_sum, _ = stats.linregress(year_list, summer_vals)
+
+            stats_text = (
+                f'Spring: slope={slope_s:.2f}, p={p_s:.2f}\n'
+                f'Summer: slope={slope_sum:.2f}, p={p_sum:.2f}'
+            )
+
+            plt.text(0.95, 0.95, stats_text,
+                     transform=plt.gca().transAxes,
+                     verticalalignment='top',
+                     horizontalalignment='right',
+                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+            plt.ylabel('SNU_LAI_relative_change (%)')
+            plt.title(f'{eco}_n={vals_len}', fontsize=12)
+
+            plt.legend()
+            plt.grid(True, axis='x')
+
+            plt.show()
+            plt.close()
+
+
+        pass
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+        return df
 
 
 def main():
     # SPEI_Greening_categorize().run()
-    SPEI_Greening_ecoregion().run()
+    # SPEI_Greening_ecoregion().run()
+    PLOT_SPEI().run()
     pass
 
 

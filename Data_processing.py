@@ -500,7 +500,8 @@ class Data_processing_MODIS_LAI:
         # self.scale()
         #
         # self.MVC()
-        self.tif_to_dic()
+        # self.tif_to_dic()
+        self.spring_season_LAI_mean()
         pass
 
     def modify_tif_metadata(self):
@@ -639,7 +640,7 @@ class Data_processing_MODIS_LAI:
 
     def tif_to_dic(self):
 
-        fdir_all = data_root + rf'/MODIS_LAI/extract_tif_scaled\\'
+        fdir_all = data_root + rf'/MODIS_LAI/MVC\\'
         outdir=data_root + '/MODIS_LAI/dic/'
         T.mk_dir(outdir, force=True)
 
@@ -717,6 +718,42 @@ class Data_processing_MODIS_LAI:
                 np.save(outdir + rf'per_pix_dic_%03d' % (flag / 10000), temp_dic)
                 temp_dic = {}
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
+
+    def spring_season_LAI_mean(self):
+        fdir=data_root + '\\MODIS_LAI\dic\\'
+        outdir=data_root + 'MODIS_LAI\spring_summer_season_LAI_mean\\'
+        T.mk_dir(outdir,force=True)
+        spatial_dic=T.load_npy_dir(fdir)
+        result_dic={}
+        for pix in tqdm(spatial_dic):
+            r,c=pix
+            vals=spatial_dic[pix]
+            if T.is_all_nan(vals):
+                continue
+            if np.isnan(np.nanmean(vals)):
+                continue
+            vals=np.array(vals)
+            vals=np.reshape(vals,(-1,12))
+            # plt.imshow(vals)
+            # plt.show()
+            spring_list=[]
+            summer_list=[]
+
+            for i in range(len(vals)):
+                # print(vals[i][2:5])
+                ## march to may
+                spring_val=np.nanmean(vals[i][2:5])
+                ## july to sept
+                summer_val=np.nanmean(vals[i][6:9])
+
+                spring_list.append(spring_val)
+                summer_list.append(summer_val)
+            result_dic[pix]={
+                'spring':spring_list,
+                'summer':summer_list,
+            }
+        outf=outdir+'spring_summer_season_LAI_mean.npy'
+        np.save(outf,result_dic)
 
 
 
@@ -1043,9 +1080,9 @@ class check_data:
 
 def main():
 
-     Data_processing_vegetation().run()
+     # Data_processing_vegetation().run()
     # area_weighted_average().run()
-    # Data_processing_MODIS_LAI().run()
+    Data_processing_MODIS_LAI().run()
 
      # check_data().run()
     # convert_dic_to_tiff().run()
