@@ -12,15 +12,14 @@ D=DIC_and_TIF(tif_template=tif_template)
 class Data_processing_vegetation:
     def run(self):
         # self.nc_to_tif_time_series_fast2()
-        self.nc_to_tif_time_series_fast2_VOD()
+        # self.nc_to_tif_time_series_fast2_VOD()
         # self.extract_tif_from_shp()
         # self.tif_to_dic()
+        self.spring_season_LAI_mean()
         ## 4 extract phenology based 4GST using GST_phenology_Wen.py
         ## 5 现在用SOS EOS extract growing season and return monthly data during growing season
         # self.extract_growing_season_monthly()
-        # self.extract_growing_season_LAI_mean()
-        # self.extract_growing_season_LAI_min()
-        # self.extract_growing_season_LAI_max()
+
         # self.spatial_plot()
         # self.plot_ecoregion()
 
@@ -199,6 +198,42 @@ class Data_processing_vegetation:
                 np.save(outdir + rf'per_pix_dic_%03d' % (flag / 10000), temp_dic)
                 temp_dic = {}
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
+
+    def spring_season_LAI_mean(self):
+        fdir=data_root + '\SNU_LAI\dic\\'
+        outdir=data_root + '\SNU_LAI\spring_summer_season_LAI_mean\\'
+        T.mk_dir(outdir,force=True)
+        spatial_dic=T.load_npy_dir(fdir)
+        result_dic={}
+        for pix in tqdm(spatial_dic):
+            r,c=pix
+            vals=spatial_dic[pix]
+            if T.is_all_nan(vals):
+                continue
+            if np.isnan(np.nanmean(vals)):
+                continue
+            vals=np.array(vals)
+            vals=np.reshape(vals,(-1,12))
+            # plt.imshow(vals)
+            plt.show()
+            spring_list=[]
+            summer_list=[]
+
+            for i in range(len(vals)):
+                # print(vals[i][2:5])
+                ## march to may
+                spring_val=np.nanmean(vals[i][2:5])
+                ## july to sept
+                summer_val=np.nanmean(vals[i][6:9])
+
+                spring_list.append(spring_val)
+                summer_list.append(summer_val)
+            result_dic[pix]={
+                'spring':spring_list,
+                'summer':summer_list,
+            }
+        outf=outdir+'spring_summer_season_LAI_mean.npy'
+        np.save(outf,result_dic)
 
     def extract_growing_season_monthly(self):
         fdir = data_root+rf'\MODIS_LAI\dic\\'

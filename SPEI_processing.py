@@ -732,7 +732,7 @@ class PLOT_SPEI:
         # df = df.dropna(subset=[self.y_variable])
         # T.print_head_n(df)
         # exit()
-        df = df[df['SeasType'] !=3]
+
         df = df[df['lon'] > -125]
         df = df[df['lon'] < -105]
         df = df[df['lat'] > 30]
@@ -1412,6 +1412,8 @@ class statistics_drought_analysis:
         # plt.show()
 
         pass
+
+
 class PLOT_events:
     def __init__(self):
         self.map_width = 13 * centimeter_factor

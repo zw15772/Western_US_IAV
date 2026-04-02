@@ -35,7 +35,7 @@ class build_dataframe():
         # df=self.append_cluster(df)  ## 加属性
         # df=self.append_value(df)   ## insert or append value
 
-        # df = self.add_detrend_zscore_to_df(df)
+        df = self.add_detrend_zscore_to_df(df)
 
         # df=self.add_trend_to_df(df)
         # df=self.add_phenology_type_to_df(df)
@@ -294,12 +294,11 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Data\Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\'
+        fdir=rf'D:\Western_US_IAV\Result\greening_analysis\SNU_LAI\relative_change\\'
 
 
         for f in os.listdir(fdir):
-            if 'WUS' in f:
-                continue
+
 
             variable= f.split('.')[0]
 
@@ -324,7 +323,7 @@ class build_dataframe():
                     NDVI_list.append(np.nan)
                     continue
 
-                vals = val_dic[pix][24:]
+                vals = val_dic[pix]
                 # print(vals)
                 print(len(vals))
 
