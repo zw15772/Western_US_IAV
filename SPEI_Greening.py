@@ -1100,12 +1100,124 @@ class PLOT_SPEI():
 
         return df
 
+class PLOT_Santa_rita:
+    def __init__(self):
+        self.map_width = 13 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+    def run(self):
+        self.plot_time_series_MODIS_record()
+
+        pass
+    def plot_time_series_MODIS_record(self):
+        dff=rf'D:\Western_US_IAV\statistics_250m_16_days_NDVI.csv'
+
+        df = pd.read_csv(dff)
+
+        # 2. 预处理日期
+        # 将 dt 列转换为日期格式，errors='coerce' 可以处理非标准格式
+        df[' dt'] = pd.to_datetime(df[' dt'])
+        df = df.dropna(subset=[' dt'])  # 删除日期无效的行
+        df = df.sort_values(' dt')  # 按时间排序
+
+        # 3. 提取月份
+        df['month'] = df[' dt'].dt.month
+        df['year'] = df[' dt'].dt.year
+
+        # 4. 筛选特定的时间段
+        # 春季 (March - May): 3, 4, 5 月
+        # 另一个时段 (July - September): 7, 8, 9 月
+        spring_df = df[df['month'].isin([3, 4, 5])]
+        late_summer_df = df[df['month'].isin([7, 8, 9])]
+
+        # 5. 计算平均值 (以年为单位汇总)
+        spring_avg = spring_df.groupby('year')[' value_mean'].mean()
+
+
+        late_summer_avg = late_summer_df.groupby('year')[' value_mean'].mean()
+
+        slope_s, intercept_s, r_s, p_s, _ = stats.linregress(spring_avg.index, spring_avg.values)
+        line_s = slope_s * spring_avg.index + intercept_s
+
+        # 夏季回归
+        slope_l, intercept_l, r_l, p_l, _ = stats.linregress(late_summer_avg.index, late_summer_avg.values)
+        line_l = slope_l * late_summer_avg.index + intercept_l
+
+        # 4. 绘图
+        plt.figure(figsize=(10, 6))
+
+        # --- 绘制春季部分 ---
+        # 将年份索引转为绘图用的日期坐标（设在每年的 4 月 15 日）
+        spring_dates = spring_avg.index.map(lambda x: pd.Timestamp(year=x, month=4, day=15))
+
+        plt.plot(spring_dates, spring_avg.values, color='green',marker='s', label='Spring Avg (Mar-May)', zorder=3)
+        plt.plot(spring_dates, line_s, color='green', linestyle='--', alpha=0.8,
+                 label=f'Spring Trend (slope:{slope_s:.4f}, p:{p_s:.3f})')
+
+        # --- 绘制夏季部分 ---
+        # 将年份索引转为绘图用的日期坐标（设在每年的 8 月 15 日）
+        summer_dates = late_summer_avg.index.map(lambda x: pd.Timestamp(year=x, month=8, day=15))
+
+        plt.plot(summer_dates, late_summer_avg.values, color='orange', marker='s', label='Late Summer Avg (Jul-Sep)',
+                    zorder=3,   )
+        plt.plot(summer_dates, line_l, color='orange', linestyle='--', alpha=0.8,
+                 label=f'Summer Trend (slope:{slope_l:.4f}, p:{p_l:.3f})', )
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
+
+
+
+        plt.ylabel('NDIV Mean', fontsize=15)
+        plt.grid(True, linestyle=':', alpha=0.6)
+        plt.legend(loc='best', fontsize=12)
+
+
+        # 优化 X 轴显示
+        plt.gcf().autofmt_xdate()
+
+        plt.tight_layout()
+        plt.show()
+
+        #
+        #
+        #
+        # # 6. 绘制时间序列图 (TimeSeries)
+        # plt.figure(figsize=(12, 6))
+        #
+        #
+        # # 绘制春季平均值点/线
+        # plt.plot(spring_avg.index.map(lambda x: pd.Timestamp(year=x, month=4, day=15)),
+        #          spring_avg.values, marker='o', label='Spring Avg (Mar-May)', color='green')
+        #
+        # ## plot trend line
+        #
+        #
+        # # 绘制 7-9 月平均值点/线
+        # plt.plot(late_summer_avg.index.map(lambda x: pd.Timestamp(year=x, month=8, day=15)),
+        #          late_summer_avg.values, marker='s', label='Late Summer Avg (Jul-Sep)', color='orange')
+        #
+        # plt.title('MODIS Value Mean Time Series & Seasonal Averages')
+        # plt.xlabel('Date')
+        # plt.ylabel('Value Mean')
+        # plt.legend()
+        # plt.grid(True, alpha=0.3)
+        # plt.tight_layout()
+        #
+        # plt.show()
+        #
+        # # 打印计算结果供参考
+        # print("--- 春季 (3-5月) 年度平均值 ---")
+        # print(spring_avg)
+        # print("\n--- 7-9月 年度平均值 ---")
+        # print(late_summer_avg)
+    pass
+
 
 def main():
     # SPEI_Greening_categorize().run()
     # SPEI_Greening_ecoregion().run()
     # PLOT_vegetation_change().run()
-    PLOT_SPEI().run()
+    # PLOT_SPEI().run()
+    PLOT_Santa_rita().run()
     pass
 
 
