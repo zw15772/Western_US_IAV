@@ -608,7 +608,7 @@ class PLOT_vegetation_change():
             # plt.show()
 
 
-            for season in ['spring_March_May_MODIS', 'summer_July_Sept_MODIS']:
+            for season in ['spring_March_May_SNU', 'summer_July_Sept_SNU']:
                 mean_dic = {}
                 std_dic = {}
 
@@ -654,8 +654,8 @@ class PLOT_vegetation_change():
             plt.figure(figsize=(self.map_width, self.map_height))
 
 
-            spring_vals = df_new[f'{eco}_spring_March_May_MODIS']
-            summer_vals = df_new[f'{eco}_summer_July_Sept_MODIS']
+            spring_vals = df_new[f'{eco}_spring_March_May_SNU']
+            summer_vals = df_new[f'{eco}_summer_July_Sept_SNU']
 
             vals_len = df_new[f'{eco}_len'][0]
 
@@ -830,8 +830,8 @@ class PLOT_SPEI():
         self.map_height = 8.2 * centimeter_factor
         pass
     def run(self):
-        self.plot_time_series_SPEI()
-        # self.plot_time_series_SNU_record()
+        # self.plot_time_series_SPEI()
+        self.plot_time_series_SNU_record()
         pass
 
     def plot_time_series_SPEI(self):
@@ -1038,7 +1038,7 @@ class PLOT_SPEI():
 
 
         for eco in eco_region_list:
-            plt.figure(figsize=(self.map_width, self.map_height))
+            plt.figure(figsize=(self.map_width*1.5, self.map_height))
 
 
             spring_vals = df_new[f'{eco}_spring_March_May']
@@ -1048,14 +1048,22 @@ class PLOT_SPEI():
 
 
             plt.plot(year_list, spring_vals, label='Spring', linewidth=2)
-            plt.plot(year_list, summer_vals, label='Summer', linewidth=2)
+            # plt.plot(year_list, summer_vals, label='Summer', linewidth=2)
+            plt.xticks(fontsize=12)
+            plt.yticks(fontsize=12)
 
+            slope_s, intercept_s, _, p_s, _ = stats.linregress(year_list, spring_vals)
+            slope_sum, intercept_sum, _, p_sum, _ = stats.linregress(year_list, summer_vals)
 
-            slope_s, _, _, p_s, _ = stats.linregress(year_list, spring_vals)
-            slope_sum, _, _, p_sum, _ = stats.linregress(year_list, summer_vals)
+            # ===== 画趋势线（虚线更清晰）=====
+            spring_trend = slope_s * np.array(year_list) + intercept_s
+            summer_trend = slope_sum * np.array(year_list) + intercept_sum
+
+            # plt.plot(year_list, spring_trend, linestyle='--', linewidth=2, label='Spring trend')
+            plt.plot(year_list, summer_trend, linestyle='--', linewidth=2, label='Summer trend')
 
             stats_text = (
-                f'Spring: slope={slope_s:.2f}, p={p_s:.2f}\n'
+                # f'Spring: slope={slope_s:.2f}, p={p_s:.2f}\n'
                 f'Summer: slope={slope_sum:.2f}, p={p_sum:.2f}'
             )
 
@@ -1065,10 +1073,10 @@ class PLOT_SPEI():
                      horizontalalignment='right',
                      bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
 
-            plt.ylabel('SNU_LAI_relative_change (%)')
-            plt.title(f'{eco}_n={vals_len}', fontsize=12)
+            plt.ylabel('Relative_change (%)',fontsize=15)
+            # plt.title(f'{eco}_n={vals_len}', fontsize=12)
 
-            plt.legend()
+            # plt.legend()
             plt.grid(True, axis='x')
 
             plt.show()
@@ -1096,6 +1104,7 @@ class PLOT_SPEI():
 def main():
     # SPEI_Greening_categorize().run()
     # SPEI_Greening_ecoregion().run()
+    # PLOT_vegetation_change().run()
     PLOT_SPEI().run()
     pass
 

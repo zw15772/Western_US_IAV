@@ -15,8 +15,8 @@ class greening_analysis:
         pass
     def relative_change(self):
 
-        f = data_root+r'\MODIS_LAI\spring_summer_season_LAI_mean\\spring_summer_season_LAI_mean.npy'
-        outdir = result_root + rf'greening_analysis\MODIS_LAI\\relative_change\\'
+        f = data_root+r'\SNU_LAI\spring_summer_season_LAI_mean\\spring_summer_season_LAI_mean.npy'
+        outdir = result_root + rf'greening_analysis\SNU_LAI\\relative_change\\'
         Tools().mk_dir(outdir, force=True)
 
 
@@ -29,13 +29,13 @@ class greening_analysis:
 
 
             # print(len(dic[pix]))
-            time_series = dic[pix]['spring']
+            time_series = dic[pix]['summer'][21:]
 
 
             time_series = np.array(time_series)
 
 
-            # print(len(time_series))
+            # print(len(time_series));exit()
 
             if np.isnan(np.nanmean(time_series)):
                 continue
@@ -57,7 +57,7 @@ class greening_analysis:
             # plt.show()
 
                 ## save
-        outf=outdir+rf'spring_March_May.npy'
+        outf=outdir+rf'summer_July_Sept_2003_2024.npy'
         T.save_npy( zscore_dic, outf)
 
     def trend_analysis(self):

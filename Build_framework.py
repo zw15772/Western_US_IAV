@@ -35,7 +35,7 @@ class build_dataframe():
         # df=self.append_cluster(df)  ## 加属性
         # df=self.append_value(df)   ## insert or append value
 
-        df = self.add_detrend_zscore_to_df(df)
+        # df = self.add_detrend_zscore_to_df(df)
 
         # df=self.add_trend_to_df(df)
         # df=self.add_phenology_type_to_df(df)
@@ -63,7 +63,7 @@ class build_dataframe():
         # df=self.add_area_weighted_to_df(df)
 
 
-        # df=self.rename_columns(df)
+        df=self.rename_columns(df)
         # df = self.drop_field_df(df)
         # df=self.remove_duplicate_columns(df)
         df=self.show_field(df)
@@ -295,12 +295,13 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Data\Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\'
+        fdir=rf'D:\Western_US_IAV\Result\greening_analysis\SNU_LAI\relative_change\\'
 
 
         for f in os.listdir(fdir):
-            if not 'SPEI12_annual_mean_WUS_2003_2024' in f:
+            if not '2003_2024':
                 continue
+
 
 
             variable= f.split('.')[0]
@@ -347,7 +348,7 @@ class build_dataframe():
                 NDVI_list.append(v1)
 
 
-            df[f'{variable}'] = NDVI_list
+            df[f'{variable}_SNU'] = NDVI_list
 
         # exit()
         return df
@@ -565,7 +566,8 @@ class build_dataframe():
 
 
     def rename_columns(self, df):
-        df = df.rename(columns={rf'spring_March_May': 'spring_March_May_MODIS',}
+        df = df.rename(columns={rf'spring_March_May_2003_2024_SNU': 'spring_March_May_SNU',
+                                'summer_July_Sept_2003_2024_SNU': 'summer_July_Sept_SNU',}
 
 
 
@@ -578,8 +580,8 @@ class build_dataframe():
         for col in df.columns:
             print(col)
         # exit()
-        df = df.drop(columns=['summer_July_Sept',
-
+        df = df.drop(columns=['summer_July_Sept_SNU',
+                              'spring_March_May_SNU'
 
 
                               ])
