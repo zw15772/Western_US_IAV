@@ -962,7 +962,33 @@ class PLOT_SPEI():
 
         pass
 
-    def plot_time_series_SNU_record(self):
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+        return df
+
+class PLOT_WUE():
+    def __init__(self):
+        self.map_width = 13 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+        pass
+    def run(self):
+        self.plot_time_series_WUE()
+
+        pass
+
+    def plot_time_series_WUE(self):
         dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe_1982_2024.df'
         df=T.load_df(dff)
 
@@ -998,37 +1024,38 @@ class PLOT_SPEI():
             # plt.show()
 
 
-            for season in ['spring_March_May', 'summer_July_Sept']:
-                mean_dic = {}
-                std_dic = {}
 
-                for year in year_list:
-                    df_ii = df_i[df_i['year'] == year]
-                    ## scheme1
-                    vals = np.array(df_ii[season].tolist(), dtype=float)
+            mean_dic = {}
+            std_dic = {}
 
-                    weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
-                    weighted_mean = (
-                            np.nansum(vals * weight)
-                            / np.nansum(weight * np.isfinite(vals))
-                    )
-                    # weighted_mean=np.nanmean(vals)
-                    # weighted_std = np.nanstd(vals)
+            for year in year_list:
+                df_ii = df_i[df_i['year'] == year]
+                ## scheme1
+                vals = np.array(df_ii['WUE_summer'].tolist(), dtype=float)
 
-                    #####加权方差
-                    weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+                weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
+                weighted_mean = (
+                        np.nansum(vals * weight)
+                        / np.nansum(weight * np.isfinite(vals))
+                )
+                weighted_mean=np.nanmean(vals)
+                weighted_std = np.nanstd(vals)
 
-                    weighted_std = np.sqrt(weighted_var)
+                #####加权方差
+                # weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+                #
+                # weighted_std = np.sqrt(weighted_var)
 
-                    mean_dic[year] = weighted_mean
-                    std_dic[year] = weighted_std
-                    # print(weighted_std)
+                mean_dic[year] = weighted_mean
 
-                result_dic[f'{eco}_{season}'] = mean_dic
-                result_dic[f'{eco}_{season}_std'] = std_dic
+                std_dic[year] = weighted_std
+                # print(weighted_std)
 
-                # 只存一次长度
-                result_dic[f'{eco}_len'] = len(df_i)
+            result_dic[f'{eco}'] = mean_dic
+            result_dic[f'{eco}_std'] = std_dic
+
+            # 只存一次长度
+            result_dic[f'{eco}_len'] = len(df_i)
 
             # 转成 DataFrame
         df_new = pd.DataFrame(result_dic).reset_index()
@@ -1041,33 +1068,33 @@ class PLOT_SPEI():
 
 
         for eco in eco_region_list:
-            plt.figure(figsize=(self.map_width*1.5, self.map_height))
+            plt.figure(figsize=(self.map_width, self.map_height))
 
 
-            spring_vals = df_new[f'{eco}_spring_March_May']
-            summer_vals = df_new[f'{eco}_summer_July_Sept']
+            vals = df_new[f'{eco}']
+            std_vals = df_new[f'{eco}_std']
 
             vals_len = df_new[f'{eco}_len'][0]
 
 
-            plt.plot(year_list, spring_vals, label='Spring', linewidth=2)
-            # plt.plot(year_list, summer_vals, label='Summer', linewidth=2)
-            plt.xticks(fontsize=12)
-            plt.yticks(fontsize=12)
+            plt.plot(year_list, vals,   linewidth=2,color='red',label='SPEI12')
 
-            slope_s, intercept_s, _, p_s, _ = stats.linregress(year_list, spring_vals)
-            slope_sum, intercept_sum, _, p_sum, _ = stats.linregress(year_list, summer_vals)
+            # plt.fill_between(year_list,
+            #                     vals - std_vals,
+            #                     vals + std_vals,
+            #
+            #                  alpha=0.2)
 
-            # ===== 画趋势线（虚线更清晰）=====
-            spring_trend = slope_s * np.array(year_list) + intercept_s
-            summer_trend = slope_sum * np.array(year_list) + intercept_sum
 
-            # plt.plot(year_list, spring_trend, linestyle='--', linewidth=2, label='Spring trend')
-            plt.plot(year_list, summer_trend, linestyle='--', linewidth=2, label='Summer trend')
+            slope_s, _, _, p_s, _ = stats.linregress(year_list, vals)
+            ## add trend line
+            plt.plot(year_list, slope_s * np.array(year_list) + (vals[0] - slope_s * year_list[0]),
+                     linestyle='--', color='red', )
+
 
             stats_text = (
-                # f'Spring: slope={slope_s:.2f}, p={p_s:.2f}\n'
-                f'Summer: slope={slope_sum:.2f}, p={p_sum:.2f}'
+                f'SPEI12: slope={slope_s:.2f}, p={p_s:.2f}\n'
+
             )
 
             plt.text(0.95, 0.95, stats_text,
@@ -1076,10 +1103,11 @@ class PLOT_SPEI():
                      horizontalalignment='right',
                      bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
 
-            plt.ylabel('Relative_change (%)',fontsize=15)
-            # plt.title(f'{eco}_n={vals_len}', fontsize=12)
+            plt.ylabel('WUE_summer ', fontsize=12)
 
-            # plt.legend()
+            plt.title(f'{eco}_n={vals_len}', fontsize=12)
+
+            plt.legend()
             plt.grid(True, axis='x')
 
             plt.show()
@@ -1087,6 +1115,7 @@ class PLOT_SPEI():
 
 
         pass
+
 
     def df_clean(self, df):
         T.print_head_n(df)
@@ -1104,12 +1133,12 @@ class PLOT_SPEI():
         return df
 
 
-
 def main():
     # SPEI_Greening_categorize().run()
     # SPEI_Greening_ecoregion().run()
     # PLOT_vegetation_change().run()
-    PLOT_SPEI().run()
+    # PLOT_SPEI().run()
+    PLOT_WUE().run()
 
     pass
 

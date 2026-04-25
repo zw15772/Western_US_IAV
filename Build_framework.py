@@ -17,7 +17,7 @@ class build_dataframe():
                 result_root +  rf'\SPEI_Greening\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'\Dataframe\\Dataframe_2003_2024.df'
+        self.dff = self.this_class_arr + rf'\Dataframe\\Dataframe_1982_2024.df'
 
 
         pass
@@ -35,7 +35,7 @@ class build_dataframe():
         # df=self.append_cluster(df)  ## 加属性
         # df=self.append_value(df)   ## insert or append value
 
-        # df = self.add_detrend_zscore_to_df(df)
+        df = self.add_detrend_zscore_to_df(df)
 
         # df=self.add_trend_to_df(df)
         # df=self.add_phenology_type_to_df(df)
@@ -63,7 +63,7 @@ class build_dataframe():
         # df=self.add_area_weighted_to_df(df)
 
 
-        df=self.rename_columns(df)
+        # df=self.rename_columns(df)
         # df = self.drop_field_df(df)
         # df=self.remove_duplicate_columns(df)
         df=self.show_field(df)
@@ -295,12 +295,10 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Result\greening_analysis\SNU_LAI\relative_change\\'
+        fdir=rf'D:\Western_US_IAV\Result\WUE\\'
 
 
         for f in os.listdir(fdir):
-            if not '2003_2024':
-                continue
 
 
 
@@ -329,7 +327,7 @@ class build_dataframe():
 
                 vals = val_dic[pix]
                 # print(vals)
-                # print(len(vals)); exit()
+                print(len(vals))
 
                 ##### if len vals is 38, the end of list add np.nan
 
@@ -342,13 +340,13 @@ class build_dataframe():
                 #     vals=np.append(vals,nan_list)
 
 
-                v1= vals[year - 2003]
+                v1= vals[year - 1982]
                 # print(v1,year,len(vals))
 
                 NDVI_list.append(v1)
 
 
-            df[f'{variable}_SNU'] = NDVI_list
+            df[f'{variable}'] = NDVI_list
 
         # exit()
         return df
@@ -1222,13 +1220,13 @@ class check_Data:
         self.spatial_plot()
     def spatial_plot(self):
 
-        fdir=rf'D:\Western_US_IAV\Data\Terraclimate\SPEI\SPEI_12_NOAA\extract_growing_season_SPEI12_mean\\'
+        fdir=rf'D:\Western_US_IAV\Result\WUE\\'
         spatial_len={}
 
         for f in os.listdir(fdir):
             dic=T.load_npy(fdir+f)
             for pix in dic:
-                vals=dic[pix]['growing_season']
+                vals=dic[pix]
                 length=len(vals)
                 spatial_len[pix]=length
             array=D.pix_dic_to_spatial_arr(spatial_len)
