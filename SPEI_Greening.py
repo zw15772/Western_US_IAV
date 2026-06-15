@@ -1003,7 +1003,9 @@ class PLOT_WUE():
         eco_region_list=['Western US','Western Cordillera','Upper Gila Mountains',
         'Warm Desert','Cold Desert','Western Sierra Madre Piedmont']
 
+
         for eco in eco_region_list:
+
 
             if eco == 'Western US':
                 # 2. Use a single '=' for assignment, and handle the logic
@@ -1024,27 +1026,26 @@ class PLOT_WUE():
             # plt.show()
 
 
-
             mean_dic = {}
             std_dic = {}
 
             for year in year_list:
                 df_ii = df_i[df_i['year'] == year]
                 ## scheme1
-                vals = np.array(df_ii['WUE_summer'].tolist(), dtype=float)
+                vals = np.array(df_ii['WUE_spring'].tolist(), dtype=float)
 
                 weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
                 weighted_mean = (
                         np.nansum(vals * weight)
                         / np.nansum(weight * np.isfinite(vals))
                 )
-                weighted_mean=np.nanmean(vals)
-                weighted_std = np.nanstd(vals)
+                # weighted_mean=np.nanmean(vals)
+                # weighted_std = np.nanstd(vals)
 
                 #####加权方差
-                # weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
-                #
-                # weighted_std = np.sqrt(weighted_var)
+                weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+
+                weighted_std = np.sqrt(weighted_var)
 
                 mean_dic[year] = weighted_mean
 
@@ -1063,12 +1064,12 @@ class PLOT_WUE():
         # T.print_head_n(df_new);exit()
 
         flag = 0
-
-
-
+        fig, ax = plt.subplots(3, 2, figsize=(10,6))
+        ax = ax.flatten()
 
         for eco in eco_region_list:
-            plt.figure(figsize=(self.map_width, self.map_height))
+            axes=ax[flag]
+
 
 
             vals = df_new[f'{eco}']
@@ -1077,7 +1078,7 @@ class PLOT_WUE():
             vals_len = df_new[f'{eco}_len'][0]
 
 
-            plt.plot(year_list, vals,   linewidth=2,color='red',label='SPEI12')
+            axes.plot(year_list, vals,   linewidth=2,color='blue', )
 
             # plt.fill_between(year_list,
             #                     vals - std_vals,
@@ -1088,30 +1089,35 @@ class PLOT_WUE():
 
             slope_s, _, _, p_s, _ = stats.linregress(year_list, vals)
             ## add trend line
-            plt.plot(year_list, slope_s * np.array(year_list) + (vals[0] - slope_s * year_list[0]),
-                     linestyle='--', color='red', )
+            axes.plot(year_list, slope_s * np.array(year_list) + (vals[0] - slope_s * year_list[0]),
+                     linestyle='--', color='blue', )
 
 
             stats_text = (
-                f'SPEI12: slope={slope_s:.2f}, p={p_s:.2f}\n'
+                f'WUE: slope={slope_s:.2f}, p={p_s:.2f}\n'
 
             )
 
-            plt.text(0.95, 0.95, stats_text,
-                     transform=plt.gca().transAxes,
+            axes.text(0.95, 0.95, stats_text,
+                     transform=axes.transAxes,
                      verticalalignment='top',
                      horizontalalignment='right',
                      bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
 
-            plt.ylabel('WUE_summer ', fontsize=12)
+            axes.set_ylabel('LAI/precip,spring', fontsize=12)
 
-            plt.title(f'{eco}_n={vals_len}', fontsize=12)
+            axes.set_title(f'{eco}_n={vals_len}', fontsize=12)
 
-            plt.legend()
-            plt.grid(True, axis='x')
 
-            plt.show()
-            plt.close()
+
+            axes.grid(True, axis='x')
+            flag+=1
+
+
+
+
+        plt.show()
+        plt.close()
 
 
         pass

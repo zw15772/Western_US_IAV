@@ -327,7 +327,7 @@ class build_dataframe():
 
                 vals = val_dic[pix]
                 # print(vals)
-                print(len(vals))
+                # print(len(vals))
 
                 ##### if len vals is 38, the end of list add np.nan
 
