@@ -9,7 +9,7 @@ D=DIC_and_TIF(tif_template=tif_template)
 
 
 
-class WUE_calculation:
+class RUE_calculation:
     def run(self):
         # self.spring_summer_season_LAI_mean()
         # self.spring_summer_season_precip_mean()
@@ -140,7 +140,7 @@ class WUE_calculation:
 
 
 def main():
-    WUE_calculation().run()
+    RUE_calculation().run()
 
 
     pass

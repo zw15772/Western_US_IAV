@@ -99,7 +99,7 @@ class Data_processing_2:
 
         # self.extract_dryland_tiff()
 
-        self.tif_to_dic()
+        # self.tif_to_dic()
         # self.interpolate_VCF()
         # self.interpolation()
         # self.mean()
@@ -301,12 +301,12 @@ class Data_processing_2:
 
     def nc_to_tif_time_series_fast2(self):
 
-        fdir=rf'D:\Project3\Data\GLEAM\\'
-        outdir=rf'D:\Project3\Data\GLEAM\\TIFF_AE\\'
+        fdir=rf'C:\CMIP6_data\LT_Baseline_NT\LT_Baseline_NT\\'
+        outdir=rf'D:\Western_US_IAV\Data\\LT_Baseline_NT\\'
         Tools().mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
-            if not 'E_1980-2022_GLEAM_v3.8a_MO'in f:
-                continue
+            # if not 'E_1980-2022_GLEAM_v3.8a_MO'in f:
+            #     continue
 
 
 
@@ -324,21 +324,18 @@ class Data_processing_2:
                 date_str = date.strftime('%Y%m%d')
                 date_str = date_str.split()[0]
                 outf = join(outdir, f'{date_str}.tif')
-                array = nc_in['E'][t]
+                array = nc_in['GPP_mean'][t]
                 array = np.array(array)
+                # plt.imshow(array)
+                # plt.show()
+                array=array*0.01
                 array[array < 0] = np.nan
-                longitude_start, latitude_start, pixelWidth, pixelHeight = -180, 90, 0.25, -0.25
+                longitude_start, latitude_start, pixelWidth, pixelHeight = -180, 90, 0.05, -0.05
                 ToRaster().array2raster(outf, longitude_start, latitude_start,
                                         pixelWidth, pixelHeight, array, ndv=-999999)
-                exit()
 
 
-            # nc_to_tif_template(fdir+f,var_name='lai',outdir=outdir,yearlist=yearlist)
-            try:
-                self.nc_to_tif_template(fdir+f, var_name='ndvi', outdir=outdir, yearlist=yearlist)
-            except Exception as e:
-                print(e)
-                continue
+
 
 
 
@@ -9432,9 +9429,9 @@ class check_data_distribution():
 
 
 def main():
-     # Data_processing_2().run()
+     Data_processing_2().run()
     # # Phenology().run()
-    build_dataframe().run()
+   # build_dataframe().run()
     # build_moving_window_dataframe().run()
 
     # CO2_processing().run()

@@ -536,11 +536,11 @@ class Data_processing_MODIS_LAI:
 
     def extract_tif_from_shp(self):
         shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
-        fdir=data_root + rf'\MODIS_LAI\\tif\\'
-        outdir=data_root + rf'/MODIS_LAI/extract_tif/'
+        fdir=data_root + rf'\LT_Baseline_NT\\tiff\\'
+        outdir=data_root + rf'/LT_Baseline_NT/extract_tif/'
         T.mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
-            year=int(f.split('.')[0][0:4])
+
 
 
             if not f.endswith('.tif'):
@@ -640,11 +640,11 @@ class Data_processing_MODIS_LAI:
 
     def tif_to_dic(self):
 
-        fdir_all = data_root + rf'/MODIS_LAI/MVC\\'
-        outdir=data_root + '/MODIS_LAI/dic/'
+        fdir_all = data_root + rf'\LT_Baseline_NT\extract_tif\\'
+        outdir=data_root + '/LT_Baseline_NT/dic/'
         T.mk_dir(outdir, force=True)
 
-        year_list = list(range(2003, 2025))
+        year_list = list(range(1982, 2021))
         # 作为筛选条件
 
         all_array = []  #### so important  it should be go with T.mk_dic
@@ -720,8 +720,8 @@ class Data_processing_MODIS_LAI:
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
 
     def spring_season_LAI_mean(self):
-        fdir=data_root + '\\MODIS_LAI\dic\\'
-        outdir=data_root + 'MODIS_LAI\spring_summer_season_LAI_mean\\'
+        fdir=data_root + '\LT_Baseline_NT\\dic\\'
+        outdir=data_root + 'LT_Baseline_NT\spring_summer_season_LAI_mean\\'
         T.mk_dir(outdir,force=True)
         spatial_dic=T.load_npy_dir(fdir)
         result_dic={}
@@ -734,8 +734,8 @@ class Data_processing_MODIS_LAI:
                 continue
             vals=np.array(vals)
             vals=np.reshape(vals,(-1,12))
-            # plt.imshow(vals)
-            # plt.show()
+            plt.imshow(vals)
+            plt.show()
             spring_list=[]
             summer_list=[]
 
