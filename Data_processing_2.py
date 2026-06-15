@@ -88,7 +88,7 @@ class Data_processing_2:
         # self.resampleSOC()
         # self.reclassification_koppen()
         # self.aggregation_soil()
-        # self.nc_to_tif_time_series_fast2()
+        self.nc_to_tif_time_series_fast2()
 
         # self.resample()
         # self.scale()
@@ -301,8 +301,8 @@ class Data_processing_2:
 
     def nc_to_tif_time_series_fast2(self):
 
-        fdir=rf'C:\CMIP6_data\LT_Baseline_NT\LT_Baseline_NT\\'
-        outdir=rf'D:\Western_US_IAV\Data\\LT_Baseline_NT\\'
+        fdir=rf'C:\CMIP6_data\\LT_CFE-Hybrid_NT\LT_CFE-Hybrid_NT\\'
+        outdir=rf'D:\Western_US_IAV\Data\\LT_CFE-Hybrid_NT\\tiff\\'
         Tools().mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
             # if not 'E_1980-2022_GLEAM_v3.8a_MO'in f:
@@ -328,8 +328,9 @@ class Data_processing_2:
                 array = np.array(array)
                 # plt.imshow(array)
                 # plt.show()
-                array=array*0.01
-                array[array < 0] = np.nan
+                # array[array < 0] = np.nan
+                # array=array*0.01
+
                 longitude_start, latitude_start, pixelWidth, pixelHeight = -180, 90, 0.05, -0.05
                 ToRaster().array2raster(outf, longitude_start, latitude_start,
                                         pixelWidth, pixelHeight, array, ndv=-999999)

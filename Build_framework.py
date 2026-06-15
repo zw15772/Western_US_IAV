@@ -295,7 +295,7 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Result\WUE\\'
+        fdir=rf'D:\Western_US_IAV\Data\LT_CFE-Hybrid_NT\spring_summer_season_LAI_mean\\'
 
 
         for f in os.listdir(fdir):
@@ -325,9 +325,13 @@ class build_dataframe():
                     NDVI_list.append(np.nan)
                     continue
 
-                vals = val_dic[pix]
-                # print(vals)
+
+                vals = val_dic[pix]['summer']
+                # print(year)
+                # print(year - 1982)
                 # print(len(vals))
+
+
 
                 ##### if len vals is 38, the end of list add np.nan
 
@@ -338,6 +342,9 @@ class build_dataframe():
                 # if len(vals)==33 :
                 #     nan_list=np.array([np.nan]*5)
                 #     vals=np.append(vals,nan_list)
+                if len(vals) !=43:
+                    nan_list = np.array([np.nan] * 4)
+                    vals=np.append(vals,nan_list)
 
 
                 v1= vals[year - 1982]
@@ -346,7 +353,8 @@ class build_dataframe():
                 NDVI_list.append(v1)
 
 
-            df[f'{variable}'] = NDVI_list
+            # df[f'{variable}'] = NDVI_list
+            df['summer_GPP_CFE-Hybrid'] = NDVI_list
 
         # exit()
         return df
@@ -1220,15 +1228,15 @@ class check_Data:
         self.spatial_plot()
     def spatial_plot(self):
 
-        fdir=rf'D:\Western_US_IAV\Result\WUE\\'
+        fdir=rf'D:\Western_US_IAV\Data\LT_Baseline_NT\spring_summer_season_LAI_mean\\'
         spatial_len={}
 
         for f in os.listdir(fdir):
             dic=T.load_npy(fdir+f)
             for pix in dic:
-                vals=dic[pix]
+                vals=dic[pix]['spring']
                 length=len(vals)
-                spatial_len[pix]=length
+                spatial_len[pix]=np.nanmean(vals)
             array=D.pix_dic_to_spatial_arr(spatial_len)
             plt.imshow(array)
             plt.show()

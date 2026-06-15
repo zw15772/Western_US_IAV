@@ -136,11 +136,53 @@ class RUE_calculation:
 
         pass
 
+class GPP_calculation:
+    def run(self):
+        self.spring_summer_season_GPP()
+        pass
+    def spring_summer_season_GPP(self):
+        fdir = data_root + 'LT_CFE-Hybrid_NT\dic\\'
+        outdir = data_root + 'LT_CFE-Hybrid_NT\spring_summer_season_LAI_mean\\'
+        T.mk_dir(outdir, force=True)
+        spatial_dic = T.load_npy_dir(fdir)
+        result_dic = {}
+        for pix in tqdm(spatial_dic):
+            r, c = pix
+            vals = spatial_dic[pix]
+            if T.is_all_nan(vals):
+                continue
+            if np.isnan(np.nanmean(vals)):
+                continue
+            vals = np.array(vals)
+            vals = np.reshape(vals, (-1, 12))
+            # plt.imshow(vals)
+            plt.show()
+            spring_list = []
+            summer_list = []
 
+            for i in range(len(vals)):
+                # print(vals[i][2:5])
+                ## march to may
+                spring_val = np.nanmean(vals[i][2:5])
+                ##day to year
+                spring_val=spring_val*31
+                ## july to sept
+                summer_val = np.nanmean(vals[i][6:9])
+                summer_val=summer_val*31
+
+                spring_list.append(spring_val)
+                summer_list.append(summer_val)
+            result_dic[pix] = {
+                'spring': spring_list,
+                'summer': summer_list,
+            }
+        outf = outdir + 'spring_summer_season_LAI_mean.npy'
+        np.save(outf, result_dic)
 
 
 def main():
-    RUE_calculation().run()
+    # RUE_calculation().run()
+    GPP_calculation().run()
 
 
     pass

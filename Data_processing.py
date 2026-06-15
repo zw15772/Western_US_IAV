@@ -536,8 +536,8 @@ class Data_processing_MODIS_LAI:
 
     def extract_tif_from_shp(self):
         shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
-        fdir=data_root + rf'\LT_Baseline_NT\\tiff\\'
-        outdir=data_root + rf'/LT_Baseline_NT/extract_tif/'
+        fdir=data_root + rf'\LT_CFE-Hybrid_NT\tiff\\'
+        outdir=data_root + rf'/LT_CFE-Hybrid_NT/extract_tif/'
         T.mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
 
@@ -558,8 +558,8 @@ class Data_processing_MODIS_LAI:
 
     def scale(self):
 
-        fdir = rf'D:\Western_US_IAV\Data\MODIS_LAI\extract_tif\\'
-        outdir = rf'D:\Western_US_IAV\Data\MODIS_LAI\extract_tif_scaled\\'
+        fdir = rf'D:\Western_US_IAV\Data\LT_CFE-Hybrid_NT\extract_tif\\'
+        outdir = rf'D:\Western_US_IAV\Data\LT_CFE-Hybrid_NT\extract_tif_scaled\\'
         Tools().mk_dir(outdir, force=True)
         for f in tqdm(os.listdir(fdir)):
             if not f.endswith('.tif'):
@@ -568,10 +568,12 @@ class Data_processing_MODIS_LAI:
             array = np.array(array, dtype=float)
             # array[array == 65535] = np.nan
             # array[array == 249] = np.nan
-            array = array * 0.1
-            array[array > 10] = np.nan
+            array = array * 0.01
+            # array[array > 10] = np.nan
             array[array <= 0] = np.nan
             # array=array/10000
+            plt.imshow(array)
+            plt.show()
 
 
 
@@ -640,8 +642,8 @@ class Data_processing_MODIS_LAI:
 
     def tif_to_dic(self):
 
-        fdir_all = data_root + rf'\LT_Baseline_NT\extract_tif\\'
-        outdir=data_root + '/LT_Baseline_NT/dic/'
+        fdir_all = data_root + rf'\LT_CFE-Hybrid_NT\extract_tif\\'
+        outdir=data_root + '/LT_CFE-Hybrid_NT/dic/'
         T.mk_dir(outdir, force=True)
 
         year_list = list(range(1982, 2021))
@@ -720,8 +722,8 @@ class Data_processing_MODIS_LAI:
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
 
     def spring_season_LAI_mean(self):
-        fdir=data_root + '\LT_Baseline_NT\\dic\\'
-        outdir=data_root + 'LT_Baseline_NT\spring_summer_season_LAI_mean\\'
+        fdir=data_root + 'LT_CFE-Hybrid_NT\dic\\'
+        outdir=data_root + 'LT_CFE-Hybrid_NT\spring_summer_season_LAI_mean\\'
         T.mk_dir(outdir,force=True)
         spatial_dic=T.load_npy_dir(fdir)
         result_dic={}
@@ -734,8 +736,8 @@ class Data_processing_MODIS_LAI:
                 continue
             vals=np.array(vals)
             vals=np.reshape(vals,(-1,12))
-            plt.imshow(vals)
-            plt.show()
+            # plt.imshow(vals)
+            # plt.show()
             spring_list=[]
             summer_list=[]
 
