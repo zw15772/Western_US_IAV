@@ -183,8 +183,8 @@ class GPP_calculation:
     def trend_analysis(self):  ##each window average trend
 
 
-        fdir = data_root + rf'\LT_Baseline_NT\spring_summer_season_LAI_mean\\'
-        outdir = result_root + rf'\LT_Baseline_NT\\trend\spring\\'
+        fdir = data_root + rf'\SNU_LAI\spring_summer_season_LAI_mean\\'
+        outdir = result_root + rf'\SNU_LAI\\trend\spring\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -192,9 +192,9 @@ class GPP_calculation:
             #     continue
 
             outf = outdir + f.split('.')[0]
-            if os.path.isfile(outf + '_trend.tif'):
-                continue
-            print(outf)
+            # if os.path.isfile(outf + '_trend.tif'):
+            #     continue
+            # print(outf)
 
             if not f.endswith('.npy'):
                 continue
@@ -208,7 +208,7 @@ class GPP_calculation:
                     ## ignore the last one year
 
                 # time_series = dic[pix][:-1]
-                time_series = dic[pix]['spring']
+                time_series = dic[pix]['spring'][0:39]
                 time_series = np.array(time_series)
                 # print(time_series)
                 if np.isnan(time_series).all():

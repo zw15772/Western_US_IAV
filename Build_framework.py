@@ -295,7 +295,7 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Data\LT_CFE-Hybrid_NT\spring_summer_season_LAI_mean\\'
+        fdir=rf'D:\Western_US_IAV\Data\SNU_LAI\spring_summer_season_LAI_mean\\'
 
 
         for f in os.listdir(fdir):
@@ -326,7 +326,7 @@ class build_dataframe():
                     continue
 
 
-                vals = val_dic[pix]['summer']
+                vals = val_dic[pix]['spring']
                 # print(year)
                 # print(year - 1982)
                 # print(len(vals))
@@ -354,7 +354,7 @@ class build_dataframe():
 
 
             # df[f'{variable}'] = NDVI_list
-            df['summer_GPP_CFE-Hybrid'] = NDVI_list
+            df['spring_SNU_LAI'] = NDVI_list
 
         # exit()
         return df
