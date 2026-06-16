@@ -501,7 +501,8 @@ class Data_processing_MODIS_LAI:
         #
         # self.MVC()
         # self.tif_to_dic()
-        self.spring_season_LAI_mean()
+        # self.spring_season_LAI_mean()
+        self.trend_analysis()
         pass
 
     def modify_tif_metadata(self):
@@ -536,12 +537,10 @@ class Data_processing_MODIS_LAI:
 
     def extract_tif_from_shp(self):
         shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
-        fdir=data_root + rf'\LT_CFE-Hybrid_NT\tiff\\'
-        outdir=data_root + rf'/LT_CFE-Hybrid_NT/extract_tif/'
+        fdir=data_root + rf'\ST_CFE-Hybrid_NT\tiff\\'
+        outdir=data_root + rf'/ST_CFE-Hybrid_NT/extract_tif/'
         T.mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
-
-
 
             if not f.endswith('.tif'):
                 continue
@@ -642,11 +641,11 @@ class Data_processing_MODIS_LAI:
 
     def tif_to_dic(self):
 
-        fdir_all = data_root + rf'\LT_CFE-Hybrid_NT\extract_tif\\'
-        outdir=data_root + '/LT_CFE-Hybrid_NT/dic/'
+        fdir_all = data_root + rf'\ST_CFE-Hybrid_NT\extract_tif\\'
+        outdir=data_root + '/ST_CFE-Hybrid_NT/dic/'
         T.mk_dir(outdir, force=True)
 
-        year_list = list(range(1982, 2021))
+        year_list = list(range(2001, 2021))
         # 作为筛选条件
 
         all_array = []  #### so important  it should be go with T.mk_dic
@@ -722,8 +721,8 @@ class Data_processing_MODIS_LAI:
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
 
     def spring_season_LAI_mean(self):
-        fdir=data_root + 'LT_CFE-Hybrid_NT\dic\\'
-        outdir=data_root + 'LT_CFE-Hybrid_NT\spring_summer_season_LAI_mean\\'
+        fdir=data_root + '\ST_CFE-Hybrid_NT\dic\\'
+        outdir=data_root + 'ST_CFE-Hybrid_NT\spring_summer_season_LAI_mean\\'
         T.mk_dir(outdir,force=True)
         spatial_dic=T.load_npy_dir(fdir)
         result_dic={}
@@ -963,6 +962,74 @@ class Data_processing_MODIS_LAI:
         plt.show()
 
         pass
+
+    def trend_analysis(self):  ##each window average trend
+
+        fdir = data_root + rf'ST_CFE-Hybrid_NT\spring_summer_season_LAI_mean\\'
+        outdir = result_root + rf' ST_CFE-Hybrid_NT\\\trend\summer\\'
+        Tools().mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+            # if not 'DLEM_S2_lai' in f:
+            #     continue
+
+            outf = outdir + f.split('.')[0]
+            if os.path.isfile(outf + '_trend.tif'):
+                continue
+            print(outf)
+
+            if not f.endswith('.npy'):
+                continue
+            dic = np.load(fdir + f, allow_pickle=True, encoding='latin1').item()
+
+            trend_dic = {}
+            p_value_dic = {}
+            for pix in tqdm(dic):
+                r, c = pix
+
+                    ## ignore the last one year
+
+                # time_series = dic[pix][:-1]
+                time_series = dic[pix]['summer']
+                time_series = np.array(time_series)
+                # print(time_series)
+                if np.isnan(time_series).all():
+                    continue
+
+                if len(time_series) == 0:
+                    continue
+                # print(time_series)
+                ### if all valus are the same, then skip
+                # if len(set(time_series)) == 1:
+                #     continue
+                # print(time_series)
+
+                if np.nanstd(time_series) == 0:
+                    continue
+                try:
+
+                    # slope, intercept, r_value, p_value, std_err = stats.linregress(np.arange(len(time_series)), time_series)
+                    slope, b, r, p_value = T.nan_line_fit(np.arange(len(time_series)), time_series)
+                    trend_dic[pix] = slope
+                    p_value_dic[pix] = p_value
+                except:
+                    continue
+
+            arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
+
+            p_value_arr = D.pix_dic_to_spatial_arr(p_value_dic)
+
+            # plt.imshow(arr_trend, cmap='jet', vmin=-0.01, vmax=0.01)
+            #
+            # plt.colorbar()
+            # plt.title(f)
+            # plt.show()
+
+            D.arr_to_tif(arr_trend, outf + '_trend.tif')
+            D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
+
+            np.save(outf + '_trend', arr_trend)
+            np.save(outf + '_p_value', p_value_arr)
 
 
 class convert_dic_to_tiff:   ### display in QGIS

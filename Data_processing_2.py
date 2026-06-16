@@ -301,8 +301,8 @@ class Data_processing_2:
 
     def nc_to_tif_time_series_fast2(self):
 
-        fdir=rf'C:\CMIP6_data\\LT_CFE-Hybrid_NT\LT_CFE-Hybrid_NT\\'
-        outdir=rf'D:\Western_US_IAV\Data\\LT_CFE-Hybrid_NT\\tiff\\'
+        fdir=rf'D:\Western_US_IAV\Data\ST_CFE-Hybrid_NT\\nc\\'
+        outdir=rf'D:\Western_US_IAV\Data\ST_CFE-Hybrid_NT\\\tiff\\'
         Tools().mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
             # if not 'E_1980-2022_GLEAM_v3.8a_MO'in f:
@@ -313,7 +313,7 @@ class Data_processing_2:
             outdir_name = f.split('.')[0]
             # print(outdir_name)
 
-            yearlist = list(range(1982, 2021))
+            yearlist = list(range(2001, 2021))
             fpath = join(fdir,f)
             nc_in = xarray.open_dataset(fpath)
             print(nc_in)
@@ -329,7 +329,7 @@ class Data_processing_2:
                 # plt.imshow(array)
                 # plt.show()
                 # array[array < 0] = np.nan
-                # array=array*0.01
+                array=array*0.01
 
                 longitude_start, latitude_start, pixelWidth, pixelHeight = -180, 90, 0.05, -0.05
                 ToRaster().array2raster(outf, longitude_start, latitude_start,
