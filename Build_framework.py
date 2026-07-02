@@ -14,7 +14,7 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'\coupling_analysis\\Dataframe\\')
+                result_root +  rf'\coupling_anaysis\\Dataframe\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
         self.dff = self.this_class_arr + rf'\\\Dataframe.df'
@@ -27,7 +27,7 @@ class build_dataframe():
 
         df = self.__gen_df_init(self.dff)
         # df=self.foo1(df)
-        df=self.foo2(df)
+        # df=self.foo2(df)
 
         # df=self.build_df(df)
         # df=self.build_df_monthly(df)
@@ -472,7 +472,7 @@ class build_dataframe():
 
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\coupling_anaysis\maximum_corr\\'
+        fdir = result_root + rf'\coupling_anaysis\spring\\'
 
 
         for f in os.listdir(fdir):
@@ -521,7 +521,7 @@ class build_dataframe():
                 val_list.append(val)
 
 
-            df[f'{f_name}'] = val_list
+            df[f'{f_name}_spring'] = val_list
 
 
         return df

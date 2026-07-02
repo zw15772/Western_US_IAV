@@ -78,7 +78,7 @@ class coupling_anaysis:
     def maxmum_correlation(self):
         ##
         fdir=result_root+rf'\coupling_anaysis\\spring\\'
-        outdir=result_root+rf'\coupling_anaysis\\spring\\'
+        outdir=result_root+rf'\coupling_anaysis\\maximum_corr\\'
         T.mk_dir(outdir, force=True)
         array_list = []
 
@@ -107,11 +107,14 @@ class coupling_anaysis:
         # 全是 NaN 的像素
         all_nan = np.all(np.isnan(stack), axis=0)
 
-        # 用绝对值寻找最大值的位置
-        stack_abs = np.abs(stack)
-        stack_abs[np.isnan(stack_abs)] = -np.inf
 
-        idx = np.argmax(stack_abs, axis=0)
+        # stack_abs = np.abs(stack)
+        # stack[stack < 0] = np.nan
+        stack[np.isnan(stack)] = -np.inf
+
+
+        idx = np.nanargmax(stack, axis=0)
+
 
         # 最大绝对值对应的原始 r（保留正负号）
         max_r = np.take_along_axis(stack, idx[np.newaxis, :, :], axis=0)[0]
@@ -125,16 +128,94 @@ class coupling_anaysis:
         optimal_scale[all_nan] = np.nan
         ##
 
-        D.arr_to_tif(max_r, outdir+'max_r.tif')
-        D.arr_to_tif(optimal_scale, outdir+'optimal_scale.tif')
+        D.arr_to_tif(max_r, outdir+'max_r_spring.tif')
+        D.arr_to_tif(optimal_scale, outdir+'optimal_scale_spring.tif')
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+        return df
 
     def heatmap(self):
-        fdir=result_root+rf'\coupling_anaysis\\summer\\'
+
+        dff=result_root+rf'\coupling_anaysis\Dataframe\\Dataframe.df'
+        df=T.load_df(dff)
+        print(len(df))
+        df=self.df_clean(df)
+        # print(len(df));exit()
+        eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
+        eco_region_list.append('Western US')
 
 
-        pass
 
 
+        # -----------------------------------
+        # Region list
+        # -----------------------------------
+        eco_region_list = [
+            'Western US',
+            'Western Cordillera',
+            'Upper Gila Mountains',
+            'Warm Desert',
+            'Cold Desert',
+            'Western Sierra Madre Piedmont'
+        ]
+
+        scales = list(range(3, 49, 3))
+
+        heatmap_df = pd.DataFrame(index=eco_region_list,
+                                  columns=scales)
+
+        for eco in eco_region_list:
+
+            if eco == 'Western US':
+                df_i =df.copy()
+
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            for s in scales:
+                r_col = f'{s}_r_spring'
+                p_col = f'{s}_p_spring'
+                # vals = df_i.loc[df_i[p_col] < 0.05, r_col]
+                #
+                # heatmap_df.loc[eco, s] = vals.mean()
+
+
+
+                heatmap_df.loc[eco, s] = df_i[r_col].mean()
+
+        heatmap_df = heatmap_df.astype(float)
+
+        plt.figure(figsize=(11, 4.5))
+
+        sns.heatmap(
+            heatmap_df,
+            cmap='RdBu',
+            center=0,
+            square=True,
+            annot=True,
+            fmt=".2f",
+            linewidths=0.3,
+            vmin=-0.5,
+            vmax=0.5,
+            cbar_kws={'label': 'Mean correlation spring(r)'}
+        )
+
+
+        plt.ylabel('')
+        plt.tight_layout()
+        plt.show()
 
 def main():
     coupling_anaysis().run()
