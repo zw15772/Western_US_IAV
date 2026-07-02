@@ -1031,7 +1031,10 @@ class Data_processing_MODIS_LAI:
             np.save(outf + '_trend', arr_trend)
             np.save(outf + '_p_value', p_value_arr)
 
-
+class Data_processing_climate_indices:
+    def run(self):
+        pass
+    pass
 class convert_dic_to_tiff:   ### display in QGIS
     def run(self):
         self.add_nan()

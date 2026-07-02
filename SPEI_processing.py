@@ -320,11 +320,11 @@ class SPEI_calculation:
         # self.calculate_SPEI()
         # self.compute_spei_NOAA()
         # self.calculating_annual_mean()
+        self.spring_season_LAI_mean()
 
-        # self.extract_growing_season_monthly()
-        # self.extract_growing_season_LAI_mean()
+
         # self.trend_analysis()
-        self.crop_dic_spatiotemporal()
+        # self.crop_dic_spatiotemporal()
         pass
 
     def calculate_SPEI(self):
@@ -420,69 +420,74 @@ class SPEI_calculation:
         import os
 
         # 假设你的 T 和 data_root 已经定义
+        from climate_indices import indices, compute
+
         fdir_PET = data_root + r'Terraclimate\PET\dic\\'
         fdir_Precip = data_root + r'Terraclimate\Precip\dic\\'
-        outdir = data_root + r'Terraclimate\SPEI\SPEI_12_NOAA\\dic\\'
-        T.mk_dir(outdir, force=True)
 
+        scales = np.arange(3, 49, 3)
 
-        for f in os.listdir(fdir_PET):
-            if not f.endswith('.npy'):
-                continue
+        for time_scale in scales:
+            time_scale = int(time_scale)
 
+            outdir = data_root + rf'Terraclimate\SPEI\SPEI_{time_scale}_NOAA\dic\\'
+            T.mk_dir(outdir, force=True)
 
-            dic_PET = np.load(os.path.join(fdir_PET, f), allow_pickle=True).item()
-            dic_Precip = np.load(os.path.join(fdir_Precip, f), allow_pickle=True).item()
-            SPEI_12 = {}
+            print(f'\n===== SPEI-{time_scale} =====')
 
-            for pix in tqdm(dic_PET, desc=f"Processing {f}"):
-                # 获取水分盈亏序列 (P - PET)
-                ts_PET = np.array(dic_PET[pix], dtype=float)
-                ts_Precip = np.array(dic_Precip[pix], dtype=float)
+            for f in os.listdir(fdir_PET):
 
-
-                # print(ts)
-
-                if np.sum(np.isfinite(ts_PET)) < 360:
-                    continue
-                if np.sum(np.isfinite(ts_Precip))<360:
+                if not f.endswith('.npy'):
                     continue
 
 
-                # ---- 使用 climate_indices 计算 SPEI ----
-                try:
-                    # indices.spei 函数要求输入：
-                    # net_precipitation: P-PET 序列
-                    # scale: 尺度的月数 (12)
-                    # distribution: 分布类型 (通常使用 'log-logistic')
-                    # periodicity: 周期性 ('monthly')
-                    # fitting_params: 拟合参数（可选）
 
-                    spei_vals = indices.spei(
-                        precips_mm=ts_Precip,
+                dic_PET = T.load_npy(join(fdir_PET, f))
 
-                        pet_mm=ts_PET,
-                        scale=12,
-                        distribution=indices.Distribution.gamma,
-                        periodicity=compute.Periodicity.monthly,
-                        data_start_year=1958,  # 根据你的数据源调整
-                        calibration_year_initial=1958,
-                        calibration_year_final=2024 ) # 建议使用完整长度作为校准期
+                dic_Precip = T.load_npy(join(fdir_Precip, f))
 
+                SPEI_dic = {}
 
+                for pix in tqdm(dic_PET.keys()):
 
-                    # 该函数返回的是一个掩码数组 (Masked Array)，我们转回普通 numpy 数组
-                    print(np.nanmean(spei_vals))
-                    SPEI_12[pix] = np.ma.filled(spei_vals, np.nan)
+                    if pix not in dic_Precip:
+                        continue
 
+                    ts_pet = np.asarray(dic_PET[pix], dtype=float)
+                    ts_pre = np.asarray(dic_Precip[pix], dtype=float)
 
-                except Exception as e:
-                    print(f"Error at pixel {pix}: {e}")
-                    continue
+                    valid = np.isfinite(ts_pet) & np.isfinite(ts_pre)
 
-            # 保存结果
-            save_path = os.path.join(outdir, f)
-            np.save(save_path, SPEI_12)
+                    if valid.sum() < 360:
+                        continue
+
+                    try:
+
+                        spei = indices.spei(
+                            precips_mm=ts_pre,
+                            pet_mm=ts_pet,
+                            scale=time_scale,
+                            distribution=indices.Distribution.gamma,
+
+                            periodicity=compute.Periodicity.monthly,
+
+                            data_start_year=1958,
+
+                            calibration_year_initial=1958,
+                            calibration_year_final=2024,
+                        )
+
+                        SPEI_dic[pix] = np.ma.filled(spei, np.nan)
+
+                    except Exception as e:
+
+                        print(f'Pixel {pix} failed: {e}')
+                        continue
+
+                save_path = os.path.join(outdir, f)
+
+                np.save(save_path, SPEI_dic)
+
 
 
 
@@ -590,6 +595,47 @@ class SPEI_calculation:
 
         T.save_npy(new_dic, outf)
 
+    def spring_season_LAI_mean(self):
+        scale_list=np.arange(3,49,3)
+        for scale in scale_list:
+            scale=int(scale)
+            fdir=data_root + f'\Terraclimate\SPEI\\SPEI_{scale}_NOAA\\dic\\'
+            outdir=data_root + f'Terraclimate\SPEI\SPEI_{scale}_NOAA\spring_summer_season_SPEI_mean\\'
+            T.mk_dir(outdir,force=True)
+            spatial_dic=T.load_npy_dir(fdir)
+            result_dic={}
+            for pix in tqdm(spatial_dic):
+                r,c=pix
+                vals=spatial_dic[pix]
+                if T.is_all_nan(vals):
+                    continue
+                if np.isnan(np.nanmean(vals)):
+                    continue
+                vals=np.array(vals)
+                vals=np.reshape(vals,(-1,12))
+                # plt.imshow(vals)
+                # plt.show()
+                spring_list=[]
+                summer_list=[]
+
+                for i in range(len(vals)):
+                    # print(vals[i][2:5])
+                    ## march to may
+                    spring_val=np.nanmean(vals[i][2:5])
+                    ## july to sept
+                    summer_val=np.nanmean(vals[i][6:9])
+
+                    spring_list.append(spring_val)
+                    summer_list.append(summer_val)
+                result_dic[pix]={
+                    'spring':spring_list[45:],
+                    'summer':summer_list[45:]
+                }
+            outf=outdir+'spring_summer_season_SPEI_mean.npy'
+            np.save(outf,result_dic)
+
+
+
 
     def trend_analysis(self):
 
@@ -599,14 +645,14 @@ class SPEI_calculation:
         ##each window average trend
 
 
-        fdir = data_root + r'Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\\'
-        outdir = result_root + r'\Terraclimate\SPEI\\calculating_annual_mean\\trend_2003_2024\\'
+        fdir = data_root + r'\Terraclimate\SPEI\SPEI_3_NOAA\spring_summer_season_SPEI_mean\\'
+        outdir = result_root + r'Terraclimate\\SPEI\SPEI_3_NOAA\spring_summer_season_SPEI_mean_trend\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
 
 
-            outf = outdir + f.split('.')[0]
+            outf = outdir + '\spring'
             # if os.path.isfile(outf + '_trend.tif'):
             #     continue
             print(outf)
@@ -623,7 +669,8 @@ class SPEI_calculation:
 
 
 
-                time_series = dic[pix][45:] # 2003-2024
+                time_series = dic[pix]['spring']
+                print(len(time_series))
                 # plt.plot(time_series)
                 # plt.show()
                 time_series = np.array(time_series)
@@ -650,7 +697,7 @@ class SPEI_calculation:
                 except:
                     continue
 
-            # arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
+
             arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
             p_value_arr = D.pix_dic_to_spatial_arr(p_value_dic)
 
@@ -666,8 +713,8 @@ class SPEI_calculation:
             im = ax.imshow(
                 arr_trend,
                 cmap='RdBu',
-                vmin=-0.1,
-                vmax=0.1,
+                vmin=-0.15,
+                vmax=0.15,
                 extent=[-124.55, -102.04, 25.59,49],
                 transform=ccrs.PlateCarree()
             )
@@ -1585,16 +1632,29 @@ class PLOT_events:
         return df
 
 
+def check_data():
+    fdir=rf'D:\Western_US_IAV\Data\Terraclimate\PET\dic\\'
+    spatial_dic=T.load_npy_dir(fdir)
+    result_dic={}
+    for pix in spatial_dic:
+        # Ts_len=np.nanmean(spatial_dic[pix])
+        Ts_len=len(spatial_dic[pix])
+        result_dic[pix]=Ts_len
+    array=D.pix_dic_to_spatial_arr(result_dic)
+    plt.imshow(array)
+    plt.show()
 
+    pass
 
 def main():
     # download_data().run()
 
     # Processing_data_SPEI().run()
-    # SPEI_calculation().run()
+    SPEI_calculation().run()
     # PLOT_SPEI().run()
-    statistics_drought_analysis().run()
+    # statistics_drought_analysis().run()
     # PLOT_events().run()
+    # check_data()
 
 
     pass

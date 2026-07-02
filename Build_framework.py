@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'\SPEI_Greening\\')
+                result_root +  rf'\coupling_analysis\\Dataframe\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'\Dataframe\\Dataframe_1982_2024.df'
+        self.dff = self.this_class_arr + rf'\\\Dataframe.df'
 
 
         pass
@@ -27,7 +27,7 @@ class build_dataframe():
 
         df = self.__gen_df_init(self.dff)
         # df=self.foo1(df)
-        # df=self.foo2(df)
+        df=self.foo2(df)
 
         # df=self.build_df(df)
         # df=self.build_df_monthly(df)
@@ -35,25 +35,19 @@ class build_dataframe():
         # df=self.append_cluster(df)  ## 加属性
         # df=self.append_value(df)   ## insert or append value
 
-        df = self.add_detrend_zscore_to_df(df)
+        # df = self.add_detrend_zscore_to_df(df)
 
-        # df=self.add_trend_to_df(df)
+        df=self.add_trend_to_df(df)
         # df=self.add_phenology_type_to_df(df)
 
         # df=self.add_mean_to_df(df)
 
         # # #
-        # df=self.add_aridity_to_df(df)
-        # df=self.add_dryland_nondryland_to_df(df)
-        # df=self.add_MODIS_LUCC_to_df(df)
-        # df = self.add_landcover_data_to_df(df)  # 这两行代码一起运行
-        # df=self.add_landcover_classfication_to_df(df)
-        # # # # # # # # # # df=self.dummies(df)
-        # df=self.add_maxmium_LC_change(df)
-        # df=self.add_row(df)  ## use this
-        # df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
+
+        df=self.add_row(df)  ## use this
+        df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
         # # # # # # # # # # # # # #
-        # df=self.add_lat_lon_to_df(df)  ## use this
+        df=self.add_lat_lon_to_df(df)  ## use this
         # df=self.add_continent_to_df(df)
         # df=self.add_residual_to_df(df)
 
@@ -265,7 +259,7 @@ class build_dataframe():
 
     def foo2(self, df):  # 新建trend
 
-        f = result_root + rf'\greening_analysis\relative_change\trend\\SNU_LAI_trend.tif'
+        f = result_root + rf'\coupling_anaysis\maximum_corr\\max_r_summer.tif'
         array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
         array = np.array(array, dtype=float)
         val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
@@ -478,7 +472,7 @@ class build_dataframe():
 
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\Terraclimate\SPEI\SPEI_12_NOAA\calculating_annual_mean\trend_2003_2024\\'
+        fdir = result_root + rf'\coupling_anaysis\maximum_corr\\'
 
 
         for f in os.listdir(fdir):
