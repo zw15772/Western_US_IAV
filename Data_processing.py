@@ -501,8 +501,8 @@ class Data_processing_MODIS_LAI:
         #
         # self.MVC()
         # self.tif_to_dic()
-        self.spring_season_LAI_mean()
-        # self.trend_analysis()
+        # self.spring_season_LAI_mean()
+        self.trend_analysis()
         pass
 
     def modify_tif_metadata(self):
@@ -966,8 +966,8 @@ class Data_processing_MODIS_LAI:
 
     def trend_analysis(self):  ##each window average trend
 
-        fdir = data_root + rf'ST_CFE-Hybrid_NT\spring_summer_season_LAI_mean\\'
-        outdir = result_root + rf' ST_CFE-Hybrid_NT\\\trend\summer\\'
+        fdir = result_root + rf'\anomaly\\'
+        outdir = result_root + rf'anomaly\\trend_analysis\\ '
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -991,7 +991,7 @@ class Data_processing_MODIS_LAI:
                     ## ignore the last one year
 
                 # time_series = dic[pix][:-1]
-                time_series = dic[pix]['summer']
+                time_series = dic[pix]
                 time_series = np.array(time_series)
                 # print(time_series)
                 if np.isnan(time_series).all():
@@ -1367,6 +1367,131 @@ class Data_processing_Terraclimate:
                 ## save
             np.save(outf, zscore_dic)
 
+class Trend_analysis:
+    def __init__(self):
+        pass
+
+    def run(self):
+        self.trend_analysis()
+        pass
+
+    def trend_analysis(self):
+
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.pyplot as plt
+        ##each window average trend
+
+        fdir = result_root + r'\Terraclimate\SPEI\\'
+        outdir = result_root + r'\Terraclimate\SPEI\\trend_analysis\\ '
+        Tools().mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+
+
+            outf = outdir + f.split('.')[0]
+            # if os.path.isfile(outf + '_trend.tif'):
+            #     continue
+            # print(outf);exit()
+
+            if not f.endswith('.npy'):
+                continue
+            dic = np.load(fdir + f, allow_pickle=True, encoding='latin1').item()
+
+            trend_dic = {}
+            p_value_dic = {}
+            for pix in tqdm(dic):
+                r, c = pix
+
+                time_series = dic[pix]
+                print(len(time_series))
+                # plt.plot(time_series)
+                # plt.show()
+                time_series = np.array(time_series)
+                # print(len(time_series));exit()
+
+                if len(time_series) == 0:
+                    continue
+                # print(time_series)
+                ### if all valus are the same, then skip
+                # if len(set(time_series)) == 1:
+                #     continue
+                # print(time_series)
+
+                # if np.nanstd(time_series) == 0:
+                #     continue
+                try:
+
+                    # slope, intercept, r_value, p_value, std_err = stats.linregress(np.arange(len(time_series)), time_series)
+                    slope, b, r, p_value = T.nan_line_fit(np.arange(len(time_series)), time_series)
+                    # print(slope)
+
+                    trend_dic[pix] = slope
+                    p_value_dic[pix] = p_value
+                except:
+                    continue
+
+            arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
+            p_value_arr = D.pix_dic_to_spatial_arr(p_value_dic)
+
+            fpath = data_root + rf'basedata\Phenology_extraction\SeasType.tif'
+            ll, lr, ul, ur = RasterIO_Func().get_tif_bounds(fpath)
+            print(ll, lr, ul, ur)
+
+            ax = plt.axes(projection=ccrs.PlateCarree())
+
+            # --- 画趋势图 ---
+            im = ax.imshow(
+                arr_trend,
+                cmap='RdBu',
+                vmin=-0.1,
+                vmax=0.1,
+                extent=[-124.55, -102.04, 25.59, 49],
+                transform=ccrs.PlateCarree()
+            )
+
+            # --- 加 continent ---
+            ax.add_feature(
+                cfeature.LAND,
+                facecolor='none',  #
+                edgecolor='black',
+                linewidth=0.5,
+                zorder=2
+            )
+            ax.add_feature(cfeature.STATES, linewidth=0.3)
+
+            lon_min_box = -125
+            lon_max_box = -105
+            lat_min_box = 30
+            lat_max_box = 45
+
+            rect = mpatches.Rectangle(
+                (lon_min_box, lat_min_box),  # 左下角 (lon, lat)
+                lon_max_box - lon_min_box,  # 宽度
+                lat_max_box - lat_min_box,  # 高度
+                linewidth=1.5,
+                edgecolor='black',
+                facecolor='none',
+                transform=ccrs.PlateCarree(),  # ⭐关键
+                zorder=10
+            )
+
+            ax.add_patch(rect)
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+
+            cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+            cbar.set_label('Trend')
+
+            plt.title(f)
+            plt.show()
+
+            D.arr_to_tif(arr_trend, outf + '_trend.tif')
+            D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
+
+            np.save(outf + '_trend', arr_trend)
+            np.save(outf + '_p_value', p_value_arr)
+    pass
 
 class convert_dic_to_tiff:   ### display in QGIS
     def run(self):
@@ -1488,7 +1613,8 @@ def main():
      # Data_processing_vegetation().run()
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
-    Data_processing_Terraclimate().run()
+    # Data_processing_Terraclimate().run()
+    Trend_analysis().run()
 
      # check_data().run()
     # convert_dic_to_tiff().run()
