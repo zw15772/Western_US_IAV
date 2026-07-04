@@ -501,8 +501,8 @@ class Data_processing_MODIS_LAI:
         #
         # self.MVC()
         # self.tif_to_dic()
-        # self.spring_season_LAI_mean()
-        self.trend_analysis()
+        self.spring_season_LAI_mean()
+        # self.trend_analysis()
         pass
 
     def modify_tif_metadata(self):
@@ -721,11 +721,12 @@ class Data_processing_MODIS_LAI:
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
 
     def spring_season_LAI_mean(self):
-        fdir=data_root + '\ST_CFE-Hybrid_NT\dic\\'
-        outdir=data_root + 'ST_CFE-Hybrid_NT\spring_summer_season_LAI_mean\\'
+        fdir=data_root + '\MODIS_LAI\\dic\\'
+        outdir=result_root + 'MODIS_LAI\\'
         T.mk_dir(outdir,force=True)
         spatial_dic=T.load_npy_dir(fdir)
-        result_dic={}
+        spring_result_dic={}
+        summer_result_dic={}
         for pix in tqdm(spatial_dic):
             r,c=pix
             vals=spatial_dic[pix]
@@ -749,12 +750,12 @@ class Data_processing_MODIS_LAI:
 
                 spring_list.append(spring_val)
                 summer_list.append(summer_val)
-            result_dic[pix]={
-                'spring':spring_list,
-                'summer':summer_list,
-            }
-        outf=outdir+'spring_summer_season_LAI_mean.npy'
-        np.save(outf,result_dic)
+            spring_result_dic[pix]=spring_list
+            summer_result_dic[pix]=summer_list
+        outspring=outdir+'spring_LAI.npy'
+        np.save(outspring,spring_result_dic)
+        outsummer=outdir+'summer_LAI.npy'
+        np.save(outsummer,summer_result_dic)
 
 
 
@@ -1031,10 +1032,342 @@ class Data_processing_MODIS_LAI:
             np.save(outf + '_trend', arr_trend)
             np.save(outf + '_p_value', p_value_arr)
 
-class Data_processing_climate_indices:
+class Data_processing_Terraclimate:
     def run(self):
+        # self.download_all()
+        # self.nc_to_tif_time_series_fast()
+        # self.resample()
+        # self.extract_tif_from_shp()
+        # self.tif_to_dic()
+        # self.spring_season_LAI_mean()
+        self.anomaly()
         pass
     pass
+
+    def download_all(self):
+        params_list = []
+        product_list = ['ppt','vpd','tmax','tmin','soil','srad']
+
+        # product_list = ['pet']
+        year_list = list(range(2003, 2025))
+        # year_list = list(range(1982, 1982))
+        for product in product_list:
+            for y in year_list:
+                params_list.append([product, str(y)])
+                params = [product, str(y)]
+                # self.download(params)
+        # print(len(params_list))
+        # exit()
+        MULTIPROCESS(self.download, params_list,istqdm=True).run(process=12,njobs=12, process_or_thread='t')
+        # job_name = 'Terraclimate_download'
+        # log_folder = join(logs_root,'download_data/Terraclimate/download_all')
+        # init_job(job_name, params_list)
+        # sumbit_jobs_array(self.download, params_list, log_folder, job_name=job_name,
+        #                   job_number_limit=3,
+        #                   parallel_process_per_task=10,
+        #                   slurm_array_parallelism=3,
+        #                   parallel_process_p_or_t='t',
+        #                   cpus_per_task=2,
+        #                   mem_gb=4,
+        #                   timeout_min=10,
+        #                   slurm_partition="general",
+        #                   pbar_update_freq=1,
+        #                   )
+        # progress_bar_monitoring(job_name)
+
+    def download(self, params):
+        product, y = params
+        outdir = join(data_root, 'TerraClimate', product)
+        # print(outdir);exit()
+
+        T.mkdir(outdir,True)
+
+
+        url = 'https://climate.northwestknowledge.net/TERRACLIMATE-DATA/TerraClimate_{}_{}.nc'.format(product, y)
+        # print(url)
+        # exit()
+        while 1:
+            try:
+                outf = join(outdir, '{}_{}.nc'.format(product, y))
+                if os.path.isfile(outf):
+                    return None
+                req = requests.request('GET', url)
+                content = req.content
+                fw = open(outf, 'wb')
+                fw.write(content)
+                return None
+            except Exception as e:
+                print(url, 'error sleep 5s')
+                time.sleep(5)
+    def nc_to_tif_time_series_fast(self):
+        '/data/home/wenzhang/Wen_Projects/Hotdrought_recovery/Data/TerraClimate/PPT'
+
+        var='srad'
+        fdir = join(data_root, 'TerraClimate',f'{var}', 'nc')
+        outdir = join(data_root, 'TerraClimate',f'{var}' ,'tiff')
+
+        Tools().mk_dir(outdir, force=True)
+        for f in tqdm(os.listdir(fdir)):
+
+            outdir_name = f.split('.')[0]
+            # print(outdir_name)
+
+            yearlist = list(range(1958, 2025))
+            fpath = join(fdir, f)
+            nc_in = xarray.open_dataset(fpath)
+            print(nc_in)
+            time_bnds = nc_in['time']
+            for t in range(len(time_bnds)):
+                date = time_bnds[t]['time']
+                date = pd.to_datetime(date.values)
+                date_str = date.strftime('%Y%m%d')
+                date_str = date_str.split()[0]
+                outf = join(outdir, f'{date_str}.tif')
+                array = nc_in[f'{var}'][t]
+
+                array = np.array(array)
+                # array[array < 0] = np.nan
+
+                longitude_start = nc_in['lon'].values[0]
+                latitude_start = nc_in['lat'].values[0]
+                pixelWidth = nc_in['lon'].values[1] - nc_in['lon'].values[0]
+                pixelHeight = nc_in['lat'].values[1] - nc_in['lat'].values[0]
+                ToRaster().array2raster(outf, longitude_start, latitude_start,
+                                        pixelWidth, pixelHeight, array, ndv=-999999)
+                # exit()
+
+
+
+    def resample(self):
+        fdir=join(data_root, 'TerraClimate','tmax', 'tiff')
+        outdir=join(data_root, 'TerraClimate','tmax', 'resample')
+        T.mk_dir(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            if not f.endswith('.tif'):
+                continue
+            fpath=join(fdir, f)
+            outf=join(outdir, f)
+            dataset = gdal.Open(fpath)
+
+
+            try:
+                gdal.Warp(outf, dataset, xRes=0.05, yRes=0.05, dstSRS='EPSG:4326')
+            # 如果不想使用默认的最近邻重采样方法，那么就在Warp函数里面增加resampleAlg参数，指定要使用的重采样方法，例如下面一行指定了重采样方法为双线性重采样：
+            # gdal.Warp("resampletif.tif", dataset, width=newCols, height=newRows, resampleAlg=gdalconst.GRIORA_Bilinear)
+            except Exception as e:
+                pass
+
+    def extract_tif_from_shp(self):
+        shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
+        fdir=join(data_root, 'TerraClimate','soil', 'resample')
+        outdir=join(data_root, 'TerraClimate','soil', 'extract_tif')
+        T.mk_dir(outdir,force=True)
+        for f in tqdm(os.listdir(fdir)):
+
+            if not f.endswith('.tif'):
+                continue
+            fpath=join(fdir,f)
+            outf=join(outdir,f)
+
+            ToRaster().clip_array(fpath, outf,shp_f)
+
+
+        pass
+
+    def tif_to_dic(self):
+
+        fdir_all = join(data_root, 'TerraClimate', 'soil', 'extract_tif')
+        outdir = join(data_root, 'TerraClimate', 'soil', 'dic')
+        T.mk_dir(outdir, force=True)
+
+        year_list = list(range(2003, 2025))
+        # 作为筛选条件
+
+        all_array = []  #### so important  it should be go with T.mk_dic
+
+
+        for f in T.listdir(fdir_all):
+            print(f)
+
+            if not f.endswith('.tif'):
+                continue
+            if int(f.split('.')[0][0:4]) not in year_list:
+                continue
+
+
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(join(fdir_all, f))
+            array = np.array(array, dtype=float)
+
+
+            # array_unify = array[:720][:720,
+            #               :1440]  # PAR是361*720   ####specify both a row index and a column index as [row_index, column_index]
+            # array_unify = array[:3600][:3600,
+            #               :7200]
+
+
+            array[array < -999] = np.nan
+            # array_unify[array_unify > 10] = np.nan
+            # array[array ==0] = np.nan
+
+            # array[array < 0] = np.nan
+
+
+            # plt.imshow(array)
+            # plt.show()
+
+
+
+
+            array_dryland = array
+            # plt.imshow(array_dryland)
+            # plt.show()
+
+            all_array.append(array_dryland)
+
+        row = len(all_array[0])
+        col = len(all_array[0][0])
+        key_list = []
+        dic = {}
+
+        for r in tqdm(range(row), desc='构造key'):  # 构造字典的键值，并且字典的键：值初始化
+            for c in range(col):
+                dic[(r, c)] = []
+                key_list.append((r, c))
+        # print(dic_key_list)
+
+        for r in tqdm(range(row), desc='构造time series'):  # 构造time series
+            for c in range(col):
+                for arr in all_array:
+                    value = arr[r][c]
+                    dic[(r, c)].append(value)
+                # print(dic)
+        time_series = []
+        flag = 0
+        temp_dic = {}
+        for key in tqdm(key_list, desc='output...'):  # 存数据
+            flag = flag + 1
+            time_series = dic[key]
+            time_series = np.array(time_series)
+            temp_dic[key] = time_series
+            if flag % 10000 == 0:
+                # print(flag)
+                np.save(outdir + rf'/per_pix_dic_%03d' % (flag / 10000), temp_dic)
+                temp_dic = {}
+        np.save(outdir + rf'/per_pix_dic_%03d' % 0, temp_dic)
+
+    def spring_season_LAI_mean(self):
+        fdir=data_root + rf'\Terraclimate\srad\dic\\'
+        outdir=result_root + rf'Terraclimate\\'
+        T.mk_dir(outdir,force=True)
+        var=fdir.split('\\')[-4]
+        # print(var);exit()
+        spatial_dic=T.load_npy_dir(fdir)
+        spring_result_dic={}
+        summer_result_dic={}
+        for pix in tqdm(spatial_dic):
+            r,c=pix
+            vals=spatial_dic[pix]
+            if T.is_all_nan(vals):
+                continue
+            if np.isnan(np.nanmean(vals)):
+                continue
+            vals=np.array(vals)
+            vals=np.reshape(vals,(-1,12))
+            # plt.imshow(vals)
+            # plt.show()
+            spring_list=[]
+            summer_list=[]
+
+            for i in range(len(vals)):
+                # print(vals[i][2:5])
+                ## march to may
+                spring_val=np.nanmean(vals[i][2:5])
+                ## july to sept
+                summer_val=np.nanmean(vals[i][6:9])
+
+                spring_list.append(spring_val)
+                summer_list.append(summer_val)
+            spring_result_dic[pix]=spring_list
+            summer_result_dic[pix]=summer_list
+        outspring=outdir+rf'{var}_spring_npy'
+        outsummer=outdir+rf'{var}_summer_npy'
+        T.save_npy(spring_result_dic,outspring)
+        T.save_npy(summer_result_dic,outsummer)
+
+
+
+    def anomaly(self):
+
+
+        fdir = result_root + rf'\Terraclimate\climate\\'
+        outdir = result_root + rf'\\anomaly\\'
+        Tools().mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+            if not f.endswith('.npy'):
+                continue
+
+
+
+            outf = outdir + f.split('.')[0]+'_anomaly.npy'
+            # if isfile(outf):
+            #     continue
+            print(outf)
+
+            dic = T.load_npy(fdir + f)
+
+            zscore_dic = {}
+
+            for pix in tqdm(dic):
+
+
+
+                time_series = dic[pix]
+                print(time_series)
+
+                # # 检查 time_series 是否为 list 或 array（防止是 float/NaN）
+
+                if not isinstance(time_series, (list, np.ndarray)):
+                    print(f"{pix}: invalid time_series (not iterable): {time_series}")
+                    continue
+
+                time_series = np.array(time_series, dtype=float)
+                # time_series = time_series[3:37]
+
+                print(len(time_series))
+                ## exclude nan
+
+
+
+
+                if np.isnan(np.nanmean(time_series)):
+                    continue
+                # if np.nanmean(time_series) >999:
+                #     continue
+                if np.nanmean(time_series) <-999:
+                    continue
+                time_series = time_series
+                mean = np.nanmean(time_series)
+                zscore = (time_series - mean)
+
+
+
+
+                zscore_dic[pix] = zscore
+
+
+                plt.plot(time_series)
+                #
+                #
+                # plt.plot(zscore)
+                #
+                # plt.legend(['raw','zscore'])
+                # plt.show()
+
+                ## save
+            np.save(outf, zscore_dic)
+
+
 class convert_dic_to_tiff:   ### display in QGIS
     def run(self):
         self.add_nan()
@@ -1154,7 +1487,8 @@ def main():
 
      # Data_processing_vegetation().run()
     # area_weighted_average().run()
-    Data_processing_MODIS_LAI().run()
+    # Data_processing_MODIS_LAI().run()
+    Data_processing_Terraclimate().run()
 
      # check_data().run()
     # convert_dic_to_tiff().run()

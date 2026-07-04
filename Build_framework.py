@@ -14,7 +14,7 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'\coupling_anaysis\\Dataframe\\')
+                result_root +  rf'\SHAP\\Dataframe\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
         self.dff = self.this_class_arr + rf'\\\Dataframe.df'
@@ -26,7 +26,7 @@ class build_dataframe():
 
 
         df = self.__gen_df_init(self.dff)
-        # df=self.foo1(df)
+        df=self.foo1(df)
         # df=self.foo2(df)
 
         # df=self.build_df(df)
@@ -35,19 +35,19 @@ class build_dataframe():
         # df=self.append_cluster(df)  ## 加属性
         # df=self.append_value(df)   ## insert or append value
 
-        # df = self.add_detrend_zscore_to_df(df)
-
-        df=self.add_trend_to_df(df)
-        # df=self.add_phenology_type_to_df(df)
-
-        # df=self.add_mean_to_df(df)
-
-        # # #
-
-        df=self.add_row(df)  ## use this
-        df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
-        # # # # # # # # # # # # # #
-        df=self.add_lat_lon_to_df(df)  ## use this
+        df = self.add_detrend_zscore_to_df(df)
+        #
+        # # df=self.add_trend_to_df(df)
+        # # df=self.add_phenology_type_to_df(df)
+        #
+        # # df=self.add_mean_to_df(df)
+        #
+        # # # #
+        #
+        # df=self.add_row(df)  ## use this
+        # df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
+        # # # # # # # # # # # # # # #
+        # df=self.add_lat_lon_to_df(df)  ## use this
         # df=self.add_continent_to_df(df)
         # df=self.add_residual_to_df(df)
 
@@ -226,10 +226,10 @@ class build_dataframe():
 
 
     def foo1(self, df):
-        fdir=result_root+rf'\greening_analysis\MODIS_LAI\relative_change\\'
+        fdir=result_root+rf'\anomaly\\'
         for f in os.listdir(fdir):
-
-
+            if not 'soil_spring_npy_anomaly.npy' in f:
+                continue
 
             dic = T.load_npy(fdir + f)
 
@@ -289,7 +289,7 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Data\SNU_LAI\spring_summer_season_LAI_mean\\'
+        fdir=rf'D:\Western_US_IAV\Result\anomaly\\'
 
 
         for f in os.listdir(fdir):
@@ -320,7 +320,7 @@ class build_dataframe():
                     continue
 
 
-                vals = val_dic[pix]['spring']
+                vals = val_dic[pix]
                 # print(year)
                 # print(year - 1982)
                 # print(len(vals))
@@ -336,19 +336,19 @@ class build_dataframe():
                 # if len(vals)==33 :
                 #     nan_list=np.array([np.nan]*5)
                 #     vals=np.append(vals,nan_list)
-                if len(vals) !=43:
-                    nan_list = np.array([np.nan] * 4)
-                    vals=np.append(vals,nan_list)
+                # if len(vals) !=22:
+                #     nan_list = np.array([np.nan] * 4)
+                #     vals=np.append(vals,nan_list)
 
 
-                v1= vals[year - 1982]
+                v1= vals[year - 2003]
                 # print(v1,year,len(vals))
 
                 NDVI_list.append(v1)
 
 
-            # df[f'{variable}'] = NDVI_list
-            df['spring_SNU_LAI'] = NDVI_list
+            df[f'{variable}'] = NDVI_list
+
 
         # exit()
         return df
