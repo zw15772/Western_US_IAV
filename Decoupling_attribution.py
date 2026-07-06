@@ -2,6 +2,14 @@ from cmath import isnan
 
 import matplotlib.pyplot as plt
 import numpy as np
+import shap
+from lytools import *
+from matplotlib.pyplot import axes
+from sklearn.ensemble import RandomForestRegressor
+from scipy.special import softmax
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+from pprint import pprint
+import xgboost as xgb
 
 from SPEI_processing import SPEI_calculation
 from __Global__ import *
@@ -216,16 +224,16 @@ class coupling_anaysis:
         plt.ylabel('')
         plt.tight_layout()
         plt.show()
+
 class SHAP():
 
     def __init__(self):
-        self.y_variable = 'SNU_NDVI_detrend_GS_post_2'
-
+        self.y_variable = 'spring_LAI_anomaly'
 
         self.this_class_png = result_root + rf'\SHAP\\png\\presentation\\RF_{self.y_variable}\\'
         T.mk_dir(self.this_class_png, force=True)
 
-        self.dff = result_root+rf'\Dataframe\dataframe_merge1\\dataframe.df'
+        self.dff = result_root+rf'\SHAP\Dataframe\\dataframe.df'
 
         self.variable_list_rt()
 
@@ -251,7 +259,7 @@ class SHAP():
         # self.AIC_stepwise(self.dff)
         self.pdp_shap()
         # # # # # #
-        self.plot_pdp_shap()
+        # self.plot_pdp_shap()
         # self.plot_shaply_under_different_condition()
         # self.heatmap()
         # self.plot_bar_landcover()
@@ -412,55 +420,14 @@ class SHAP():
 
         self.x_variable_list = [
             #
-            # 'sand',
-            'historic_drought_mean_since1982',
-            # 'soc',
-            # 'zroot_cwd80_05',
-            # 'drought_year_NDVI_SNU_anomal_detrend',
 
-            # 'greening_trend_before_5year',
-            'AR1_trend_before_5year',
-            'CV_trend_before_5year',
-             # 'CV_annual_mean_before_5year',
+            'tmax_spring_npy_anomaly',
+            'vpd_spring_npy_anomaly',
 
-             'historic_resilience',
-
-            # 'recovery_time_include_winter',
+             'spring_SPEI6',
+            'srad_spring_npy_anomaly'
 
 
-            # 'post1_SPI12_mean',
-
-            # 'deepest_depress',
-
-
-
-            # 'Effective_Rooting_Depth',
-
-            #
-            # 'pre1_SMrz_mean',
-
-            # 'drought_year_tmean_percentile',
-            # 'during_tmean_mean',
-            # 'during_SPI12_mean',
-
-
-             'pre1_precip_mean',
-            'pre1_tmean_mean',
-            # 'NDVI_pre2_mean',
-            # #
-            # 'post1_vpd_mean',
-
-            'post2_tmean_mean',
-            # 'post2_ppt_mean',
-            'post2_precip_mean',
-            # 'post1_vpd_mean',
-
-            # 'post4_SMrz_mean',
-            # 'post1_SMrz_mean',
-             'Aridity',
-             # 'soc',
-
-            # 'lag'
 
 
             ]
@@ -582,39 +549,25 @@ class SHAP():
         return df
 
     def df_clean(self, df):
-        # T.print_head_n(df)
+        T.print_head_n(df)
         # df = df.dropna(subset=[self.y_variable])
         # T.print_head_n(df)
-        print('original len(df):',len(df))
-
-        df=df[df['lat']<60]
-        df = df[df['Aridity'] < 0.65]
-        print(len(df))
-        df=df[df['Temp_percentile'] >90]
-        # # print(len(df));exit()
-        # df=df[df['drought_year']>2000]
-        # df=df[df['LC_max']<20]
-        # # df = df[df['extraction_mask'] == 1]
-        #
-        #
-        #
-        # df = df[df['MODIS_LUCC'] != 12]
-        df=df[df['landcover_classfication'] != 'Cropland']
-        df=df[df['landcover_classfication'] != 'Bare']
-        print('filtered len(df):',len(df))
         # exit()
 
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
 
+        # eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
+        #                    'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
         # #
-        # df = df[df['lon'] > -125]
-        # df = df[df['lon'] < -105]
-        # df = df[df['lat'] > 0]
-        # df = df[df['lat'] < 45]
-        # print(len(df))
-
         # df = df[df['landcover_classfication'] != 'Cropland']
-
         return df
+
+    pass
+        # #
+
     def check_spatial_plot(self):
 
         dff = self.dff
@@ -642,135 +595,144 @@ class SHAP():
         df = T.load_df(dff)
         df = self.df_clean(df)
 
+        eco_region_list = [ 'Western Cordillera', 'Upper Gila Mountains',
+                           'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont','Western US',]
 
+        for eco in eco_region_list:
 
-        pix_list = df['pix'].tolist()
-        unique_pix_list = list(set(pix_list))
-        spatial_dic={}
+            if eco == 'Western US':
+                # 2. Use a single '=' for assignment, and handle the logic
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
 
-        for pix in unique_pix_list:
-            spatial_dic[pix] = 1
-        arr=D.pix_dic_to_spatial_arr(spatial_dic)
-        plt.imshow(arr,vmin=-0.5,vmax=0.5,cmap='jet',interpolation='nearest')
-        plt.colorbar()
-        plt.show()
+            pix_list = df_i['pix'].tolist()
+            unique_pix_list = list(set(pix_list))
+            spatial_dic={}
 
-
-
-        T.print_head_n(df)
-        # print(len(df))
-        # T.print_head_n(df)
-        print('-' * 50)
-        ## text select df the first 1000
-
-
-        all_vars = copy.copy(x_variable_list)
-        #
-        #
-        all_vars.append(y_variable)  # add the y variable to the list
-        all_vars.append('pix')
-        # all_vars.extend(['greening_trend_before_10year',
-        #     'AR1_trend_before_10year',
-        #     'CV_trend_before_10year',
-        #     ])
-        #
-        #
-        #
-        all_vars_df = df[all_vars]  # get the dataframe with the x variables and the y variable
-
-        all_vars_df = all_vars_df.dropna(subset=x_variable_list,  )
-        all_vars_df = all_vars_df.dropna(subset=self.y_variable, )
-        # print('len(all_vars_df):', len(all_vars_df));exit()
-
-
-        ######
-
-
-        pix_list = all_vars_df['pix'].tolist()
-        # print(len(pix_list));exit()
-        unique_pix_list = list(set(pix_list))
-        spatial_dic = {}
-        #
-        for pix in unique_pix_list:
-            spatial_dic[pix] = 1
-        arr = D.pix_dic_to_spatial_arr(spatial_dic)
-        plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
-        plt.colorbar()
-        plt.show()
-
-
-        X = all_vars_df[x_variable_list].copy()
-        Y = all_vars_df[y_variable]
+            for pix in unique_pix_list:
+                spatial_dic[pix] = 1
+            arr=D.pix_dic_to_spatial_arr(spatial_dic)
+            plt.imshow(arr,vmin=-0.5,vmax=0.5,cmap='jet',interpolation='nearest')
+            plt.colorbar()
+            plt.show()
 
 
 
-        model, y, y_pred = self.__train_model(X, Y)  # train a Random Forests model
-
-        explainer = shap.TreeExplainer(model)
-
-
-        shap_values_all = explainer(X)
-
-        # === 把 SHAP 加回 df ===
-        for i, col in enumerate(x_variable_list):
-            all_vars_df[f'shap_{col}'] = shap_values_all.values[:, i]
-
-        outf=join(outdir, self.y_variable + '_shap_all.df')
-        T.save_df(all_vars_df,outf)
-        T.df_to_excel(all_vars_df, outf.replace('.df','.xlsx') )
-        # exit()
-
-        ## 这部分是 我存起来画 一部分图的
-
-        # sample_size = min(5000, len(X))
-        # X_sample = X.sample(sample_size, random_state=42)
+            T.print_head_n(df_i)
+            # print(len(df))
+            # T.print_head_n(df)
+            print('-' * 50)
+            ## text select df the first 1000
 
 
-        shap_values_samples = explainer(X)
-        outf_shap = join(outdir, self.y_variable + '_shap.npy')
-        np.save(outf_shap, shap_values_samples.values)
+            all_vars = copy.copy(x_variable_list)
+            #
+            #
+            all_vars.append(y_variable)  # add the y variable to the list
+            all_vars.append('pix')
+            # all_vars.extend(['greening_trend_before_10year',
+            #     'AR1_trend_before_10year',
+            #     'CV_trend_before_10year',
+            #     ])
+            #
+            #
+            #
+            all_vars_df = df_i[all_vars]  # get the dataframe with the x variables and the y variable
 
-        joblib.dump(
-            {
-                "X": X,
-                "shap": shap_values_samples.values,
-                "columns": X.columns
-            },
-            join(outdir, 'shap_bundle.pkl')
-        )
+            all_vars_df = all_vars_df.dropna(subset=x_variable_list,  )
+            all_vars_df = all_vars_df.dropna(subset=self.y_variable, )
+            # print('len(all_vars_df):', len(all_vars_df));exit()
 
 
-        # outpkl=join(outdir, self.y_variable + '.pkl')
-        # T.save_dict_to_binary(shap_values_samples, outpkl)
+            ######
 
 
-        # shap_interaction_values = explainer.shap_interaction_values(X_sample)
-        # feature_names = X_sample.columns.tolist()
-        #
-        # i_ar1 = feature_names.index("AR1_trend_before_10year")
-        # i_spi = feature_names.index("post1_SPI12_mean")
-        # interaction = shap_interaction_values[:, i_ar1, i_spi]
-        #
-        # plt.figure(figsize=(6, 5))
-        #
-        # plt.scatter(
-        #     X_sample["AR1_trend_before_10year"],
-        #     interaction,
-        #     c=X_sample["post1_SPI12_mean"],
-        #     cmap="RdBu",
-        #     alpha=0.6
-        # )
-        #
-        # plt.colorbar(label="Post SPI")
-        # plt.xlabel("AR1")
-        # plt.ylabel("Interaction effect (AR1 × SPI)")
+            pix_list = all_vars_df['pix'].tolist()
+            # print(len(pix_list));exit()
+            unique_pix_list = list(set(pix_list))
+            spatial_dic = {}
+            #
+            for pix in unique_pix_list:
+                spatial_dic[pix] = 1
+            arr = D.pix_dic_to_spatial_arr(spatial_dic)
+            plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+            plt.colorbar()
+            plt.show()
 
-        # plt.title("SHAP interaction")
 
-        # plt.tight_layout()
-        # plt.show()
+            X = all_vars_df[x_variable_list].copy()
+            Y = all_vars_df[y_variable]
 
-        # save shap values
+
+
+            model, y, y_pred = self.__train_model(X, Y)  # train a Random Forests model
+
+            explainer = shap.TreeExplainer(model)
+
+
+            shap_values_all = explainer(X)
+
+            # === 把 SHAP 加回 df ===
+            for i, col in enumerate(x_variable_list):
+                all_vars_df[f'shap_{col}'] = shap_values_all.values[:, i]
+
+            outf=join(outdir, self.y_variable + '_shap_all.df')
+            T.save_df(all_vars_df,outf)
+            T.df_to_excel(all_vars_df, outf.replace('.df','.xlsx') )
+            # exit()
+
+            ## 这部分是 我存起来画 一部分图的
+
+            # sample_size = min(5000, len(X))
+            # X_sample = X.sample(sample_size, random_state=42)
+
+
+            shap_values_samples = explainer(X)
+            outf_shap = join(outdir, self.y_variable +  f'{eco}_shap.npy')
+            np.save(outf_shap, shap_values_samples.values)
+
+            joblib.dump(
+                {
+                    "X": X,
+                    "shap": shap_values_samples.values,
+                    "columns": X.columns
+                },
+                join(outdir, 'shap_bundle.pkl')
+            )
+
+
+            # outpkl=join(outdir, self.y_variable + '.pkl')
+            # T.save_dict_to_binary(shap_values_samples, outpkl)
+
+
+            # shap_interaction_values = explainer.shap_interaction_values(X_sample)
+            # feature_names = X_sample.columns.tolist()
+            #
+            # i_ar1 = feature_names.index("AR1_trend_before_10year")
+            # i_spi = feature_names.index("post1_SPI12_mean")
+            # interaction = shap_interaction_values[:, i_ar1, i_spi]
+            #
+            # plt.figure(figsize=(6, 5))
+            #
+            # plt.scatter(
+            #     X_sample["AR1_trend_before_10year"],
+            #     interaction,
+            #     c=X_sample["post1_SPI12_mean"],
+            #     cmap="RdBu",
+            #     alpha=0.6
+            # )
+            #
+            # plt.colorbar(label="Post SPI")
+            # plt.xlabel("AR1")
+            # plt.ylabel("Interaction effect (AR1 × SPI)")
+
+            # plt.title("SHAP interaction")
+
+            # plt.tight_layout()
+            # plt.show()
+
+            # save shap values
 
 
     def plot_pdp_shap(self):
@@ -884,18 +846,14 @@ class SHAP():
 
             y_mean_list = SMOOTH().smooth_convolve(y_mean_list, window_len=11)
 
-            name_dic = {'post2_tmean_mean': 'Tmean post drought',
-                        'post2_precip_mean': 'Precip post drought',
-                        'during_SPI12_mean': 'drought severity',
-                        'pre1_tmean_mean': 'Tmean pre drought',
-                        'CV_trend_before_5year': 'CV trend before drought',
-                        'Aridity': 'Aridity',
-                        'NDVI_pre2_mean': 'NDVI pre drought',
-                        'historic_resilience': 'Historic Drought resilience',
-                        'pre1_precip_mean': 'Precip pre drought',
-                        'AR1_trend_before_5year': 'AR1 trend before drought',
-                        'historic_drought_mean_since1982': 'Historic drought severity',
-                        'sand': 'Sand',
+            name_dic = {'srad_spring_npy_anomaly': 'Incoming solar radiation',
+                        'vpd_spring_npy_anomaly': 'VPD',
+                        'tmax_spring_npy_anomaly':'Tmax',
+                        'spring_SPEI6': 'SPEI6',
+
+
+
+
 
                         }
 
@@ -2212,7 +2170,7 @@ class SHAP():
                 booster='gbtree',
 
                 n_estimators=1200,  # ↑
-                max_depth=11,
+                max_depth=13,
 
                 random_state=42,
                 n_jobs=14,
@@ -2316,7 +2274,8 @@ class SHAP():
         plt.show()
 
 def main():
-    coupling_anaysis().run()
+    # coupling_anaysis().run()
+    SHAP().run()
 
 
 if __name__ == '__main__':

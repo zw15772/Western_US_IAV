@@ -14,7 +14,7 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'\SHAP\\Dataframe\\')
+                result_root +  rf'SPEI_Greening\Dataframe\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
         self.dff = self.this_class_arr + rf'\\\Dataframe.df'
@@ -26,7 +26,7 @@ class build_dataframe():
 
 
         df = self.__gen_df_init(self.dff)
-        df=self.foo1(df)
+        # df=self.foo1(df)
         # df=self.foo2(df)
 
         # df=self.build_df(df)
@@ -35,9 +35,9 @@ class build_dataframe():
         # df=self.append_cluster(df)  ## 加属性
         # df=self.append_value(df)   ## insert or append value
 
-        df = self.add_detrend_zscore_to_df(df)
-        #
-        # # df=self.add_trend_to_df(df)
+        # df = self.add_detrend_zscore_to_df(df)
+
+        df=self.add_trend_to_df(df)
         # # df=self.add_phenology_type_to_df(df)
         #
         # # df=self.add_mean_to_df(df)
@@ -46,7 +46,7 @@ class build_dataframe():
         #
         # df=self.add_row(df)  ## use this
         # df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
-        # # # # # # # # # # # # # # #
+        # # # # # # # # # # # # # # # #
         # df=self.add_lat_lon_to_df(df)  ## use this
         # df=self.add_continent_to_df(df)
         # df=self.add_residual_to_df(df)
@@ -289,10 +289,11 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Result\anomaly\\'
+        fdir=rf'D:\Western_US_IAV\Result\Terraclimate\SPEI\\'
 
 
         for f in os.listdir(fdir):
+
 
 
 
@@ -472,14 +473,12 @@ class build_dataframe():
 
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\coupling_anaysis\spring\\'
+        fdir = result_root + rf'MODIS_LAI\trend_analysis\\'
 
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
                 continue
-
-
 
             variable = (f.split('.')[0])
             print(variable)
@@ -521,7 +520,7 @@ class build_dataframe():
                 val_list.append(val)
 
 
-            df[f'{f_name}_spring'] = val_list
+            df[f'{f_name}'] = val_list
 
 
         return df

@@ -1,5 +1,13 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from lytools import *
+from rasterio.transform import from_bounds
+import xarray as xr
+from netCDF4 import Dataset
+from rasterio.warp import Resampling, calculate_default_transform, reproject
+import pyproj
+from pprint import pprint
+T = Tools()
 
 
 from __Global__ import *
@@ -200,8 +208,8 @@ class Data_processing_vegetation:
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
 
     def spring_season_LAI_mean(self):
-        fdir=data_root + '\SNU_LAI\dic\\'
-        outdir=data_root + '\SNU_LAI\spring_summer_season_LAI_mean\\'
+        fdir=data_root +rf'\SNU_LAI\dic\\'
+        outdir=data_root +rf'\SNU_LAI\spring_summer_season_LAI_mean\\'
         T.mk_dir(outdir,force=True)
         spatial_dic=T.load_npy_dir(fdir)
         result_dic={}
@@ -1382,8 +1390,8 @@ class Trend_analysis:
         import matplotlib.pyplot as plt
         ##each window average trend
 
-        fdir = result_root + r'\Terraclimate\SPEI\\'
-        outdir = result_root + r'\Terraclimate\SPEI\\trend_analysis\\ '
+        fdir = result_root + r'\MODIS_LAI\MODIS_LAI\\'
+        outdir = result_root + r'\MODIS_LAI\\trend_analysis\\ '
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -1441,50 +1449,50 @@ class Trend_analysis:
             ax = plt.axes(projection=ccrs.PlateCarree())
 
             # --- 画趋势图 ---
-            im = ax.imshow(
-                arr_trend,
-                cmap='RdBu',
-                vmin=-0.1,
-                vmax=0.1,
-                extent=[-124.55, -102.04, 25.59, 49],
-                transform=ccrs.PlateCarree()
-            )
-
-            # --- 加 continent ---
-            ax.add_feature(
-                cfeature.LAND,
-                facecolor='none',  #
-                edgecolor='black',
-                linewidth=0.5,
-                zorder=2
-            )
-            ax.add_feature(cfeature.STATES, linewidth=0.3)
-
-            lon_min_box = -125
-            lon_max_box = -105
-            lat_min_box = 30
-            lat_max_box = 45
-
-            rect = mpatches.Rectangle(
-                (lon_min_box, lat_min_box),  # 左下角 (lon, lat)
-                lon_max_box - lon_min_box,  # 宽度
-                lat_max_box - lat_min_box,  # 高度
-                linewidth=1.5,
-                edgecolor='black',
-                facecolor='none',
-                transform=ccrs.PlateCarree(),  # ⭐关键
-                zorder=10
-            )
-
-            ax.add_patch(rect)
-            ax.set_xlabel('Longitude')
-            ax.set_ylabel('Latitude')
-
-            cbar = plt.colorbar(im, ax=ax, shrink=0.8)
-            cbar.set_label('Trend')
-
-            plt.title(f)
-            plt.show()
+            # im = ax.imshow(
+            #     arr_trend,
+            #     cmap='RdBu',
+            #     vmin=-0.1,
+            #     vmax=0.1,
+            #     extent=[-124.55, -102.04, 25.59, 49],
+            #     transform=ccrs.PlateCarree()
+            # )
+            #
+            # # --- 加 continent ---
+            # ax.add_feature(
+            #     cfeature.LAND,
+            #     facecolor='none',  #
+            #     edgecolor='black',
+            #     linewidth=0.5,
+            #     zorder=2
+            # )
+            # ax.add_feature(cfeature.STATES, linewidth=0.3)
+            #
+            # lon_min_box = -125
+            # lon_max_box = -105
+            # lat_min_box = 30
+            # lat_max_box = 45
+            #
+            # rect = mpatches.Rectangle(
+            #     (lon_min_box, lat_min_box),  # 左下角 (lon, lat)
+            #     lon_max_box - lon_min_box,  # 宽度
+            #     lat_max_box - lat_min_box,  # 高度
+            #     linewidth=1.5,
+            #     edgecolor='black',
+            #     facecolor='none',
+            #     transform=ccrs.PlateCarree(),  # ⭐关键
+            #     zorder=10
+            # )
+            #
+            # ax.add_patch(rect)
+            # ax.set_xlabel('Longitude')
+            # ax.set_ylabel('Latitude')
+            #
+            # cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+            # cbar.set_label('Trend')
+            #
+            # plt.title(f)
+            # plt.show()
 
             D.arr_to_tif(arr_trend, outf + '_trend.tif')
             D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
@@ -1492,6 +1500,253 @@ class Trend_analysis:
             np.save(outf + '_trend', arr_trend)
             np.save(outf + '_p_value', p_value_arr)
     pass
+class Data_processing_Daymet:
+    def __init__(self):
+        pass
+    def run(self):
+        # self.download()
+        # self.daymet_nc_to_tif()
+        # self.resample()
+        # self.extract_tif_from_shp()
+        # self.transform_to_blocks()
+        # self.blocks_to_dict()
+        self.read_dict()
+
+        pass
+
+    def download(self):
+
+        import os
+        import requests
+        from requests.auth import HTTPBasicAuth
+
+        # Earthdata账号
+        username = "leeyang1991"
+        password = "Asdfasdf911007"
+
+        outdir = r"D:\Daymet\prcp"
+        os.makedirs(outdir, exist_ok=True)
+
+        base = "https://data.ornldaac.earthdata.nasa.gov/protected/daymet/Daymet_Daily_V4R1/data"
+
+        for year in range(2003, 2025):
+
+            fname = f"daymet_v4_daily_na_prcp_{year}.nc"
+            url = f"{base}/{fname}"
+
+            outfile = os.path.join(outdir, fname)
+
+            if os.path.exists(outfile):
+                print(fname, "exists")
+                continue
+
+            print("Downloading", fname)
+
+            r = requests.get(
+                url,
+                auth=HTTPBasicAuth(username, password),
+                stream=True,
+            )
+
+            if r.status_code != 200:
+                print(year, r.status_code)
+                continue
+
+            with open(outfile, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+
+        print("Finished!")
+
+
+
+    def daymet_nc_to_tif(self):
+
+        fdir = join(data_root, 'Daymet', 'prcp','nc')
+        # outdir=rf'C:\\\Daymet\\prcp\\tiff'
+        # print(outdir);exit()
+
+        outdir = join(data_root, 'Daymet', 'prcp','tiff')
+        T.mkdir(outdir, force=True)
+        for f in os.listdir(fdir):
+
+            year=f.split('.')[0].split('_')[-1]
+            # print(year);exit()
+            year=int(year)
+            if year<2017:
+                continue
+
+
+            fpath=join(fdir,f)
+
+            ncin = Dataset(fpath, 'r')
+            ncin_xarr = xr.open_dataset(fpath)
+            # print(ncin.variables)
+            # exit()
+            lat = ncin['lat']
+            lon = ncin['lon']
+            time_list = ncin_xarr['time'][:]
+            # pprint(time_list)
+            # for t in time_list:
+            vals_3d = ncin_xarr['prcp']
+            lcc_crs = pyproj.CRS.from_string(
+                "+proj=lcc +lat_1=25.0 +lat_2=60.0 +lat_0=42.5 +lon_0=-100.0 "
+                "+x_0=0.0 +y_0=0.0 +ellps=GRS80 +units=m +no_defs"
+            )
+            wgs84_crs = DIC_and_TIF().wkt_84()
+            transformer = pyproj.Transformer.from_crs(wgs84_crs, lcc_crs, always_xy=True)
+            X, Y = transformer.transform(lon, lat)
+            x_min, x_max = X.min(), X.max()
+            y_min, y_max = Y.min(), Y.max()
+
+            for i, value in tqdm(enumerate(vals_3d), total=len(time_list)):
+                t = time_list[i]
+                dt_obj = pd.to_datetime(t.values).to_pydatetime()
+                year = dt_obj.year
+                month = dt_obj.month
+                day = dt_obj.day
+                outf = join(outdir, f'{year:04d}{month:02d}{day:02d}.tif')
+                if isfile(outf):
+                    continue
+
+                value = np.array(value)
+                # value[value<=0] = np.nan
+                height, width = value.shape
+
+                # 构建原始 LCC 的仿射变换 (从左上角开始，x递增，y递减)
+                src_transform = rasterio.transform.from_bounds(
+                    x_min, y_min, x_max, y_max, width, height
+                )
+
+                dst_transform, dst_width, dst_height = calculate_default_transform(
+                    lcc_crs,
+                    wgs84_crs,
+                    width,
+                    height,
+                    left=x_min,
+                    bottom=y_min,
+                    right=x_max,
+                    top=y_max,
+                )
+
+                dst_value = np.ones((dst_height, dst_width), dtype=value.dtype) * np.nan
+
+                reproject(
+                    source=value,
+                    destination=dst_value,
+                    src_transform=src_transform,
+                    src_crs=lcc_crs,
+                    dst_transform=dst_transform,
+                    dst_crs=wgs84_crs,
+                    # resampling=Resampling.bilinear,  # 双线性插值，如果是分类数据请用 Resampling.nearest
+                    resampling=Resampling.nearest,  # 双线性插值，如果是分类数据请用 Resampling.nearest
+                    dst_nodata=np.nan
+                )
+
+                # dst_value
+                with rasterio.open(
+                        outf,
+                        "w",
+                        driver="GTiff",
+                        height=dst_height,
+                        width=dst_width,
+                        count=1,
+                        dtype=value.dtype,
+                        crs=wgs84_crs,
+                        transform=dst_transform,
+                        nodata=np.nan,
+                        bigtiff=True,
+                ) as dst:
+                    dst.write(dst_value, 1)
+
+
+
+
+    pass
+
+    def resample(self):
+        fdir=join(data_root, 'Daymet','prcp', 'tiff')
+        outdir=join(data_root, 'Daymet', 'prcp', 'resample')
+        T.mk_dir(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            if not f.endswith('.tif'):
+                continue
+            fpath=join(fdir, f)
+            outf=join(outdir, f)
+            if isfile(outf):
+                continue
+            dataset = gdal.Open(fpath)
+
+
+            try:
+                gdal.Warp(outf, dataset, xRes=0.05, yRes=0.05, dstSRS='EPSG:4326')
+            # 如果不想使用默认的最近邻重采样方法，那么就在Warp函数里面增加resampleAlg参数，指定要使用的重采样方法，例如下面一行指定了重采样方法为双线性重采样：
+            # gdal.Warp("resampletif.tif", dataset, width=newCols, height=newRows, resampleAlg=gdalconst.GRIORA_Bilinear)
+            except Exception as e:
+                pass
+
+    def extract_tif_from_shp(self):
+        shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
+        fdir=join(data_root, 'Daymet','prcp', 'resample')
+        outdir=join(data_root, 'Daymet','prcp', 'extract_tif')
+        T.mk_dir(outdir,force=True)
+        for f in tqdm(os.listdir(fdir)):
+
+            if not f.endswith('.tif'):
+                continue
+            fpath=join(fdir,f)
+            outf=join(outdir,f)
+
+            ToRaster().clip_array(fpath, outf,shp_f)
+
+
+        pass
+    def transform_to_blocks(self):
+        fdir=join(data_root, 'Daymet','prcp', 'extract_tif')
+        outdir=join(data_root, 'Daymet','prcp', 'transform_tif')
+        T.mk_dir(outdir,force=True)
+        fpath_list=[]
+        band_name_list=[]
+        for f in tqdm(os.listdir(fdir)):
+            if not f.endswith('.tif'):
+                continue
+            fpath=join(fdir,f)
+            fpath_list.append(fpath)
+            band_name_list.append(f)
+        Tif_loader_Height(fpath_list,block_height=20).transform_to_block(outdir,band_name_list=band_name_list)
+
+
+
+
+
+
+        pass
+    def blocks_to_dict(self):
+        fdir = r'D:\Western_US_IAV\Data\Daymet\prcp\transform_tif'
+        outdir = r'D:\Western_US_IAV\Data\Daymet\prcp\transform_dic'
+        T.mk_dir(outdir,force=True)
+        flist = T.listdir_full(fdir)
+        Block_Handler(flist).transform_block_to_spatial_dict(outdir)
+
+
+        pass
+
+    def read_dict(self):
+        fdir = r'D:\Western_US_IAV\Data\Daymet\prcp\transform_dic'
+        for f in T.listdir(fdir):
+            if not '12' in f:
+                continue
+            fpath = join(fdir, f)
+            spatial_dict = T.load_npy(fpath)
+            for pix in spatial_dict:
+                print(pix)
+                vals = spatial_dict[pix]
+                plt.plot(vals)
+                plt.title(pix)
+                plt.show()
+
+        pass
 
 class convert_dic_to_tiff:   ### display in QGIS
     def run(self):
@@ -1614,7 +1869,8 @@ def main():
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
     # Data_processing_Terraclimate().run()
-    Trend_analysis().run()
+    Data_processing_Daymet().run()
+    # Trend_analysis().run()
 
      # check_data().run()
     # convert_dic_to_tiff().run()
