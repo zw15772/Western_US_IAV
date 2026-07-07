@@ -13,7 +13,7 @@ import xgboost as xgb
 
 from SPEI_processing import SPEI_calculation
 from __Global__ import *
-tif_template= data_root + rf'basedata\Phenology_extraction\SeasType.tif'
+tif_template=  rf'D:\Western_US_IAV\Data\basedata\200902.tif'
 D=DIC_and_TIF(tif_template=tif_template)
 
 

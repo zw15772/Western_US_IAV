@@ -11,9 +11,11 @@ T = Tools()
 
 
 from __Global__ import *
+from Utils import *
 
 
-tif_template= rf'D:\Western_US_IAV\Data\basedata\Phenology_extraction\Offsets.tif'
+
+tif_template= rf'D:\Western_US_IAV\Data\basedata\200902.tif'
 D=DIC_and_TIF(tif_template=tif_template)
 
 
@@ -505,12 +507,12 @@ class Data_processing_MODIS_LAI:
     def run(self):
         # self.modify_tif_metadata()
         # self.extract_tif_from_shp()
-        # self.scale()
-        #
-        # self.MVC()
-        # self.tif_to_dic()
-        # self.spring_season_LAI_mean()
-        self.trend_analysis()
+        self.scale()
+        self.MVC()
+        self.raster_align()
+        self.tif_to_dic()
+        self.spring_season_LAI_mean()
+        # self.trend_analysis()
         pass
 
     def modify_tif_metadata(self):
@@ -545,8 +547,8 @@ class Data_processing_MODIS_LAI:
 
     def extract_tif_from_shp(self):
         shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
-        fdir=data_root + rf'\ST_CFE-Hybrid_NT\tiff\\'
-        outdir=data_root + rf'/ST_CFE-Hybrid_NT/extract_tif/'
+        fdir=data_root + rf'\MODIS_LAI_0706\tiff\\'
+        outdir=data_root + rf'/MODIS_LAI_0706/extract_tif/'
         T.mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
 
@@ -565,8 +567,8 @@ class Data_processing_MODIS_LAI:
 
     def scale(self):
 
-        fdir = rf'D:\Western_US_IAV\Data\LT_CFE-Hybrid_NT\extract_tif\\'
-        outdir = rf'D:\Western_US_IAV\Data\LT_CFE-Hybrid_NT\extract_tif_scaled\\'
+        fdir = rf'D:\Western_US_IAV\Data\MODIS_LAI_0706\extract_tif\\'
+        outdir = rf'D:\Western_US_IAV\Data\MODIS_LAI_0706\extract_tif_scaled\\'
         Tools().mk_dir(outdir, force=True)
         for f in tqdm(os.listdir(fdir)):
             if not f.endswith('.tif'):
@@ -575,12 +577,12 @@ class Data_processing_MODIS_LAI:
             array = np.array(array, dtype=float)
             # array[array == 65535] = np.nan
             # array[array == 249] = np.nan
-            array = array * 0.01
+            array = array * 0.1
             # array[array > 10] = np.nan
             array[array <= 0] = np.nan
             # array=array/10000
-            plt.imshow(array)
-            plt.show()
+            # plt.imshow(array)
+            # plt.show()
 
 
 
@@ -621,8 +623,8 @@ class Data_processing_MODIS_LAI:
             unify_tiff=DIC_and_TIF().unify_raster(fpath,outpath,0.05)
 
     def MVC(self):
-        fdir=data_root + '/MODIS_LAI/extract_tif_scaled/'
-        outdir=data_root + '/MODIS_LAI/MVC/'
+        fdir=data_root + rf'\MODIS_LAI_0706\extract_tif_scaled\\'
+        outdir=data_root + '/MODIS_LAI_0706/MVC/'
         T.mk_dir(outdir,force=True)
         Pre_Process().monthly_compose(fdir,outdir,method='max')
 
@@ -646,14 +648,23 @@ class Data_processing_MODIS_LAI:
     #                 continue
     #             outpath=join(outdir,rf'{year}{month:02d}.tif')
 
-
+    def raster_align(self):
+        fdir=data_root+rf'\MODIS_LAI_0706\MVC\\'
+        outdir=join(data_root, 'MODIS_LAI_0706','raster_align' )
+        T.mk_dir(outdir,force=True)
+        reference_path=data_root+rf'\Terraclimate\ppt\extract_tif\\20020201.tif'
+        for f in tqdm(os.listdir(fdir)):
+            fpath=join(fdir, f)
+            outpath=join(outdir, f)
+            My_functions().align_tif(fpath,reference_path,outpath)
+        pass
     def tif_to_dic(self):
 
-        fdir_all = data_root + rf'\ST_CFE-Hybrid_NT\extract_tif\\'
-        outdir=data_root + '/ST_CFE-Hybrid_NT/dic/'
+        fdir_all = data_root + rf'\MODIS_LAI_0706\raster_align\\'
+        outdir=data_root + '/MODIS_LAI_0706/dic/'
         T.mk_dir(outdir, force=True)
 
-        year_list = list(range(2001, 2021))
+        year_list = list(range(2003, 2025))
         # 作为筛选条件
 
         all_array = []  #### so important  it should be go with T.mk_dic
@@ -729,7 +740,7 @@ class Data_processing_MODIS_LAI:
         np.save(outdir + rf'per_pix_dic_%03d' % 0, temp_dic)
 
     def spring_season_LAI_mean(self):
-        fdir=data_root + '\MODIS_LAI\\dic\\'
+        fdir=data_root + '\MODIS_LAI_0706\dic\\'
         outdir=result_root + 'MODIS_LAI\\'
         T.mk_dir(outdir,force=True)
         spatial_dic=T.load_npy_dir(fdir)
@@ -1047,17 +1058,18 @@ class Data_processing_Terraclimate:
         # self.resample()
         # self.extract_tif_from_shp()
         # self.tif_to_dic()
-        # self.spring_season_LAI_mean()
-        self.anomaly()
+        self.spring_season_LAI_mean()
+        # self.winter_precip()
+        # self.anomaly()
         pass
     pass
 
     def download_all(self):
         params_list = []
-        product_list = ['ppt','vpd','tmax','tmin','soil','srad']
+        # product_list = ['ppt','vpd','tmax','tmin','soil','srad']
 
-        # product_list = ['pet']
-        year_list = list(range(2003, 2025))
+        product_list = ['ppt']
+        year_list = list(range(2002, 2023))
         # year_list = list(range(1982, 1982))
         for product in product_list:
             for y in year_list:
@@ -1110,7 +1122,7 @@ class Data_processing_Terraclimate:
     def nc_to_tif_time_series_fast(self):
         '/data/home/wenzhang/Wen_Projects/Hotdrought_recovery/Data/TerraClimate/PPT'
 
-        var='srad'
+        var='ppt'
         fdir = join(data_root, 'TerraClimate',f'{var}', 'nc')
         outdir = join(data_root, 'TerraClimate',f'{var}' ,'tiff')
 
@@ -1120,7 +1132,7 @@ class Data_processing_Terraclimate:
             outdir_name = f.split('.')[0]
             # print(outdir_name)
 
-            yearlist = list(range(1958, 2025))
+
             fpath = join(fdir, f)
             nc_in = xarray.open_dataset(fpath)
             print(nc_in)
@@ -1147,8 +1159,8 @@ class Data_processing_Terraclimate:
 
 
     def resample(self):
-        fdir=join(data_root, 'TerraClimate','tmax', 'tiff')
-        outdir=join(data_root, 'TerraClimate','tmax', 'resample')
+        fdir=join(data_root, 'TerraClimate','ppt', 'tiff')
+        outdir=join(data_root, 'TerraClimate','ppt', 'resample')
         T.mk_dir(outdir)
         for f in tqdm(T.listdir(fdir)):
             if not f.endswith('.tif'):
@@ -1167,8 +1179,8 @@ class Data_processing_Terraclimate:
 
     def extract_tif_from_shp(self):
         shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
-        fdir=join(data_root, 'TerraClimate','soil', 'resample')
-        outdir=join(data_root, 'TerraClimate','soil', 'extract_tif')
+        fdir=join(data_root, 'TerraClimate','ppt', 'resample')
+        outdir=join(data_root, 'TerraClimate','ppt', 'extract_tif')
         T.mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
 
@@ -1176,19 +1188,22 @@ class Data_processing_Terraclimate:
                 continue
             fpath=join(fdir,f)
             outf=join(outdir,f)
+            if isfile(outf):
+                continue
 
             ToRaster().clip_array(fpath, outf,shp_f)
 
 
         pass
 
+
     def tif_to_dic(self):
 
-        fdir_all = join(data_root, 'TerraClimate', 'soil', 'extract_tif')
-        outdir = join(data_root, 'TerraClimate', 'soil', 'dic')
+        fdir_all = join(data_root, 'TerraClimate', 'ppt', 'extract_tif')
+        outdir = join(data_root, 'TerraClimate', 'ppt', 'dic')
         T.mk_dir(outdir, force=True)
 
-        year_list = list(range(2003, 2025))
+        year_list = list(range(2002, 2025))
         # 作为筛选条件
 
         all_array = []  #### so important  it should be go with T.mk_dic
@@ -1264,7 +1279,7 @@ class Data_processing_Terraclimate:
         np.save(outdir + rf'/per_pix_dic_%03d' % 0, temp_dic)
 
     def spring_season_LAI_mean(self):
-        fdir=data_root + rf'\Terraclimate\srad\dic\\'
+        fdir=data_root + rf'\Terraclimate\ppt\dic\\'
         outdir=result_root + rf'Terraclimate\\'
         T.mk_dir(outdir,force=True)
         var=fdir.split('\\')[-4]
@@ -1289,9 +1304,9 @@ class Data_processing_Terraclimate:
             for i in range(len(vals)):
                 # print(vals[i][2:5])
                 ## march to may
-                spring_val=np.nanmean(vals[i][2:5])
+                spring_val=np.nansum(vals[i][2:5])
                 ## july to sept
-                summer_val=np.nanmean(vals[i][6:9])
+                summer_val=np.nansum(vals[i][6:9])
 
                 spring_list.append(spring_val)
                 summer_list.append(summer_val)
@@ -1301,6 +1316,46 @@ class Data_processing_Terraclimate:
         outsummer=outdir+rf'{var}_summer_npy'
         T.save_npy(spring_result_dic,outspring)
         T.save_npy(summer_result_dic,outsummer)
+
+    def winter_precip(self):
+        fdir=data_root + rf'\Terraclimate\ppt\dic\\'
+        outdir=result_root + rf'Terraclimate\\'
+        T.mk_dir(outdir,force=True)
+        var=fdir.split('\\')[-4]
+        # print(var);exit()
+        spatial_dic=T.load_npy_dir(fdir)
+        winter_result_dic={}
+
+        for pix in tqdm(spatial_dic):
+            r,c=pix
+            vals=spatial_dic[pix]
+            if T.is_all_nan(vals):
+                continue
+            if np.isnan(np.nanmean(vals)):
+                continue
+            vals=np.array(vals)
+            vals=np.reshape(vals,(-1,12))
+            # plt.imshow(vals)
+            # plt.show()
+            winter_list=[]
+
+            for i in range(1, len(vals)):
+                prev_oct_dec = vals[i - 1][9:12]  # Oct Nov Dec
+                curr_jan_feb = vals[i][0:2]  # Jan Feb
+
+                winter = np.concatenate([prev_oct_dec, curr_jan_feb])
+
+                winter_mean = np.nansum(winter)  # 如果是降雨建议用sum
+                winter_list.append(winter_mean)
+            # print(len(winter_list))
+
+            winter_result_dic[pix] = winter_list
+
+
+
+        outwinter=outdir+rf'{var}_winter_npy'
+
+        T.save_npy(winter_result_dic,outwinter)
 
 
 
@@ -1442,57 +1497,57 @@ class Trend_analysis:
             arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
             p_value_arr = D.pix_dic_to_spatial_arr(p_value_dic)
 
-            fpath = data_root + rf'basedata\Phenology_extraction\SeasType.tif'
+            fpath = data_root + rf'\basedata\200902.tif'
             ll, lr, ul, ur = RasterIO_Func().get_tif_bounds(fpath)
             print(ll, lr, ul, ur)
 
             ax = plt.axes(projection=ccrs.PlateCarree())
 
-            # --- 画趋势图 ---
-            # im = ax.imshow(
-            #     arr_trend,
-            #     cmap='RdBu',
-            #     vmin=-0.1,
-            #     vmax=0.1,
-            #     extent=[-124.55, -102.04, 25.59, 49],
-            #     transform=ccrs.PlateCarree()
-            # )
-            #
-            # # --- 加 continent ---
-            # ax.add_feature(
-            #     cfeature.LAND,
-            #     facecolor='none',  #
-            #     edgecolor='black',
-            #     linewidth=0.5,
-            #     zorder=2
-            # )
-            # ax.add_feature(cfeature.STATES, linewidth=0.3)
-            #
-            # lon_min_box = -125
-            # lon_max_box = -105
-            # lat_min_box = 30
-            # lat_max_box = 45
-            #
-            # rect = mpatches.Rectangle(
-            #     (lon_min_box, lat_min_box),  # 左下角 (lon, lat)
-            #     lon_max_box - lon_min_box,  # 宽度
-            #     lat_max_box - lat_min_box,  # 高度
-            #     linewidth=1.5,
-            #     edgecolor='black',
-            #     facecolor='none',
-            #     transform=ccrs.PlateCarree(),  # ⭐关键
-            #     zorder=10
-            # )
-            #
-            # ax.add_patch(rect)
-            # ax.set_xlabel('Longitude')
-            # ax.set_ylabel('Latitude')
-            #
-            # cbar = plt.colorbar(im, ax=ax, shrink=0.8)
-            # cbar.set_label('Trend')
-            #
-            # plt.title(f)
-            # plt.show()
+           # # --- 画趋势图 ---
+            im = ax.imshow(
+                arr_trend,
+                cmap='RdBu',
+                vmin=-0.01,
+                vmax=0.01,
+                extent=[-124.55, -102.04, 25.59, 49],
+                transform=ccrs.PlateCarree()
+            )
+
+            # --- 加 continent ---
+            ax.add_feature(
+                cfeature.LAND,
+                facecolor='none',  #
+                edgecolor='black',
+                linewidth=0.5,
+                zorder=2
+            )
+            ax.add_feature(cfeature.STATES, linewidth=0.3)
+
+            lon_min_box = -125
+            lon_max_box = -105
+            lat_min_box = 30
+            lat_max_box = 45
+
+            rect = mpatches.Rectangle(
+                (lon_min_box, lat_min_box),  # 左下角 (lon, lat)
+                lon_max_box - lon_min_box,  # 宽度
+                lat_max_box - lat_min_box,  # 高度
+                linewidth=1.5,
+                edgecolor='black',
+                facecolor='none',
+                transform=ccrs.PlateCarree(),  # ⭐关键
+                zorder=10
+            )
+
+            ax.add_patch(rect)
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+
+            cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+            cbar.set_label('Trend')
+
+            plt.title(f)
+            plt.show()
 
             D.arr_to_tif(arr_trend, outf + '_trend.tif')
             D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
@@ -1862,15 +1917,15 @@ class check_data:
 
 
 
-
 def main():
 
      # Data_processing_vegetation().run()
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
     # Data_processing_Terraclimate().run()
-    Data_processing_Daymet().run()
-    # Trend_analysis().run()
+    # Data_processing_Daymet().run()
+    Trend_analysis().run()
+    # general_anaysis().run()
 
      # check_data().run()
     # convert_dic_to_tiff().run()

@@ -3,7 +3,7 @@ import numpy as np
 
 
 from __Global__ import *
-tif_template= rf'D:\Western_US_IAV\Result\greening_analysis\SNU_LAI\\trend\SNU_LAI_trend.tif'
+tif_template= rf'D:\Western_US_IAV\Data\basedata\200902.tif'
 D=DIC_and_TIF(tif_template=tif_template)
 
 class greening_analysis:
