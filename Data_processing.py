@@ -1630,6 +1630,8 @@ class Data_processing_Daymet:
         # self.extract_spring_summer_rainfall_amount()
         # self.extract_spring_summer_rainfall_fq()
         # self.extract_spring_summer_rainfall_dry_spell()
+        # self.zscore()
+
         self.trend_analysis()
 
         pass
@@ -2300,6 +2302,74 @@ class Data_processing_Daymet:
         outf_summer=outdir+rf'summer_rainfall_maximum_dryspell.npy'
         np.save(outf_summer,summer_result)
 
+    def zscore(self):
+
+        fdir = result_root + rf'Daymet\\'
+        outdir = result_root + rf'\\zscore\\'
+        Tools().mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+            if not f.endswith('.npy'):
+                continue
+
+
+            outf = outdir + f.split('.')[0]+'_zscore.npy'
+            # if isfile(outf):
+            #     continue
+            print(outf)
+
+            dic = T.load_npy(fdir + f)
+
+            zscore_dic = {}
+
+            for pix in tqdm(dic):
+
+
+
+                time_series = dic[pix]
+                print(time_series)
+
+                # # 检查 time_series 是否为 list 或 array（防止是 float/NaN）
+
+                if not isinstance(time_series, (list, np.ndarray)):
+                    print(f"{pix}: invalid time_series (not iterable): {time_series}")
+                    continue
+
+                time_series = np.array(time_series, dtype=float)
+                # time_series = time_series[3:37]
+
+                # print(len(time_series))
+                ## exclude nan
+
+
+
+
+                if np.isnan(np.nanmean(time_series)):
+                    continue
+                # if np.nanmean(time_series) >999:
+                #     continue
+                if np.nanmean(time_series) <-999:
+                    continue
+                time_series = time_series
+                mean = np.nanmean(time_series)
+                std= np.nanstd(time_series)
+                zscore = (time_series - mean)/std
+
+
+                zscore_dic[pix] = zscore
+
+
+                plt.plot(time_series)
+                #
+                #
+                # plt.plot(zscore)
+                #
+                # plt.legend(['raw','zscore'])
+                # plt.show()
+
+                ## save
+            np.save(outf, zscore_dic)
+
     def trend_analysis(self):
 
         import cartopy.crs as ccrs
@@ -2307,16 +2377,16 @@ class Data_processing_Daymet:
         import matplotlib.pyplot as plt
         ##each window average trend
 
-        fdir = result_root + r'\Daymet\\'
-        outdir = result_root + r'Daymet\\trend_analysis\\ '
+        fdir = result_root + r'\Daymet\\zscore\\'
+        outdir = result_root + r'Daymet\\zscore\\trend_analysis\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
 
 
             outf = outdir + f.split('.')[0]
-            if os.path.isfile(outf + '_trend.tif'):
-                continue
+            # if os.path.isfile(outf + '_trend.tif'):
+            #     continue
             # print(outf);exit()
 
             if not f.endswith('.npy'):

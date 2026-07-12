@@ -44,17 +44,17 @@ class build_dataframe():
         #
         # # # #
         #
-        df=self.add_row(df)  ## use this
-        df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
-        # # # # # # # # # # # # # # # # #
-        df=self.add_lat_lon_to_df(df)  ## use this
+        # df=self.add_row(df)  ## use this
+        # df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
+        # # # # # # # # # # # # # # # # # #
+        # df=self.add_lat_lon_to_df(df)  ## use this
         # df=self.add_continent_to_df(df)
         # df=self.add_residual_to_df(df)
 
         # # # #
         # df=self.add_rooting_depth_to_df(df)
         # #
-        df=self.add_area_weighted_to_df(df)
+        # df=self.add_area_weighted_to_df(df)
 
 
         # df=self.rename_columns(df)
@@ -486,7 +486,7 @@ class build_dataframe():
 
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\Daymet\trend_analysis\\'
+        fdir = result_root + rf'\Daymet\zscore\trend_analysis\\'
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):

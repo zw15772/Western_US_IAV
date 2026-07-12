@@ -1694,13 +1694,117 @@ class PLOT_SNU_LAI:
 
         return df
 
+class PLOT_Daymet:
+    def __init__(self):
+        pass
+    def run(self):
+        self.plot_violin()
+        pass
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+        return df
+
+
+    def plot_violin(self):
+        dff = result_root + rf'\Daymet\Dataframe\Dataframe.df'
+        df = T.load_df(dff)
+        df = self.df_clean(df)
+
+        variable_list = [
+            'intensity',
+            'maximum_dryspell',
+            'fq',
+            'amount'
+        ]
+
+
+        eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
+                           'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
+
+        df_plot = pd.DataFrame()
+        season='summer'
+
+        for eco in eco_region_list:
+
+            if eco == 'Western US':
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            for variable in variable_list:
+                col = f'{season}_rainfall_{variable}_zscore_trend'
+
+                tmp = pd.DataFrame({
+                    'Region': eco,
+                    'Variable': variable,
+                    'Value': df_i[col]
+                })
+
+                df_plot = pd.concat([df_plot, tmp], ignore_index=True)
+
+                # ---------- MODIS LAI ----------
+                # tmp = pd.DataFrame({
+                #     'Region': eco,
+                #     'Variable': 'LAI',
+                #     'Value': df_i[f'{season}_LAI_trend']
+                # })
+                #
+                # df_plot = pd.concat([df_plot, tmp], ignore_index=True)
+
+        fig, axes = plt.subplots(2, 3, figsize=(12, 7), sharey=True)
+
+        for ax, eco in zip(axes.flatten(), eco_region_list):
+            sns.barplot(
+                data=df_plot[df_plot['Region'] == eco],
+                x='Variable',
+                y='Value',
+                palette='Set2',
+                errorbar='se',
+                ax=ax
+            )
+
+            ax.set_title(eco, fontsize=12)
+
+            ax.set_xlabel('')
+            ax.set_ylabel('Trend')
+            ax.set_ylim(-0.02,0.02)
+
+            ax.axhline(0, color='black', linewidth=0.8)
+
+            ax.tick_params(axis='x', rotation=35)
+
+        # 如果只有左边显示y轴
+        for ax in axes[:, 1:].flatten():
+            ax.set_ylabel('')
+
+        plt.tight_layout()
+        plt.show()
+
+
+
+
+
+
+        pass
 
 
 def main():
     # SPEI_Greening_categorize().run()
     # SPEI_Greening_ecoregion().run()
     # PLOT_vegetation_change().run()
-    PLOT_bar().run()
+    # PLOT_bar().run()
+    PLOT_Daymet().run()
     # PLOT_SPEI().run()
     # PLOT_WUE().run()
     # PLOT_GPP().run()

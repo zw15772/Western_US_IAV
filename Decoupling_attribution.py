@@ -219,6 +219,300 @@ class coupling_anaysis:
         plt.ylabel('')
         plt.tight_layout()
         plt.show()
+
+class Moving_window_coupling_analysis:
+    def __init__(self):
+
+
+        self.fdirX = result_root + rf'\Moving_window_coupling_analysis\\\moving_window_extraction\\'
+        self.fdirY = result_root + rf'\Moving_window_coupling_analysis\\moving_window_extraction\\'
+
+        pass
+
+    def run(self):
+        self.scale_list = ['SPEI3', 'SPEI6',
+                           'SPEI12', 'SPEI36',
+                           'SPEI48']
+        season='spring'
+        # self.moving_window_extraction()  ## 1 moving window extraction
+        for scale in self.scale_list:
+                outdir=result_root + rf'\Moving_window_coupling_analysis\output\\'
+
+                T.mk_dir(outdir, force=True)
+                self.outpartial =  outdir + rf'\partial_corr_{scale}.npy'
+                self.outpartial_pvalue =  outdir + rf'\partial_corr_pvalue_{scale}.npy'
+        #
+                y_var = f'{season}_LAI_detrend.npy'
+                x_var_list = f'{season}_{scale}.npy',
+
+
+                df=self.build_df(self.fdirX,self.fdirY,x_var_list,y_var)
+                #
+                self.cal_partial_corr(df,x_var_list, )
+
+        pass
+
+    def moving_window_extraction(self):
+
+
+        fdir_all =result_root+ rf'\Terraclimate\SPEI\\'
+        outdir = result_root + rf'\\moving_window_extraction\\'
+
+        T.mk_dir(outdir, force=True)
+        for f in os.listdir(fdir_all):
+
+
+
+            if not f.endswith('.npy'):
+                continue
+            if not 'SPEI12' in f:
+                continue
+
+
+            outf = outdir + f.split('.')[0] + '.npy'
+            # print(outf);exit()
+
+
+            # if os.path.isfile(outf):
+            #     continue
+            # if os.path.isfile(outf):
+            #     continue
+
+            dic = T.load_npy(fdir_all+f)
+            window = 5
+
+            new_x_extraction_by_window = {}
+            for pix in tqdm(dic):
+
+                # time_series = dic[pix][mode]
+                time_series = dic[pix]
+                # plt.plot(time_series)
+                # plt.show()
+
+
+                time_series = np.array(time_series)
+                # if T.is_all_nan(time_series):
+                #     continue
+                if len(time_series) == 0:
+                    continue
+
+
+                # time_series[time_series < -999] = np.nan
+                if np.isnan(np.nanmean(time_series)):
+                    print('error')
+                    continue
+                # print((len(time_series)))
+                ## if all values are identical, then continue
+                if np.nanmax(time_series) == np.nanmin(time_series):
+                    continue
+
+                # new_x_extraction_by_window[pix] = self.forward_window_extraction_detrend_anomaly(time_series, window)
+                new_x_extraction_by_window[pix] = self.forward_window_extraction(time_series, window)
+
+            T.save_npy(new_x_extraction_by_window, outf)
+    def forward_window_extraction(self, x, window):
+        # 前窗滤波
+        # window = window-1
+        # 不改变数据长度
+
+        if window < 0:
+            raise IOError('window must be greater than 0')
+        elif window == 0:
+            return x
+        else:
+            pass
+
+        x = np.array(x)
+
+        # new_x = np.array([])
+        # plt.plot(x)
+        # plt.show()
+        new_x_extraction_by_window=[]
+        for i in range(len(x)+1):
+            if i + window >= len(x)+1:
+                continue
+            else:
+                anomaly = []
+                relative_change_list=[]
+                x_vals=[]
+                for w in range(window):
+                    x_val=(x[i + w])
+                    x_vals.append(x_val)
+                if np.isnan(np.nanmean(x_vals)):
+                    continue
+
+                # x_mean=np.nanmean(x_vals)
+
+                # for i in range(len(x_vals)):
+                #     if x_vals[0]==None:
+                #         continue
+                    # x_anomaly=(x_vals[i]-x_mean)
+                    # relative_change = (x_vals[i] - x_mean) / x_mean
+
+                    # relative_change_list.append(x_vals)
+                new_x_extraction_by_window.append(x_vals)
+        return new_x_extraction_by_window
+
+
+    def calculating_multiregression_intersensitivity(self):
+        import numpy as np
+        import statsmodels.api as sm
+        from tqdm import tqdm
+
+        # 假设这些是每个像素对应的字典，键是 pix，值是 (year, month)
+        yvar_list = ['composite_LAI_relative_change_detrend_median',
+                     'GLOBMAP_LAI_relative_change_detrend',
+                     'LAI4g_relative_change_detrend',
+                     'SNU_LAI_relative_change_detrend',
+                     'composite_LAI_relative_change_detrend_mean', ]
+
+        # 假设这些是每个像素对应的字典，键是 pix，值是 (year, month)
+        fdir = result_root + rf'\Multiregression_intersensitivity\input_obs\\'
+        for yvar in yvar_list:
+            fLAI = fdir + rf'\\{yvar}.npy'
+            f_temp = fdir + rf'\\Tmax_anomaly_detrend.npy'
+            f_precip = fdir + rf'\\Precip_sum_anomaly_detrend.npy'
+            f_VPD = fdir + rf'\\VPD_anomaly_detrend.npy'
+
+            dic_LAI = T.load_npy(fLAI)
+            dic_temp = T.load_npy(f_temp)
+            dic_precip = T.load_npy(f_precip)
+            dic_vpd = T.load_npy(f_VPD)
+
+            out_beta = {}
+
+            for pix in tqdm(dic_LAI):
+                if pix not in dic_temp or pix not in dic_precip:
+                    continue
+
+                vals_LAI = np.array(dic_LAI[pix], dtype=float)
+                vals_temp = np.array(dic_temp[pix], dtype=float)
+                vals_precip = np.array(dic_precip[pix], dtype=float)
+                vals_vpd = np.array(dic_vpd[pix], dtype=float)
+
+                # 要求二维 [n_windows, n_years_in_window]
+                if vals_LAI.ndim != 2:
+                    continue
+
+                n_windows, n_years = vals_LAI.shape
+
+                beta_p_list = []
+                beta_t_list = []
+                beta_vpd_list = []
+                p_p_list = []
+                p_t_list = []
+                p_vpd_list = []
+
+                for w in range(n_windows):
+                    y = vals_LAI[w, :]
+                    x1 = vals_precip[w, :]
+                    x2 = vals_temp[w, :]
+                    x3 = vals_vpd[w, :]
+
+                    # 有效数据检查
+                    mask = ~np.isnan(y) & ~np.isnan(x1) & ~np.isnan(x2) & ~np.isnan(x3)
+                    # print(mask.sum())
+                    if mask.sum() < 5:
+                        beta_p_list.append(np.nan)
+                        beta_t_list.append(np.nan)
+                        beta_vpd_list.append(np.nan)
+                        p_p_list.append(np.nan)
+                        p_t_list.append(np.nan)
+                        p_vpd_list.append(np.nan)
+
+                        continue
+
+                    X = np.column_stack([x1[mask], x2[mask], x3[mask]])
+                    X = sm.add_constant(X)
+                    y_valid = y[mask]
+
+                    try:
+                        model = sm.OLS(y_valid, X).fit()
+                        betas = model.params
+                        pvals = model.pvalues
+                        beta_p_list.append(betas[1])  # 降雨敏感性
+                        beta_t_list.append(betas[2])  # 温度敏感性
+                        beta_vpd_list.append(betas[3])  ## vpd 敏感性
+
+                        p_p_list.append(pvals[1])
+                        p_t_list.append(pvals[2])
+                        p_vpd_list.append(pvals[3])
+
+                    except:
+                        beta_p_list.append(np.nan)
+                        beta_t_list.append(np.nan)
+                        p_p_list.append(np.nan)
+                        p_t_list.append(np.nan)
+
+                print(len(beta_p_list))
+
+                out_beta[pix] = {
+                    'intersensitivity_precip_val': np.array(beta_p_list),
+                    'intersensitivity_precip_pval': np.array(p_p_list),
+                    'intersensitivity_temp_val': np.array(beta_t_list),
+                    'intersensitivity_temp_pval': np.array(p_t_list),
+                    'intersensitivity_vpd_val': np.array(beta_vpd_list),
+                    'intersensitivity_vpd_pval': np.array(p_vpd_list),
+
+                }
+
+            # === 保存输出 ===
+            outdir = r'D:\Project3\Result\Nov\Multiregression_intersensitivity\output_obs\\'
+            T.mk_dir(outdir, force=True)
+
+            T.save_npy(out_beta, outdir + f'{yvar}_sensitivity2.npy')
+
+
+    def trend_analysis(self):
+        fdir = result_root + r'\Multiregression_intersensitivity\output_obs\\'
+        outdir = result_root + r'\Multiregression_intersensitivity\output_obs\\trend\\'
+        T.mk_dir(outdir, force=True)
+        for f in os.listdir(fdir):
+
+            fname = f.split('.')[0]
+
+            fpath = join(fdir, f)
+            dic = T.load_npy(fpath)
+            result_dic = {}
+            pvalue_result = {}
+            for pix in dic:
+                vals = dic[pix]['intersensitivity_precip_val']
+                vals = vals * 100
+
+                slope, b, r, p_value = T.nan_line_fit(np.arange(len(vals)), vals)
+                result_dic[pix] = slope
+                pvalue_result[pix] = p_value
+            DIC_and_TIF().pix_dic_to_tif(result_dic, outdir + f'{fname}_trend.tif')
+            DIC_and_TIF().pix_dic_to_tif(pvalue_result, outdir + f'{fname}_pvalue.tif')
+
+            pass
+
+
+    def plot_time_series(self):
+        f = rf'D:\Project3\Result\Nov\Multiregression_intersensitivity\output\\multiregression_intrasensitivity.npy'
+        out_beta_dic = T.load_npy(f)
+
+        for pix in out_beta_dic:
+            beta_p = np.array(out_beta_dic[pix]['intersensitivity_precip_val'])  # 降雨敏感性
+            beta_t = np.array(out_beta_dic[pix]['intersensitivity_temp_val'])  # 温度敏感性
+
+            # 去掉异常值
+            beta_p[np.abs(beta_p) > 999] = np.nan
+            beta_t[np.abs(beta_t) > 999] = np.nan
+
+            # 绘制时间序列
+            plt.figure(figsize=(8, 4))
+            plt.plot(beta_p, marker='o', color='#1f78b4', label='β_precip (rainfall sensitivity)')
+            plt.plot(beta_t, marker='s', color='#e31a1c', label='β_temp (temperature sensitivity)')
+            plt.axhline(0, color='k', lw=1)
+            plt.xlabel('Moving window index')
+            plt.ylabel('Sensitivity coefficient')
+            plt.title(f'Intersensitivity time series at pixel {pix}')
+            plt.legend()
+            plt.tight_layout()
+            plt.show()
+
+
 class categroy:
     def __init__(self):
         pass
@@ -2442,7 +2736,8 @@ class SHAP():
 
 def main():
     # coupling_anaysis().run()
-    categroy().run()
+    Moving_window_coupling_analysis().run()
+    # categroy().run()
     # SHAP().run()
 
 
