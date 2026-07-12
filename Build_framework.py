@@ -14,7 +14,7 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'SPEI_Greening\Dataframe\\')
+                result_root +  rf'\Daymet\Dataframe\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
         self.dff = self.this_class_arr + rf'\\\Dataframe.df'
@@ -27,7 +27,7 @@ class build_dataframe():
 
         df = self.__gen_df_init(self.dff)
         # df=self.foo1(df)
-        # df=self.foo2(df)
+        df=self.foo2(df)
 
         # df=self.build_df(df)
         # df=self.build_df_monthly(df)
@@ -44,17 +44,17 @@ class build_dataframe():
         #
         # # # #
         #
-        # df=self.add_row(df)  ## use this
-        # df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
-        # # # # # # # # # # # # # # # #
-        # df=self.add_lat_lon_to_df(df)  ## use this
+        df=self.add_row(df)  ## use this
+        df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
+        # # # # # # # # # # # # # # # # #
+        df=self.add_lat_lon_to_df(df)  ## use this
         # df=self.add_continent_to_df(df)
         # df=self.add_residual_to_df(df)
 
         # # # #
         # df=self.add_rooting_depth_to_df(df)
         # #
-        # df=self.add_area_weighted_to_df(df)
+        df=self.add_area_weighted_to_df(df)
 
 
         # df=self.rename_columns(df)
@@ -259,7 +259,7 @@ class build_dataframe():
 
     def foo2(self, df):  # 新建trend
 
-        f = result_root + rf'\coupling_anaysis\maximum_corr\\max_r_summer.tif'
+        f = result_root + rf'\coupling_anaysis\spring\\3_r.tif'
         array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
         array = np.array(array, dtype=float)
         val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
@@ -285,21 +285,34 @@ class build_dataframe():
 
         return df
 
+    def add_rainfall_metrics(self,df):
+        fdir = rf'D:\Western_US_IAV\Result\Daymet\\'
+        variable_list=['frequency','intensity','maximum_dry_spell','amount']
+
+        for f in os.listdir(fdir):
+
+            variable = f.split('.')[0]
+
+            print(variable)
+
+            if not f.endswith('.npy'):
+                continue
+            val_dic = T.load_npy(fdir + f)
+            for var in variable_list:
+                vals=val_dic[var]
+
+
+
 
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Result\Terraclimate\SPEI\\'
-
+        fdir=rf'D:\Western_US_IAV\Result\detrend\MODIS_LAI\\'
 
         for f in os.listdir(fdir):
 
 
-
-
             variable= f.split('.')[0]
-
-
 
             print(variable)
 
@@ -473,8 +486,7 @@ class build_dataframe():
 
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'MODIS_LAI\trend_analysis\\'
-
+        fdir = result_root + rf'\Daymet\trend_analysis\\'
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):

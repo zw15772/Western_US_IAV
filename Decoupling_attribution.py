@@ -21,35 +21,36 @@ class coupling_anaysis:
     def __init__(self):
         pass
     def run(self):
-        # self.calculating_correlation()
-        # self.maxmum_correlation()
+        # self.calculating_correlation(
         self.heatmap()
     def calculating_correlation(self):
         ## here calculating correlation between SPEI and NDVI
         from scipy.stats import pearsonr
         import numpy as np
 
+        SPEI_dir=result_root+rf'\Terraclimate\SPEI\\'
 
-        MODIS_LAI_dir=data_root+rf'\MODIS_LAI\spring_summer_season_LAI_mean\\'
-        SPEI_dir=data_root+rf'\Terraclimate\SPEI\\'
-        MODIS_dic = T.load_npy_dir(MODIS_LAI_dir)
+        season='summer'
+        MODIS_LAI_fpath = result_root + rf'\detrend\MODIS_LAI\\{season}_LAI_detrend.npy'
+        MODIS_dic = T.load_npy(MODIS_LAI_fpath)
+
         scale_list=np.arange(3,49,3)
         for scale in scale_list:
             scale =int(scale)
-            fdir=SPEI_dir+rf'\SPEI_{scale}_NOAA\spring_summer_season_SPEI_mean\\'
-            SPEI_dic=T.load_npy_dir(fdir)
+            fpath_SPEI=SPEI_dir+rf'{season}_SPEI{scale}.npy'
+            SPEI_dic=T.load_npy(fpath_SPEI)
 
             r_dic = {}
             p_dic = {}
-            outdir=result_root+rf'\coupling_anaysis\\summer\\'
+            outdir=result_root+rf'\coupling_anaysis\\{season}\\'
             T.mk_dir(outdir, force=True)
             outf=outdir+rf'{scale}'
 
             for pix in tqdm(SPEI_dic.keys()):
                 if pix not in MODIS_dic:
                     continue
-                vals_SPEI=SPEI_dic[pix]['summer']
-                vals_MODIS=MODIS_dic[pix]['summer']
+                vals_SPEI=SPEI_dic[pix]
+                vals_MODIS=MODIS_dic[pix]
                 if len(vals_SPEI)!=22:
                     continue
                 if len(vals_MODIS)!=22:
@@ -164,9 +165,6 @@ class coupling_anaysis:
         eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
         eco_region_list.append('Western US')
 
-
-
-
         # -----------------------------------
         # Region list
         # -----------------------------------
@@ -193,14 +191,11 @@ class coupling_anaysis:
                 df_i = df[df['Ecoregion_level_II'] == eco]
 
             for s in scales:
-                r_col = f'{s}_r_spring'
+                r_col = f'{s}_r_summer'
                 p_col = f'{s}_p_spring'
                 # vals = df_i.loc[df_i[p_col] < 0.05, r_col]
                 #
                 # heatmap_df.loc[eco, s] = vals.mean()
-
-
-
                 heatmap_df.loc[eco, s] = df_i[r_col].mean()
 
         heatmap_df = heatmap_df.astype(float)
@@ -217,23 +212,177 @@ class coupling_anaysis:
             linewidths=0.3,
             vmin=-0.5,
             vmax=0.5,
-            cbar_kws={'label': 'Mean correlation spring(r)'}
+            cbar_kws={'label': 'Mean correlation summer(r)'}
         )
 
 
         plt.ylabel('')
         plt.tight_layout()
         plt.show()
+class categroy:
+    def __init__(self):
+        pass
+    def run(self):
+        self.categroy_analysis()
+        pass
+
+    def categroy_analysis(self):
+        from matplotlib.colors import ListedColormap
+        dff = result_root + rf'\coupling_anaysis\Dataframe\\Dataframe.df'
+        df = T.load_df(dff)
+        print(len(df))
+        df = self.df_clean(df)
+        season='summer'
+        conditions = [
+
+            # 1. Drying + Greening
+            (
+                    (df[f' {season}_SPEI6_trend'] < 0) &
+                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
+
+                    (df[f' {season}_LAI_trend'] > 0) &
+                    (df[f' {season}_LAI_p_value'] < 0.05)
+
+
+            ),
+
+            # 2. Drying + LAI no change
+            (
+                    (df[f' {season}_SPEI6_trend'] < 0) &
+                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
+
+                    (df[f' {season}_LAI_p_value'] >= 0.05)
+
+            ),
+
+            # 3. Drying + Browning
+            (
+                    (df[f' {season}_SPEI6_trend'] < 0) &
+                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
+
+                    (df[f' {season}_LAI_trend'] < 0) &
+                    (df[f' {season}_LAI_p_value'] < 0.05)
+
+
+            ),
+
+            # 4. wetting + Greening
+            (
+                    (df[f' {season}_SPEI6_trend'] > 0) &
+                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
+
+                    (df[f' {season}_LAI_trend'] > 0) &
+                    (df[f' {season}_LAI_p_value']< 0.05)
+
+
+            ),
+            # 5. wetting + no change
+            (
+                    (df[f' {season}_SPEI6_trend'] > 0) &
+                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
+
+
+                    (df[f' {season}_LAI_p_value'] >= 0.05)
+
+            ),
+
+            # 6. wetting+ Browning
+            (
+                    (df[f' {season}_SPEI6_trend'] > 0) &
+                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
+
+
+                    (df[f' {season}_LAI_trend'] < 0) &
+                    (df[f' {season}_LAI_p_value'] < 0.05)
+
+
+            ),
+
+            # 7 others
+
+                (
+                (df[f' {season}_SPEI6_p_value'] >= 0.05)
+
+            )
+
+        ]
+
+        choices = [1, 2, 3, 4,5,6,7]
+
+        df['Class'] = np.select(conditions, choices, default=np.nan)
+
+        df['summer_class'] = np.select(
+            conditions,
+            choices,
+            default=np.nan
+        )
+
+        spatial_dic = T.df_to_spatial_dic(df, 'summer_class')
+
+        arr = D.pix_dic_to_spatial_arr(spatial_dic)
+        outdir=result_root + rf'\coupling_anaysis\\categroy_analysis\\'
+        T.mk_dir(outdir, force=True)
+
+        D.arr_to_tif(arr, outdir + rf'summer_class.tif')
+
+
+        #
+        # cmap = ListedColormap([
+        #     'white',  # background
+        #     'firebrick',  # 1
+        #     'gold',  # 2
+        #     'forestgreen',  # 3
+        #     'steelblue' , # 4
+        #     'blue'
+        #
+        # ])
+        #
+        # plt.figure(figsize=(8, 6))
+        # plt.imshow(arr,
+        #            cmap=cmap,
+        #            vmin=0,
+        #            vmax=6,
+        #            interpolation='nearest')
+        #
+        # cbar = plt.colorbar(ticks=[1, 2, 3, 4,5,6])
+        # cbar.ax.set_yticklabels([
+        #     'drying greening',
+        #     'drying browning',
+        #     'wetting greening',
+        #     'wetting browning',
+        #     'others'
+        # ])
+        #
+        # plt.axis('off')
+        # plt.tight_layout()
+        # plt.show()
+
+
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+        return df
 
 class SHAP():
 
     def __init__(self):
-        self.y_variable = 'spring_LAI_anomaly'
+        self.y_variable = 'summer_LAI_anomaly'
 
-        self.this_class_png = result_root + rf'\SHAP\\png\\presentation\\RF_{self.y_variable}\\'
+        self.this_class_png = result_root + rf'\SHAP\\png\\RF_{self.y_variable}\\'
         T.mk_dir(self.this_class_png, force=True)
 
-        self.dff = result_root+rf'\SHAP\Dataframe\\dataframe.df'
+        self.dff = result_root+rf'\SPEI_Greening\Dataframe\\dataframe.df'
 
         self.variable_list_rt()
 
@@ -257,9 +406,9 @@ class SHAP():
         # self.show_colinear()
         # self.check_spatial_plot()
         # self.AIC_stepwise(self.dff)
-        self.pdp_shap()
+        # self.pdp_shap()
         # # # # # #
-        # self.plot_pdp_shap()
+        self.plot_pdp_shap()
         # self.plot_shaply_under_different_condition()
         # self.heatmap()
         # self.plot_bar_landcover()
@@ -421,11 +570,13 @@ class SHAP():
         self.x_variable_list = [
             #
 
-            'tmax_spring_npy_anomaly',
-            'vpd_spring_npy_anomaly',
+            'tmax_summer_npy_anomaly',
+            'vpd_summer_npy_anomaly',
+            # 'ppt_winter_npy_anomaly',
+            'ppt_summer_npy_anomaly',
 
-             'spring_SPEI6',
-            'srad_spring_npy_anomaly'
+             # 'spring_SPEI6',
+            'srad_summer_npy_anomaly'
 
 
 
@@ -598,6 +749,9 @@ class SHAP():
         eco_region_list = [ 'Western Cordillera', 'Upper Gila Mountains',
                            'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont','Western US',]
 
+        eco_region_list = [ 'Western Cordillera', 'Upper Gila Mountains',
+                           'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont', ]
+
         for eco in eco_region_list:
 
             if eco == 'Western US':
@@ -689,7 +843,7 @@ class SHAP():
 
 
             shap_values_samples = explainer(X)
-            outf_shap = join(outdir, self.y_variable +  f'{eco}_shap.npy')
+            outf_shap = join(outdir, self.y_variable +  f'_{eco}_shap.npy')
             np.save(outf_shap, shap_values_samples.values)
 
             joblib.dump(
@@ -743,134 +897,147 @@ class SHAP():
         df = T.load_df(dff)
         df = self.df_clean(df)
         df_temp, start_dic, end_dic = self.filter_percentile(df)
+        fdir=join(self.this_class_png, 'pdp_shap')
+        for f in T.listdir(fdir):
 
-        inf_shap = join(self.this_class_png, 'pdp_shap', self.y_variable + '_shap.npy')
-        shap_values = np.load(inf_shap, allow_pickle=True)
+            if not f.endswith('.npy'):
+                continue
+            print(f)
 
-
-        # print(shap_values);exit()
-        x_variable_list = self.x_variable_list
-
-
-        imp = np.abs(shap_values).mean(axis=0)
-
-        imp_dict = dict(zip(x_variable_list, imp))
-
-        # 按importance排序
-        sorted_imp = sorted(imp_dict.items(), key=lambda x: x[1], reverse=True)
-
-        x_list = [i[0] for i in sorted_imp]
-        y_list = [i[1] for i in sorted_imp]
-
-        plt.figure()
-
-        plt.barh(x_list[::-1], y_list[::-1],
-                 color='grey', alpha=0.6)
-
-        plt.xlabel("mean |SHAP value|", fontsize=12)
-        plt.title("SHAP importance")
-
-        plt.tight_layout()
-        plt.show()
-
-        # data = pd.read_pickle(
-        #     join(self.this_class_png, 'pdp_shap', self.y_variable + '.pkl')
-        # )
-        file=join(self.this_class_png, 'pdp_shap', 'shap_bundle.pkl')
-        bundle = joblib.load(file)
-        data_X = bundle["X"]  # DataFrame (n_samples, n_features)
-        shap_values = bundle["shap"]  # numpy array (n_samples, n_features)
+            inf_shap = join(fdir, f)
+            shap_values = np.load(inf_shap, allow_pickle=True)
 
 
-
-        flag = 1
-        centimeter_factor = 1 / 2.54
-        plt.figure(figsize=(18 * centimeter_factor, 14 * centimeter_factor))
-
-        for x_var in x_list:
-
-            idx = list(data_X.columns).index(x_var)
-
-            data_i = data_X[x_var].values
-            value_i = shap_values[:, idx]
-
-            df_i = pd.DataFrame({
-                x_var: data_i,
-                'shap_v': value_i
-            })
+            # print(shap_values);exit()
+            x_variable_list = self.x_variable_list
+            # pprint(shap_values)
+            # exit()
 
 
-            start = start_dic[x_var]
-            end = end_dic[x_var]
+            imp = np.abs(shap_values).mean(axis=0)
+            # imp = np.abs(shap_values)
+            # pprint(imp)
+            # exit()
 
-            bins = np.linspace(start, end, 50)
+            imp_dict = dict(zip(x_variable_list, imp))
+            # pprint(imp_dict)
+            # exit()
 
-            df_group, bins_list_str = T.df_bin(df_i, x_var, bins)
+            # 按importance排序
+            sorted_imp = sorted(imp_dict.items(), key=lambda x: x[1], reverse=True)
 
-            y_mean_list = []
-            x_mean_list = []
-            y_err_list = []
+            x_list = [i[0] for i in sorted_imp]
+            y_list = [i[1] for i in sorted_imp]
 
-            df_i_copy = df_i[(df_i[x_var] > start) & (df_i[x_var] < end)]
+            plt.figure()
 
-            scatter_x_list = df_i_copy[x_var].tolist()
-            scatter_y_list = df_i_copy['shap_v'].tolist()
+            plt.barh(x_list[::-1], y_list[::-1],
+                     color='grey', alpha=0.6)
 
-            for name, df_group_i in df_group:
+            plt.xlabel("mean |SHAP value|", fontsize=12)
+            plt.title("SHAP importance")
 
-                x_i = name[0].left
+            plt.tight_layout()
+            plt.show()
 
-                vals = df_group_i['shap_v'].tolist()
-
-                if len(vals) == 0:
-                    continue
-
-                mean = np.nanmedian(vals)
-                err = np.nanstd(vals)
-
-                y_mean_list.append(mean)
-                x_mean_list.append(x_i)
-                y_err_list.append(err)
-
-            plt.subplot(3, 4, flag)
-
-            plt.scatter(
-                scatter_x_list,
-                scatter_y_list,
-                alpha=0.2,
-                c='gray',
-                marker='.',
-                s=1,
-                zorder=-1
-            )
-
-            y_mean_list = SMOOTH().smooth_convolve(y_mean_list, window_len=11)
-
-            name_dic = {'srad_spring_npy_anomaly': 'Incoming solar radiation',
-                        'vpd_spring_npy_anomaly': 'VPD',
-                        'tmax_spring_npy_anomaly':'Tmax',
-                        'spring_SPEI6': 'SPEI6',
+            # data = pd.read_pickle(
+            #     join(self.this_class_png, 'pdp_shap', self.y_variable + '.pkl')
+            # )
+            file=join(self.this_class_png, 'pdp_shap', 'shap_bundle.pkl')
+            bundle = joblib.load(file)
+            data_X = bundle["X"]  # DataFrame (n_samples, n_features)
+            shap_values = bundle["shap"]  # numpy array (n_samples, n_features)
 
 
 
+            flag = 1
+            centimeter_factor = 1 / 2.54
+            plt.figure(figsize=(18 * centimeter_factor, 14 * centimeter_factor))
+
+            for x_var in x_list:
+
+                idx = list(data_X.columns).index(x_var)
+
+                data_i = data_X[x_var].values
+                value_i = shap_values[:, idx]
+
+                df_i = pd.DataFrame({
+                    x_var: data_i,
+                    'shap_v': value_i
+                })
 
 
-                        }
+                start = start_dic[x_var]
+                end = end_dic[x_var]
 
-            plt.plot(x_mean_list, y_mean_list, c='blue')
+                bins = np.linspace(start, end, 50)
 
-            plt.xlabel(name_dic[x_var])
+                df_group, bins_list_str = T.df_bin(df_i, x_var, bins)
 
-            flag += 1
+                y_mean_list = []
+                x_mean_list = []
+                y_err_list = []
 
-            plt.ylim(-.2,.2)
+                df_i_copy = df_i[(df_i[x_var] > start) & (df_i[x_var] < end)]
 
-        plt.suptitle(self.y_variable)
+                scatter_x_list = df_i_copy[x_var].tolist()
+                scatter_y_list = df_i_copy['shap_v'].tolist()
 
-        plt.tight_layout()
-        plt.show()
-        # plt.savefig(outf,dpi=300)
-        # plt.close()
+                for name, df_group_i in df_group:
+
+                    x_i = name[0].left
+
+                    vals = df_group_i['shap_v'].tolist()
+
+                    if len(vals) == 0:
+                        continue
+
+                    mean = np.nanmedian(vals)
+                    err = np.nanstd(vals)
+
+                    y_mean_list.append(mean)
+                    x_mean_list.append(x_i)
+                    y_err_list.append(err)
+
+                plt.subplot(2, 2, flag)
+
+                plt.scatter(
+                    scatter_x_list,
+                    scatter_y_list,
+                    alpha=0.2,
+                    c='gray',
+                    marker='.',
+                    s=1,
+                    zorder=-1
+                )
+
+                y_mean_list = SMOOTH().smooth_convolve(y_mean_list, window_len=11)
+
+                name_dic = {'srad_summer_npy_anomaly': 'Incoming solar radiation anomaly (W/m²)',
+                            'vpd_summer_npy_anomaly': 'VPD anomaly(Kpa)',
+                            'ppt_winter_npy_anomaly':'Winter_precip anomaly (mm)',
+                            'ppt_summer_npy_anomaly':'Summer_precip anomaly (mm)',
+                            'tmax_summer_npy_anomaly':'Tmax (degree)',
+                            'spring_SPEI6': 'SPEI6',
+                            }
+
+                plt.plot(x_mean_list, y_mean_list, c='blue')
+
+                plt.xlabel(name_dic[x_var])
+                plt.ylabel('Spring LAI anomaly (m2/m2)')
+
+                flag += 1
+
+                plt.ylim(-.2,.2)
+            region=f.split('.')[0]
+
+            plt.suptitle(region)
+
+            plt.tight_layout()
+
+            plt.show()
+            # plt.savefig(outf,dpi=300)
+            # plt.close()
 
     def plot_shaply_under_different_condition(self):
         ## read shaply values
@@ -2275,7 +2442,9 @@ class SHAP():
 
 def main():
     # coupling_anaysis().run()
-    SHAP().run()
+    categroy().run()
+    # SHAP().run()
+
 
 
 if __name__ == '__main__':

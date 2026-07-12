@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from lytools import *
+from matplotlib.pyplot import summer
 from rasterio.transform import from_bounds
 import xarray as xr
 from netCDF4 import Dataset
@@ -1058,9 +1059,10 @@ class Data_processing_Terraclimate:
         # self.resample()
         # self.extract_tif_from_shp()
         # self.tif_to_dic()
-        self.spring_season_LAI_mean()
+        # self.spring_season_LAI_mean()
         # self.winter_precip()
         # self.anomaly()
+        self.detrend()
         pass
     pass
 
@@ -1310,8 +1312,8 @@ class Data_processing_Terraclimate:
 
                 spring_list.append(spring_val)
                 summer_list.append(summer_val)
-            spring_result_dic[pix]=spring_list
-            summer_result_dic[pix]=summer_list
+            spring_result_dic[pix]=spring_list[1:]
+            summer_result_dic[pix]=summer_list[1:]
         outspring=outdir+rf'{var}_spring_npy'
         outsummer=outdir+rf'{var}_summer_npy'
         T.save_npy(spring_result_dic,outspring)
@@ -1361,7 +1363,6 @@ class Data_processing_Terraclimate:
 
     def anomaly(self):
 
-
         fdir = result_root + rf'\Terraclimate\climate\\'
         outdir = result_root + rf'\\anomaly\\'
         Tools().mk_dir(outdir, force=True)
@@ -1369,8 +1370,8 @@ class Data_processing_Terraclimate:
         for f in os.listdir(fdir):
             if not f.endswith('.npy'):
                 continue
-
-
+            if not 'ppt' in f:
+                continue
 
             outf = outdir + f.split('.')[0]+'_anomaly.npy'
             # if isfile(outf):
@@ -1430,6 +1431,64 @@ class Data_processing_Terraclimate:
                 ## save
             np.save(outf, zscore_dic)
 
+    def detrend(self):
+
+        fdir = result_root + rf'MODIS_LAI\MODIS_LAI\\'
+        outdir = result_root + rf'\\detrend\\MODIS_LAI\\'
+        T.mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+            if not f.endswith('.npy'):
+                continue
+
+            print(f)
+
+            outf = outdir + f.split('.')[0] + '_detrend.npy'
+            # if isfile(outf):
+            #     continue
+            # dic=T.load_npy_dir(fdir+f+'\\')
+            dic = dict(np.load(fdir + f, allow_pickle=True, ).item())
+
+            detrend_zscore_dic = {}
+
+            for pix in tqdm(dic):
+
+
+
+                r, c = pix
+                # print(len(dic[pix]))
+                time_series = dic[pix]
+                print(len(time_series))
+                # print(time_series)
+                time_series = np.array(time_series, dtype=float)
+                # plt.plot(time_series)
+                # plt.show()
+                time_series[time_series < -999] = np.nan
+                if np.isnan(np.nanmean(time_series)):
+                    continue
+                if np.std(time_series) == 0:
+                    continue
+                ##### if count of nan is more than 50%, then skip
+                if np.sum(np.isnan(time_series)) / len(time_series) > 0.5:
+                    continue
+                # mean = np.nanmean(time_series)
+                # std=np.nanstd(time_series)
+                # if std == 0:
+                #     continue
+                # delta_time_series = (time_series - mean) / std
+                # if np.isnan(time_series).any():
+                #     continue
+                time_series = T.interp_nan(time_series)
+                detrend_delta_time_series = T.detrend_vals(time_series)
+                # plt.plot(time_series)
+                # plt.plot(detrend_delta_time_series)
+                # plt.show()
+
+                detrend_zscore_dic[pix] = detrend_delta_time_series
+
+            np.save(outf, detrend_zscore_dic)
+
+
 class Trend_analysis:
     def __init__(self):
         pass
@@ -1445,8 +1504,8 @@ class Trend_analysis:
         import matplotlib.pyplot as plt
         ##each window average trend
 
-        fdir = result_root + r'\MODIS_LAI\MODIS_LAI\\'
-        outdir = result_root + r'\MODIS_LAI\\trend_analysis\\ '
+        fdir = result_root + r'\Terraclimate\climate\\'
+        outdir = result_root + r'\Terraclimate\\trend_analysis\\ '
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -1565,7 +1624,13 @@ class Data_processing_Daymet:
         # self.extract_tif_from_shp()
         # self.transform_to_blocks()
         # self.blocks_to_dict()
-        self.read_dict()
+        # self.read_dict()
+        # self.extract_spring_summer_rainfall_metrics() ## not use
+        # self.extract_spring_summer_rainfall_intensity()
+        # self.extract_spring_summer_rainfall_amount()
+        # self.extract_spring_summer_rainfall_fq()
+        # self.extract_spring_summer_rainfall_dry_spell()
+        self.trend_analysis()
 
         pass
 
@@ -1803,6 +1868,699 @@ class Data_processing_Daymet:
 
         pass
 
+    def extract_spring_summer_rainfall_metrics(self):
+        fdir = r'D:\Western_US_IAV\Data\Daymet\prcp\transform_dic'
+        spring_result = {}
+        summer_result = {}
+        for f in T.listdir(fdir):
+            # if not '05' in f:
+            #     continue
+            if not f.endswith('.npy'):
+                continue
+            fpath = join(fdir, f)
+            spatial_dict = T.load_npy(fpath)
+
+            for pix in tqdm(spatial_dict):
+
+                vals = np.array(spatial_dict[pix])
+
+                # 每年365天
+                vals = vals.reshape(-1, 365)
+
+                spring_frequency_list = []
+                spring_intensity_list = []
+                spring_amount_list = []
+                spring_dry_spell_list=[]
+
+                summer_frequency_list = []
+                summer_intensity_list = []
+                summer_amount_list = []
+                summer_dry_spell_list = []
+
+                for i in range(vals.shape[0]):
+
+                    # --------------------------
+                    # Spring (Mar-May)
+                    # --------------------------
+                    spring_vals = vals[i, 59:151]
+
+                    # 总降雨
+                    spring_amount = np.nansum(spring_vals)
+
+                    spring_dry_spell = self.longest_dry_spell(
+                        spring_vals,
+                        threshold=3
+                    )
+
+                    spring_dry_spell_list.append(spring_dry_spell)
+
+                    # 雨日 (>3 mm)
+                    spring_wet = spring_vals[spring_vals > 3]
+                    spring_frequency = len(spring_wet)
+
+                    # 雨强
+                    if spring_frequency > 0:
+                        spring_intensity = np.nanmean(spring_wet)
+                    else:
+                        spring_intensity = np.nan
+
+                    spring_amount_list.append(spring_amount)
+                    spring_frequency_list.append(spring_frequency)
+                    spring_intensity_list.append(spring_intensity)
+
+                    # --------------------------
+                    # Summer (Jul-Oct)
+                    # --------------------------
+                    summer_vals = vals[i, 181:304]
+
+                    summer_amount = np.nansum(summer_vals)
+
+                    summer_wet = summer_vals[summer_vals > 3]
+                    summer_frequency = len(summer_wet)
+                    summer_dry_spell = self.longest_dry_spell(summer_vals,threshold=3)
+
+                    if summer_frequency > 0:
+                        summer_intensity = np.nanmean(summer_wet)
+                    else:
+                        summer_intensity = np.nan
+
+                    summer_amount_list.append(summer_amount)
+                    summer_frequency_list.append(summer_frequency)
+                    summer_intensity_list.append(summer_intensity)
+                    summer_dry_spell_list.append(summer_dry_spell)
+
+                # 保存
+                spring_result[pix] = {
+                    'frequency': spring_frequency_list,
+                    'intensity': spring_intensity_list,
+                    'amount': spring_amount_list,
+                    'maximum_dry_spell': spring_dry_spell_list,
+                }
+
+                summer_result[pix] = {
+                    'frequency': summer_frequency_list,
+                    'intensity': summer_intensity_list,
+                    'amount': summer_amount_list,
+                    'maximum_dry_spell': summer_dry_spell_list,
+                }
+        outdir = result_root + rf'\Daymet\\'
+        T.mkdir(outdir,force=True)
+        outf_spring=outdir+rf'spring_rainfall_metrics.npy'
+        np.save(outf_spring,spring_result)
+        outf_summer=outdir+rf'summer_rainfall_metrics.npy'
+        np.save(outf_summer,summer_result)
+
+
+
+                # # ---------- 测试画图 ----------
+                # years = np.arange(2003, 2025)
+                #
+                # plt.figure(figsize=(10, 6))
+                #
+                # plt.subplot(411)
+                # plt.plot(years, spring_frequency_list, '-o', label='Spring')
+                # plt.plot(years, summer_frequency_list, '-o', label='Summer')
+                # plt.ylabel('Frequency')
+                # plt.legend()
+                #
+                # plt.subplot(412)
+                # plt.plot(years, spring_intensity_list, '-o', label='Spring')
+                # plt.plot(years, summer_intensity_list, '-o', label='Summer')
+                # plt.ylabel('Intensity (mm/day)')
+                #
+                # plt.subplot(413)
+                # plt.plot(years, spring_amount_list, '-o', label='Spring')
+                # plt.plot(years, summer_amount_list, '-o', label='Summer')
+                # plt.ylabel('Amount (mm)')
+                # plt.xlabel('Year')
+                #
+                # plt.subplot(414)
+                # plt.plot(years, spring_dry_spell_list, '-o', label='Spring')
+                # plt.plot(years, summer_dry_spell_list, '-o', label='Summer')
+                # plt.ylabel('Dry Spell (mm/day)')
+                # plt.xlabel('Year')
+                #
+                # plt.tight_layout()
+                # plt.show()
+
+        pass
+
+    def extract_spring_summer_rainfall_intensity(self):
+        fdir = r'D:\Western_US_IAV\Data\Daymet\prcp\transform_dic'
+        spring_result = {}
+        summer_result = {}
+        for f in T.listdir(fdir):
+            # if not '05' in f:
+            #     continue
+            if not f.endswith('.npy'):
+                continue
+            fpath = join(fdir, f)
+            spatial_dict = T.load_npy(fpath)
+
+            for pix in tqdm(spatial_dict):
+
+                vals = np.array(spatial_dict[pix])
+
+                # 每年365天
+                vals = vals.reshape(-1, 365)
+
+
+                spring_intensity_list = []
+
+
+
+                summer_intensity_list = []
+
+
+                for i in range(vals.shape[0]):
+
+                    # --------------------------
+                    # Spring (Mar-May)
+                    # --------------------------
+                    spring_vals = vals[i, 59:151]
+
+
+
+                    # 雨日 (>3 mm)
+                    spring_wet = spring_vals[spring_vals > 3]
+                    spring_frequency = len(spring_wet)
+
+                    # 雨强
+                    if spring_frequency > 0:
+                        spring_intensity = np.nanmean(spring_wet)
+                    else:
+                        spring_intensity = np.nan
+
+
+                    spring_intensity_list.append(spring_intensity)
+
+                    # --------------------------
+                    # Summer (Jul-Oct)
+                    # --------------------------
+                    summer_vals = vals[i, 181:304]
+
+
+                    summer_wet = summer_vals[summer_vals > 3]
+                    summer_frequency = len(summer_wet)
+
+
+                    if summer_frequency > 0:
+                        summer_intensity = np.nanmean(summer_wet)
+                    else:
+                        summer_intensity = np.nan
+
+
+                    summer_intensity_list.append(summer_intensity)
+
+
+                # 保存
+                spring_result[pix] = spring_intensity_list
+
+
+                summer_result[pix] = summer_intensity_list
+        outdir = result_root + rf'\Daymet\\'
+        T.mkdir(outdir,force=True)
+        outf_spring=outdir+rf'spring_rainfall_intensity.npy'
+        np.save(outf_spring,spring_result)
+        outf_summer=outdir+rf'summer_rainfall_intensity.npy'
+        np.save(outf_summer,summer_result)
+
+
+    def extract_spring_summer_rainfall_fq(self):
+        fdir = r'D:\Western_US_IAV\Data\Daymet\prcp\transform_dic'
+        spring_result = {}
+        summer_result = {}
+        for f in T.listdir(fdir):
+            # if not '05' in f:
+            #     continue
+            if not f.endswith('.npy'):
+                continue
+            fpath = join(fdir, f)
+            spatial_dict = T.load_npy(fpath)
+
+            for pix in tqdm(spatial_dict):
+
+                vals = np.array(spatial_dict[pix])
+
+                # 每年365天
+                vals = vals.reshape(-1, 365)
+
+                spring_frequency_list = []
+
+
+                summer_frequency_list = []
+
+
+                for i in range(vals.shape[0]):
+
+                    # --------------------------
+                    # Spring (Mar-May)
+                    # --------------------------
+                    spring_vals = vals[i, 59:151]
+
+
+                    # 雨日 (>3 mm)
+                    spring_wet = spring_vals[spring_vals > 3]
+                    spring_frequency = len(spring_wet)
+                    spring_frequency_list.append(spring_frequency)
+
+
+
+                    summer_vals = vals[i, 181:304]
+
+                    summer_wet = summer_vals[summer_vals > 3]
+                    summer_frequency = len(summer_wet)
+
+                    summer_frequency_list.append(summer_frequency)
+
+                # 保存
+                spring_result[pix] =spring_frequency_list
+
+
+                summer_result[pix]=summer_frequency_list
+        outdir = result_root + rf'\Daymet\\'
+        T.mkdir(outdir,force=True)
+        outf_spring=outdir+rf'spring_rainfall_fq.npy'
+        np.save(outf_spring,spring_result)
+        outf_summer=outdir+rf'summer_rainfall_fq.npy'
+        np.save(outf_summer,summer_result)
+
+    def extract_spring_summer_rainfall_amount(self):
+        fdir = r'D:\Western_US_IAV\Data\Daymet\prcp\transform_dic'
+        spring_result = {}
+        summer_result = {}
+        for f in T.listdir(fdir):
+            # if not '05' in f:
+            #     continue
+            if not f.endswith('.npy'):
+                continue
+            fpath = join(fdir, f)
+            spatial_dict = T.load_npy(fpath)
+
+            for pix in tqdm(spatial_dict):
+
+                vals = np.array(spatial_dict[pix])
+
+                # 每年365天
+                vals = vals.reshape(-1, 365)
+
+
+                spring_amount_list = []
+
+                summer_amount_list = []
+
+
+                for i in range(vals.shape[0]):
+
+                    # --------------------------
+                    # Spring (Mar-May)
+                    # --------------------------
+                    spring_vals = vals[i, 59:151]
+
+                    # 总降雨
+
+                    spring_amount = np.nansum(spring_vals[ spring_vals > 3])  # 只计算降雨量大于3mm的总降雨量
+
+
+                    spring_amount_list.append(spring_amount)
+
+
+                    # --------------------------
+                    # Summer (Jul-Oct)
+                    # --------------------------
+                    summer_vals = vals[i, 181:304]
+
+                    summer_amount = np.nansum(summer_vals[summer_vals > 3])
+
+
+                    summer_amount_list.append(summer_amount)
+
+                # 保存
+                spring_result[pix] = spring_amount_list
+
+                summer_result[pix] = summer_amount_list
+
+        outdir = result_root + rf'\Daymet\\'
+        T.mkdir(outdir,force=True)
+        outf_spring=outdir+rf'spring_rainfall_amount.npy'
+        np.save(outf_spring,spring_result)
+        outf_summer=outdir+rf'summer_rainfall_amount.npy'
+        np.save(outf_summer,summer_result)
+
+
+    def longest_dry_spell(self,vals, threshold=3):
+        """
+        vals: daily precipitation
+        threshold: rainy day threshold (mm/day)
+
+        return:
+            maximum consecutive dry days
+        """
+
+        dry = vals < threshold
+
+        max_len = 0
+        current = 0
+
+        for d in dry:
+
+            if d:
+                current += 1
+                max_len = max(max_len, current)
+            else:
+                current = 0
+
+        return max_len
+
+    def extract_spring_summer_rainfall_dry_spell(self):
+        fdir = r'D:\Western_US_IAV\Data\Daymet\prcp\transform_dic'
+        spring_result = {}
+        summer_result = {}
+        for f in T.listdir(fdir):
+            # if not '05' in f:
+            #     continue
+            if not f.endswith('.npy'):
+                continue
+            fpath = join(fdir, f)
+            spatial_dict = T.load_npy(fpath)
+
+            for pix in tqdm(spatial_dict):
+
+                vals = np.array(spatial_dict[pix])
+
+                # 每年365天
+                vals = vals.reshape(-1, 365)
+
+
+                spring_dry_spell_list=[]
+
+
+                summer_dry_spell_list = []
+
+                for i in range(vals.shape[0]):
+
+                    # --------------------------
+                    # Spring (Mar-May)
+                    # --------------------------
+                    spring_vals = vals[i, 59:151]
+
+
+                    spring_dry_spell = self.longest_dry_spell(
+                        spring_vals,
+                        threshold=3
+                    )
+
+                    spring_dry_spell_list.append(spring_dry_spell)
+
+
+
+                    # --------------------------
+                    # Summer (Jul-Oct)
+                    # --------------------------
+                    summer_vals = vals[i, 181:304]
+
+
+
+                    summer_dry_spell = self.longest_dry_spell(summer_vals,threshold=3)
+
+
+
+
+                    summer_dry_spell_list.append(summer_dry_spell)
+
+                # 保存
+                spring_result[pix] = spring_dry_spell_list
+
+                summer_result[pix] = summer_dry_spell_list
+
+        outdir = result_root + rf'\Daymet\\'
+        T.mkdir(outdir,force=True)
+        outf_spring=outdir+rf'spring_rainfall_maximum_dryspell.npy'
+        np.save(outf_spring,spring_result)
+        outf_summer=outdir+rf'summer_rainfall_maximum_dryspell.npy'
+        np.save(outf_summer,summer_result)
+
+    def trend_analysis(self):
+
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.pyplot as plt
+        ##each window average trend
+
+        fdir = result_root + r'\Daymet\\'
+        outdir = result_root + r'Daymet\\trend_analysis\\ '
+        Tools().mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+
+
+            outf = outdir + f.split('.')[0]
+            if os.path.isfile(outf + '_trend.tif'):
+                continue
+            # print(outf);exit()
+
+            if not f.endswith('.npy'):
+                continue
+            dic = np.load(fdir + f, allow_pickle=True, encoding='latin1').item()
+
+            trend_dic = {}
+            p_value_dic = {}
+            for pix in tqdm(dic):
+                r, c = pix
+
+                time_series = dic[pix]
+                print(len(time_series))
+                # plt.plot(time_series)
+                # plt.show()
+                time_series = np.array(time_series)
+                # print(len(time_series));exit()
+
+                if len(time_series) == 0:
+                    continue
+                # print(time_series)
+                ### if all valus are the same, then skip
+                # if len(set(time_series)) == 1:
+                #     continue
+                # print(time_series)
+
+                # if np.nanstd(time_series) == 0:
+                #     continue
+                try:
+
+                    # slope, intercept, r_value, p_value, std_err = stats.linregress(np.arange(len(time_series)), time_series)
+                    slope, b, r, p_value = T.nan_line_fit(np.arange(len(time_series)), time_series)
+                    # print(slope)
+
+                    trend_dic[pix] = slope
+                    p_value_dic[pix] = p_value
+                except:
+                    continue
+
+            arr_trend = D.pix_dic_to_spatial_arr(trend_dic)
+            p_value_arr = D.pix_dic_to_spatial_arr(p_value_dic)
+
+            fpath = data_root + rf'\basedata\200902.tif'
+            ll, lr, ul, ur = RasterIO_Func().get_tif_bounds(fpath)
+            print(ll, lr, ul, ur)
+
+            ax = plt.axes(projection=ccrs.PlateCarree())
+
+           # # --- 画趋势图 ---
+            im = ax.imshow(
+                arr_trend,
+                cmap='RdBu',
+                vmin=-0.01,
+                vmax=0.01,
+                extent=[-124.55, -102.04, 25.59, 49],
+                transform=ccrs.PlateCarree()
+            )
+
+            # --- 加 continent ---
+            ax.add_feature(
+                cfeature.LAND,
+                facecolor='none',  #
+                edgecolor='black',
+                linewidth=0.5,
+                zorder=2
+            )
+            ax.add_feature(cfeature.STATES, linewidth=0.3)
+
+            lon_min_box = -125
+            lon_max_box = -105
+            lat_min_box = 30
+            lat_max_box = 45
+
+            rect = mpatches.Rectangle(
+                (lon_min_box, lat_min_box),  # 左下角 (lon, lat)
+                lon_max_box - lon_min_box,  # 宽度
+                lat_max_box - lat_min_box,  # 高度
+                linewidth=1.5,
+                edgecolor='black',
+                facecolor='none',
+                transform=ccrs.PlateCarree(),  # ⭐关键
+                zorder=10
+            )
+
+            ax.add_patch(rect)
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+
+            cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+            cbar.set_label('Trend')
+
+            plt.title(f)
+            plt.show()
+
+            D.arr_to_tif(arr_trend, outf + '_trend.tif')
+            D.arr_to_tif(p_value_arr, outf + '_p_value.tif')
+
+            np.save(outf + '_trend', arr_trend)
+            np.save(outf + '_p_value', p_value_arr)
+
+
+    # def trend_analysis(self):  ## not use
+    #
+    #     import cartopy.crs as ccrs
+    #     import cartopy.feature as cfeature
+    #     import matplotlib.pyplot as plt
+    #     ##each window average trend
+    #
+    #     fdir = result_root + r'\Daymet\\'
+    #     outdir = result_root + r'\Daymet\\trend_analysis\\'
+    #     Tools().mk_dir(outdir, force=True)
+    #
+    #     for f in os.listdir(fdir):
+    #
+    #         if not f.endswith('.npy'):
+    #             continue
+    #
+    #         outf = join(outdir, f.split('.')[0])
+    #         print(outf)
+    #         # exit()
+    #
+    #         fpath = join(fdir, f)
+    #
+    #         dic = np.load(fpath, allow_pickle=True, encoding='latin1').item()
+    #
+    #         trend_dic = {}
+    #         p_value_dic = {}
+    #
+    #         # 初始化四个指标
+    #         variable_list = ['frequency', 'intensity', 'amount', 'maximum_dry_spell']
+    #
+    #         for var in variable_list:
+    #             trend_dic[var] = {}
+    #             p_value_dic[var] = {}
+    #
+    #         # ==============================
+    #         # Calculate trend
+    #         # ==============================
+    #         for pix in tqdm(dic):
+    #
+    #             for var in variable_list:
+    #
+    #                 if var not in dic[pix]:
+    #                     continue
+    #
+    #                 time_series = np.array(dic[pix][var], dtype=float)
+    #
+    #                 # 删除NaN
+    #                 mask = ~np.isnan(time_series)
+    #
+    #                 if np.sum(mask) < 10:
+    #                     continue
+    #
+    #                 x = np.arange(len(time_series))[mask]
+    #                 y = time_series[mask]
+    #
+    #                 try:
+    #                     slope, intercept, r, p = T.nan_line_fit(x, y)
+    #
+    #                     trend_dic[var][pix] = slope
+    #                     p_value_dic[var][pix] = p
+    #
+    #                 except Exception:
+    #                     continue
+    #
+    #         # ==============================
+    #         # Save tif
+    #         # ==============================
+    #         for var in variable_list:
+    #             arr_trend = D.pix_dic_to_spatial_arr(trend_dic[var])
+    #             plt.imshow(arr_trend)
+    #             plt.show()
+    #             arr_p = D.pix_dic_to_spatial_arr(p_value_dic[var])
+    #
+    #             D.arr_to_tif(
+    #                 arr_trend,
+    #                 outf + f'_{var}_trend.tif'
+    #             )
+    #
+    #             D.arr_to_tif(
+    #                 arr_p,
+    #                 outf + f'_{var}_p_value.tif'
+    #             )
+    #
+    #
+    #
+    #         fpath = data_root + rf'\basedata\200902.tif'
+    #         ll, lr, ul, ur = RasterIO_Func().get_tif_bounds(fpath)
+    #         print(ll, lr, ul, ur)
+    #
+    #         ax = plt.axes(projection=ccrs.PlateCarree())
+    #
+    #        # # --- 画趋势图 ---
+    #         im = ax.imshow(
+    #             arr_trend,
+    #             cmap='RdBu',
+    #             vmin=-0.01,
+    #             vmax=0.01,
+    #             extent=[-124.55, -102.04, 25.59, 49],
+    #             transform=ccrs.PlateCarree()
+    #         )
+    #
+    #         # --- 加 continent ---
+    #         ax.add_feature(
+    #             cfeature.LAND,
+    #             facecolor='none',  #
+    #             edgecolor='black',
+    #             linewidth=0.5,
+    #             zorder=2
+    #         )
+    #         ax.add_feature(cfeature.STATES, linewidth=0.3)
+    #
+    #         lon_min_box = -125
+    #         lon_max_box = -105
+    #         lat_min_box = 30
+    #         lat_max_box = 45
+    #
+    #         rect = mpatches.Rectangle(
+    #             (lon_min_box, lat_min_box),  # 左下角 (lon, lat)
+    #             lon_max_box - lon_min_box,  # 宽度
+    #             lat_max_box - lat_min_box,  # 高度
+    #             linewidth=1.5,
+    #             edgecolor='black',
+    #             facecolor='none',
+    #             transform=ccrs.PlateCarree(),  # ⭐关键
+    #             zorder=10
+    #         )
+    #
+    #         ax.add_patch(rect)
+    #         ax.set_xlabel('Longitude')
+    #         ax.set_ylabel('Latitude')
+    #
+    #         cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+    #         cbar.set_label('Trend')
+    #
+    #         plt.title(f)
+    #         plt.show()
+    #
+    #         D.arr_to_tif(arr_trend, outf + '_trend.tif')
+    #         D.arr_to_tif(arr_p, outf + '_p_value.tif')
+    #
+    #         np.save(outf + '_trend', arr_trend)
+    #         np.save(outf + '_p_value', arr_p)
+
 class convert_dic_to_tiff:   ### display in QGIS
     def run(self):
         self.add_nan()
@@ -1923,8 +2681,8 @@ def main():
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
     # Data_processing_Terraclimate().run()
-    # Data_processing_Daymet().run()
-    Trend_analysis().run()
+    Data_processing_Daymet().run()
+    # Trend_analysis().run()
     # general_anaysis().run()
 
      # check_data().run()

@@ -772,12 +772,13 @@ class PLOT_bar:
         self.map_height = 8.2 * centimeter_factor
         pass
     def run(self):
-        self.barplot()
+        self.barplot_percentage()
         pass
 
     def barplot(self):
         ## plot
         dff=result_root+rf'\SPEI_Greening\Dataframe\Dataframe.df'
+        season_list=['spring','summer']
         df = T.load_df(dff)
         df=self.df_clean(df)
         df_pixel = df.drop_duplicates(subset='pix')
@@ -786,72 +787,219 @@ class PLOT_bar:
         # exit()
         print(df.columns.tolist())
         print(df_pixel.columns.tolist())
-
-
-
-
-        season ='summer'
+        eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
+                           'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
 
         scale_list = np.arange(3, 49, 3)
-        lai_trend = df_pixel[f' {season}_LAI_trend'].values
-        lai_mean=np.nanmean(lai_trend)
 
-        # --------------------------
-        # SPEI
-        # --------------------------
-        spei_trend = []
+        for season in season_list:
 
-        for scale in scale_list:
-            scale = int(scale)
+            for eco in eco_region_list:
 
-            vals = df_pixel[f' {season}_SPEI{scale}_trend'].values
+                if eco == 'Western US':
+                    df_i = df.copy()
+                else:
+                    df_i = df[df['Ecoregion_level_II'] == eco]
 
-            spei_trend.append(np.nanmean(vals))
+                # LAI
+                df_lai = df_i[df_i[f' {season}_LAI_p_value'] < 0.05]
+                lai_mean = df_lai[f' {season}_LAI_trend'].mean()
 
-        # --------------------------
-        # plot
-        # --------------------------
-        plt.figure(figsize=(8, 4))
+                # SPEI
+                spei_trend = []
 
-        # LAI放左边
-        plt.bar(
-            0,
-            lai_mean,
-            width=0.8,
-            color='#CFE3CA',
-            edgecolor='gray',
-            label='MODIS LAI'
-        )
+                for scale in scale_list:
+                    df_SPEI = df_i[
+                        df_i[f' {season}_SPEI{int(scale)}_p_value'] < 0.05
+                        ]
 
-        # SPEI放右边
-        x = np.arange(2, 2 + len(scale_list))
+                    vals = df_SPEI[f' {season}_SPEI{int(scale)}_trend']
+                    spei_trend.append(vals.mean())
 
-        plt.bar(
-            x,
-            spei_trend,
-            width=0.8,
-            color='#f6BC97',
-            edgecolor='gray',
-            label='SPEI'
-        )
+                # -----------------
+                # Plot
+                # -----------------
 
-        plt.xticks(
-            [0] + list(x),
-            ['LAI'] + [str(i) for i in scale_list]
-        )
+                plt.figure(figsize=(8, 4))
 
-        plt.xlabel('SPEI timescale (months)')
-        plt.ylabel(f'{season} Trend')
+                plt.bar(
+                    0,
+                    lai_mean,
+                    width=0.8,
+                    color='#CFE3CA',
+                    edgecolor='gray',
+                    label='LAI'
+                )
 
-        plt.legend(frameon=False)
+                x = np.arange(2, 2 + len(scale_list))
 
-        plt.tight_layout()
-        plt.show()
+                plt.bar(
+                    x,
+                    spei_trend,
+                    width=0.8,
+                    color='#F6BC97',
+                    edgecolor='gray',
+                    label='SPEI'
+                )
+
+                plt.xticks(
+                    [0] + list(x),
+                    ['LAI'] + [str(i) for i in scale_list]
+                )
+
+                plt.ylabel('Trend')
+                plt.xlabel('SPEI timescale (months)')
+                ## add y=0
+                plt.axhline(0, color='black', linewidth=0.8, linestyle='--')
+                plt.title(f'{eco} - {season}')
+
+                plt.legend(frameon=False)
+                plt.tight_layout()
+                plt.show()
 
 
 
+            pass
 
-        pass
+    def barplot_percentage(self):
+        ## plot
+        dff=result_root+rf'\SPEI_Greening\Dataframe\Dataframe.df'
+        season_list=['spring','summer']
+        df = T.load_df(dff)
+        df=self.df_clean(df)
+        df_pixel = df.drop_duplicates(subset='pix')
+        # for col in df.columns:
+        #     print(col)
+        # exit()
+        print(df.columns.tolist())
+        print(df_pixel.columns.tolist())
+        eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
+                           'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
+
+        scale_list = np.arange(3, 49, 3)
+
+        for season in season_list:
+
+            for eco in eco_region_list:
+
+                if eco == 'Western US':
+                    df_i = df.copy()
+                else:
+                    df_i = df[df['Ecoregion_level_II'] == eco]
+
+                n_total = len(df_i)
+
+                lai_green = np.sum(
+                    (df_i[f' {season}_LAI_trend'] > 0) &
+                    (df_i[f' {season}_LAI_p_value'] < 0.05)
+                )
+
+                lai_brown = np.sum(
+                    (df_i[f' {season}_LAI_trend'] < 0) &
+                    (df_i[f' {season}_LAI_p_value'] < 0.05)
+                )
+
+                lai_green_pct = lai_green / n_total * 100
+                lai_brown_pct = lai_brown / n_total * 100
+
+                ####################################
+                # SPEI Drying Percentage
+                ####################################
+
+                spei_dry_pct = []
+                spei_wet_pct = []
+
+                for scale in scale_list:
+                    dry = np.sum(
+                        (df_i[f' {season}_SPEI{int(scale)}_trend'] < 0) &
+                        (df_i[f' {season}_SPEI{int(scale)}_p_value'] < 0.05)
+                    )
+
+                    wet = np.sum(
+                        (df_i[f' {season}_SPEI{int(scale)}_trend'] > 0) &
+                        (df_i[f' {season}_SPEI{int(scale)}_p_value'] < 0.05)
+                    )
+
+                    spei_dry_pct.append(dry / n_total * 100)
+                    spei_wet_pct.append(wet / n_total * 100)
+                ####################################
+                # Plot
+                ####################################
+
+                plt.figure(figsize=(6, 4))
+
+                # ------------------------
+                # LAI
+                # ------------------------
+
+                plt.bar(
+                    0,
+                    lai_green_pct,
+                    color='forestgreen',
+                    edgecolor='k',
+                    width=0.6,
+                    label='Greening'
+                )
+
+                plt.bar(
+                    0,
+                    -lai_brown_pct,
+                    color='firebrick',
+                    edgecolor='k',
+                    width=0.6,
+                    label='Browning'
+                )
+
+                # ------------------------
+                # SPEI
+                # ------------------------
+
+                x = np.arange(2, 2 + len(scale_list))
+
+                plt.bar(
+                    x,
+                    spei_wet_pct,
+                    color='#4F9DDE',
+                    edgecolor='k',
+                    width=0.6,
+                    label='Wetting'
+                )
+
+                plt.bar(
+                    x,
+                    -np.array(spei_dry_pct),
+                    color='#F4A582',
+                    edgecolor='k',
+                    width=0.6,
+                    label='Drying'
+                )
+
+                # ------------------------
+                # Format
+                # ------------------------
+
+                plt.axhline(0, color='k', linewidth=1)
+
+                plt.xticks(
+                    [0] + list(x),
+                    ['LAI'] + [str(i) for i in scale_list]
+                )
+
+                plt.ylabel('Percentage (%)')
+
+                plt.xlabel('SPEI timescale (months)')
+
+                plt.ylim(-100, 25)
+
+                plt.title(f'{eco} ({season})')
+
+                plt.legend(frameon=False, ncol=2)
+
+                plt.tight_layout()
+
+                plt.show()
+
+
     def df_clean(self, df):
         T.print_head_n(df)
         # df = df.dropna(subset=[self.y_variable])
