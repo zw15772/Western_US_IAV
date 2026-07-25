@@ -425,7 +425,7 @@ class SPEI_calculation:
         fdir_PET = data_root + r'Terraclimate\PET\dic\\'
         fdir_Precip = data_root + r'Terraclimate\Precip\dic\\'
 
-        scales = np.arange(3, 49, 3)
+        scale_list=np.arange(3,49,3)
 
         for time_scale in scales:
             time_scale = int(time_scale)
@@ -596,7 +596,7 @@ class SPEI_calculation:
         T.save_npy(new_dic, outf)
 
     def spring_season_LAI_mean(self):
-        scale_list=np.arange(3,49,3)
+        scale_list=np.arange(1,2,1)
         for scale in scale_list:
             scale=int(scale)
             fdir=data_root + f'\Terraclimate\SPEI\\SPEI_{scale}_NOAA\\dic\\'

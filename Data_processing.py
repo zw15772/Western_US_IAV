@@ -1433,8 +1433,8 @@ class Data_processing_Terraclimate:
 
     def detrend(self):
 
-        fdir = result_root + rf'MODIS_LAI\MODIS_LAI\\'
-        outdir = result_root + rf'\\detrend\\MODIS_LAI\\'
+        fdir = result_root + rf'Terraclimate\climate\\'
+        outdir = result_root + rf'\\detrend\\climate\\'
         T.mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -1505,7 +1505,7 @@ class Trend_analysis:
         ##each window average trend
 
         fdir = result_root + r'\Terraclimate\climate\\'
-        outdir = result_root + r'\Terraclimate\\trend_analysis\\ '
+        outdir = result_root + r'\Terraclimate\\climate\\trend_analysis\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -2751,8 +2751,8 @@ def main():
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
     # Data_processing_Terraclimate().run()
-    Data_processing_Daymet().run()
-    # Trend_analysis().run()
+    # Data_processing_Daymet().run()
+    Trend_analysis().run()
     # general_anaysis().run()
 
      # check_data().run()

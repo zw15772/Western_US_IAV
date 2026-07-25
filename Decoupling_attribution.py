@@ -26,7 +26,7 @@ class coupling_anaysis:
     def calculating_correlation(self):
         ## here calculating correlation between SPEI and NDVI
         from scipy.stats import pearsonr
-        import numpy as np
+
 
         SPEI_dir=result_root+rf'\Terraclimate\SPEI\\'
 
@@ -230,43 +230,25 @@ class Moving_window_coupling_analysis:
         pass
 
     def run(self):
-        self.scale_list = ['SPEI3', 'SPEI6',
-                           'SPEI12', 'SPEI36',
-                           'SPEI48']
-        season='spring'
-        # self.moving_window_extraction()  ## 1 moving window extraction
-        for scale in self.scale_list:
-                outdir=result_root + rf'\Moving_window_coupling_analysis\output\\'
+        # self.moving_window_extraction()
+        # self.calculating_corr_temporal()
+        self.calculating_corr_temporal_function2()
+        # self.calculate_optimal_scale()
+        # self.PLot_window_slices()
+        # self.trend_analysis()
 
-                T.mk_dir(outdir, force=True)
-                self.outpartial =  outdir + rf'\partial_corr_{scale}.npy'
-                self.outpartial_pvalue =  outdir + rf'\partial_corr_pvalue_{scale}.npy'
-        #
-                y_var = f'{season}_LAI_detrend.npy'
-                x_var_list = f'{season}_{scale}.npy',
-
-
-                df=self.build_df(self.fdirX,self.fdirY,x_var_list,y_var)
-                #
-                self.cal_partial_corr(df,x_var_list, )
-
-        pass
 
     def moving_window_extraction(self):
 
-
-        fdir_all =result_root+ rf'\Terraclimate\SPEI\\'
-        outdir = result_root + rf'\\moving_window_extraction\\'
+        fdir_all =result_root+ rf'\Daymet\\'
+        outdir = result_root + rf'\\Moving_window_coupling_analysis\\moving_window_extraction_10year\\'
 
         T.mk_dir(outdir, force=True)
         for f in os.listdir(fdir_all):
 
-
-
             if not f.endswith('.npy'):
                 continue
-            if not 'SPEI12' in f:
-                continue
+
 
 
             outf = outdir + f.split('.')[0] + '.npy'
@@ -279,7 +261,7 @@ class Moving_window_coupling_analysis:
             #     continue
 
             dic = T.load_npy(fdir_all+f)
-            window = 5
+            window = 10
 
             new_x_extraction_by_window = {}
             for pix in tqdm(dic):
@@ -354,41 +336,48 @@ class Moving_window_coupling_analysis:
         return new_x_extraction_by_window
 
 
-    def calculating_multiregression_intersensitivity(self):
+    def calculating_corr_temporal(self):
         import numpy as np
-        import statsmodels.api as sm
+
         from tqdm import tqdm
+        from scipy.stats import pearsonr
+        season='summer'
 
         # 假设这些是每个像素对应的字典，键是 pix，值是 (year, month)
-        yvar_list = ['composite_LAI_relative_change_detrend_median',
-                     'GLOBMAP_LAI_relative_change_detrend',
-                     'LAI4g_relative_change_detrend',
-                     'SNU_LAI_relative_change_detrend',
-                     'composite_LAI_relative_change_detrend_mean', ]
 
+        scale_list=['SPEI1','SPEI3', 'SPEI6', 'SPEI9',
+                    'SPEI12','SPEI15','SPEI18','SPEI21','SPEI24', 'SPEI27',
+                    'SPEI36', 'SPEI30','SPEI33',
+                    'SPEI48',
+                    ]
         # 假设这些是每个像素对应的字典，键是 pix，值是 (year, month)
-        fdir = result_root + rf'\Multiregression_intersensitivity\input_obs\\'
-        for yvar in yvar_list:
-            fLAI = fdir + rf'\\{yvar}.npy'
-            f_temp = fdir + rf'\\Tmax_anomaly_detrend.npy'
-            f_precip = fdir + rf'\\Precip_sum_anomaly_detrend.npy'
-            f_VPD = fdir + rf'\\VPD_anomaly_detrend.npy'
+        fdir = result_root + rf'Moving_window_coupling_analysis\moving_window_extraction_10year\\'
+
+        out_corr = {}
+        out_p_value = {}
+        for scale in scale_list:
+            fLAI = fdir + rf'\\{season}_LAI_detrend.npy'
+            f_SPEI = fdir + rf'\\{season}_{scale}.npy'
 
             dic_LAI = T.load_npy(fLAI)
-            dic_temp = T.load_npy(f_temp)
-            dic_precip = T.load_npy(f_precip)
-            dic_vpd = T.load_npy(f_VPD)
+            dic_SPEI = T.load_npy(f_SPEI)
+            outdir = result_root + r'\Moving_window_coupling_analysis\output\\10year\\'
+            T.mk_dir(outdir, force=True)
 
-            out_beta = {}
+            outcorr= outdir + rf'partial_corr_{scale}_{season}.npy'
+            outpvalue= outdir + rf'partial_pvalue_{scale}_{season}.npy'
+            if isfile(outcorr) and isfile(outpvalue):
+                continue
+
+
 
             for pix in tqdm(dic_LAI):
-                if pix not in dic_temp or pix not in dic_precip:
+                if pix not in dic_SPEI:
                     continue
 
                 vals_LAI = np.array(dic_LAI[pix], dtype=float)
-                vals_temp = np.array(dic_temp[pix], dtype=float)
-                vals_precip = np.array(dic_precip[pix], dtype=float)
-                vals_vpd = np.array(dic_vpd[pix], dtype=float)
+                vals_SPEI = np.array(dic_SPEI[pix], dtype=float)
+
 
                 # 要求二维 [n_windows, n_years_in_window]
                 if vals_LAI.ndim != 2:
@@ -396,122 +385,651 @@ class Moving_window_coupling_analysis:
 
                 n_windows, n_years = vals_LAI.shape
 
-                beta_p_list = []
-                beta_t_list = []
-                beta_vpd_list = []
-                p_p_list = []
-                p_t_list = []
-                p_vpd_list = []
+                beta_SPEI_list = []
+
+                p_SPEI_list = []
 
                 for w in range(n_windows):
                     y = vals_LAI[w, :]
-                    x1 = vals_precip[w, :]
-                    x2 = vals_temp[w, :]
-                    x3 = vals_vpd[w, :]
+                    x1 = vals_SPEI[w, :]
 
                     # 有效数据检查
-                    mask = ~np.isnan(y) & ~np.isnan(x1) & ~np.isnan(x2) & ~np.isnan(x3)
-                    # print(mask.sum())
-                    if mask.sum() < 5:
-                        beta_p_list.append(np.nan)
-                        beta_t_list.append(np.nan)
-                        beta_vpd_list.append(np.nan)
-                        p_p_list.append(np.nan)
-                        p_t_list.append(np.nan)
-                        p_vpd_list.append(np.nan)
+                    if len(y) !=10 or len(x1) !=10:
+
+                        beta_SPEI_list.append(np.nan)
+
+                        p_SPEI_list.append(np.nan)
+
 
                         continue
 
-                    X = np.column_stack([x1[mask], x2[mask], x3[mask]])
-                    X = sm.add_constant(X)
-                    y_valid = y[mask]
+
+
 
                     try:
-                        model = sm.OLS(y_valid, X).fit()
-                        betas = model.params
-                        pvals = model.pvalues
-                        beta_p_list.append(betas[1])  # 降雨敏感性
-                        beta_t_list.append(betas[2])  # 温度敏感性
-                        beta_vpd_list.append(betas[3])  ## vpd 敏感性
+                        r, p = pearsonr(x1, y)
 
-                        p_p_list.append(pvals[1])
-                        p_t_list.append(pvals[2])
-                        p_vpd_list.append(pvals[3])
+                        beta_SPEI_list.append(r)
+                        p_SPEI_list.append(p)
 
                     except:
-                        beta_p_list.append(np.nan)
-                        beta_t_list.append(np.nan)
-                        p_p_list.append(np.nan)
-                        p_t_list.append(np.nan)
+                        beta_SPEI_list.append(np.nan)
+                        p_SPEI_list.append(np.nan)
 
-                print(len(beta_p_list))
 
-                out_beta[pix] = {
-                    'intersensitivity_precip_val': np.array(beta_p_list),
-                    'intersensitivity_precip_pval': np.array(p_p_list),
-                    'intersensitivity_temp_val': np.array(beta_t_list),
-                    'intersensitivity_temp_pval': np.array(p_t_list),
-                    'intersensitivity_vpd_val': np.array(beta_vpd_list),
-                    'intersensitivity_vpd_pval': np.array(p_vpd_list),
+                # plt.plot(beta_SPEI_list)
+                # plt.show()
 
-                }
+
+                out_corr[pix] = beta_SPEI_list
+                out_p_value[pix] = p_SPEI_list
 
             # === 保存输出 ===
-            outdir = r'D:\Project3\Result\Nov\Multiregression_intersensitivity\output_obs\\'
+            outdir = result_root + r'\Moving_window_coupling_analysis\output\\'
             T.mk_dir(outdir, force=True)
 
-            T.save_npy(out_beta, outdir + f'{yvar}_sensitivity2.npy')
+            T.save_npy(out_corr, outdir + rf'partial_corr_{scale}_{season}.npy')
+            T.save_npy(out_p_value, outdir + rf'partial_p_{scale}_{season}.npy')
+
+    def calculating_corr_temporal_function2(self):
+        import numpy as np
+
+        from tqdm import tqdm
+
+        season = 'summer'
+
+
+        fdir = result_root + r'\Moving_window_coupling_analysis\moving_window_extraction_10year\\'
+
+        fLAI = fdir + rf'{season}_LAI_detrend.npy'
+
+        file_dic = {
+            'ppt': fdir + rf'{season}_rainfall_amount.npy',
+            'intensity': fdir + rf'{season}_rainfall_intensity.npy',
+            'temp': fdir + rf'tmax_{season}_npy_detrend.npy',
+            # 'vpd': fdir + rf'vpd_{season}_detrend.npy',
+            'rad': fdir + rf'srad_{season}_npy_detrend.npy',
+        }
+
+        dic_LAI = T.load_npy(fLAI)
+
+        dic_var = {}
+
+        for var in file_dic:
+            dic_var[var] = T.load_npy(file_dic[var])
+
+
+
+        outdir = result_root + r'\Moving_window_coupling_analysis\output\10year\\'
+        T.mk_dir(outdir, force=True)
+
+        ############################################
+        # 保存结果
+        ############################################
+
+        var_list = list(file_dic.keys())
+
+        result_corr = {v: {} for v in var_list}
+        result_p = {v: {} for v in var_list}
+
+        ############################################
+        # 每个pixel
+        ############################################
+
+        for pix in tqdm(dic_LAI):
+
+            if any(pix not in dic_var[v] for v in var_list):
+                continue
+
+            beta_dic = {v: [] for v in var_list}
+            p_dic = {v: [] for v in var_list}
+
+            ########################################
+            # moving window
+            ########################################
+            vals_LAI = np.array(dic_LAI[pix], dtype=float)
+
+            if vals_LAI.ndim != 2:
+                continue
+
+            n_windows, n_years = vals_LAI.shape
+
+            skip = False
+            var_arrays = {}
+
+            for var in var_list:
+
+                arr = np.array(dic_var[var][pix], dtype=float)
+
+                if arr.ndim != 2:
+                    skip = True
+                    break
+
+                if arr.shape != vals_LAI.shape:
+                    print(f'{pix} {var}: {arr.shape} != {vals_LAI.shape}')
+                    skip = True
+                    break
+
+                var_arrays[var] = arr
+
+            if skip:
+                continue
+
+            for w in range(n_windows):
+
+                data = {
+                    'LAI': vals_LAI[w, :]
+                }
+
+                for var in var_list:
+                    # print(var, np.array(dic_var[var][pix]).shape)
+                    data[var] = np.array(dic_var[var][pix], dtype=float)[w, :]
+
+                df_corr = pd.DataFrame(data).dropna()
+
+                ####################################
+                # 数据太少
+                ####################################
+
+                if len(df_corr) < 6:
+
+                    for var in var_list:
+                        beta_dic[var].append(np.nan)
+                        p_dic[var].append(np.nan)
+
+                    continue
+
+                ####################################
+                # 每个变量计算偏相关
+                ####################################
+
+                for var in var_list:
+
+                    covar = [v for v in var_list if v != var]
+
+                    try:
+
+                        res = pg.partial_corr(
+                            data=df_corr,
+                            x=var,
+                            y='LAI',
+                            covar=covar,
+                            method='pearson'
+                        )
+
+                        beta_dic[var].append(res['r'].iloc[0])
+                        p_dic[var].append(res['p_val'].iloc[0])
+
+                    except Exception as e:
+                        # print('ncc')
+                        # print(e)
+
+                        beta_dic[var].append(np.nan)
+                        p_dic[var].append(np.nan)
+
+            ########################################
+            # 保存pixel结果
+            ########################################
+
+            for var in var_list:
+                result_corr[var][pix] = beta_dic[var]
+                result_p[var][pix] = p_dic[var]
+                # print(var)
+                # print(len(result_corr[var][pix]))
+                # print(len(result_p[var][pix]))
+
+        ############################################
+        # 输出
+        ############################################
+
+        for var in var_list:
+            T.save_npy(
+                result_corr[var],
+                outdir + rf'partial_corr_{var}_{season}.npy'
+            )
+
+            T.save_npy(
+                result_p[var],
+                outdir + rf'partial_p_{var}_{season}.npy'
+            )
+
+
+
+    def calculate_optimal_scale(self):
+
+        import numpy as np
+        from tqdm import tqdm
+
+        season = 'summer'
+
+        scale_list = [1,3, 6,9, 12,15, 18,21, 24, 27, 30,33, 36, 48]
+
+        outdir = result_root + r'\Moving_window_coupling_analysis\output\\10year\\'
+
+        ############################################
+        # 读取所有scale的correlation
+        ############################################
+
+        corr_dic = {}
+
+        for scale in scale_list:
+            f = outdir + rf'partial_corr_SPEI{scale}_{season}.npy'
+
+            corr_dic[scale] = T.load_npy(f)
+
+        ############################################
+        # 所有pixel
+        ############################################
+
+        pix_list = list(corr_dic[3].keys())
+
+        optimal_scale_dic = {}
+        optimal_corr_dic = {}
+
+        for pix in tqdm(pix_list):
+
+            ########################################
+            # shape=(n_scale,n_window)
+            ########################################
+
+            corr_matrix = []
+
+            for scale in scale_list:
+
+                if pix not in corr_dic[scale]:
+                    continue
+
+                corr_matrix.append(corr_dic[scale][pix])
+
+            corr_matrix = np.array(corr_matrix, dtype=float)
+
+            if corr_matrix.ndim != 2:
+                continue
+
+            n_scale, n_window = corr_matrix.shape
+
+            optimal_scale_list = []
+            optimal_corr_list = []
+
+            ########################################
+            # 每一个window寻找最佳scale
+            ########################################
+
+            for w in range(n_window):
+
+                corr = corr_matrix[:, w]
+
+                if np.all(np.isnan(corr)):
+                    optimal_scale_list.append(np.nan)
+                    optimal_corr_list.append(np.nan)
+                    continue
+
+                ########################################
+                # 最大绝对值相关
+                ########################################
+
+                # idx = np.nanargmax(np.abs(corr))
+                idx = np.nanargmax(corr)
+
+                optimal_scale_list.append(scale_list[idx])
+
+                optimal_corr_list.append(corr[idx])
+
+            optimal_scale_dic[pix] = optimal_scale_list
+            optimal_corr_dic[pix] = optimal_corr_list
+
+        ############################################
+        # Save
+        ############################################
+
+
+        T.save_npy(
+            optimal_scale_dic,
+            outdir + rf'optimal_scale_{season}.npy'
+        )
+
+        T.save_npy(
+            optimal_corr_dic,
+            outdir + rf'optimal_corr_{season}.npy'
+        )
+
 
 
     def trend_analysis(self):
-        fdir = result_root + r'\Multiregression_intersensitivity\output_obs\\'
-        outdir = result_root + r'\Multiregression_intersensitivity\output_obs\\trend\\'
+        fdir = result_root + r'\Moving_window_coupling_analysis\output\10year\\'
+        outdir = result_root + r'\Moving_window_coupling_analysis\output\\10year\\trend\\'
         T.mk_dir(outdir, force=True)
         for f in os.listdir(fdir):
 
             fname = f.split('.')[0]
+
 
             fpath = join(fdir, f)
             dic = T.load_npy(fpath)
             result_dic = {}
             pvalue_result = {}
             for pix in dic:
-                vals = dic[pix]['intersensitivity_precip_val']
-                vals = vals * 100
+                vals = dic[pix]
+                vals = vals
 
                 slope, b, r, p_value = T.nan_line_fit(np.arange(len(vals)), vals)
                 result_dic[pix] = slope
                 pvalue_result[pix] = p_value
-            DIC_and_TIF().pix_dic_to_tif(result_dic, outdir + f'{fname}_trend.tif')
-            DIC_and_TIF().pix_dic_to_tif(pvalue_result, outdir + f'{fname}_pvalue.tif')
+            D.pix_dic_to_tif(result_dic, outdir + f'{fname}_trend.tif')
+            D.pix_dic_to_tif(pvalue_result, outdir + f'{fname}_pvalue.tif')
 
             pass
 
+    def PLot_window_slices(self):
 
-    def plot_time_series(self):
-        f = rf'D:\Project3\Result\Nov\Multiregression_intersensitivity\output\\multiregression_intrasensitivity.npy'
-        out_beta_dic = T.load_npy(f)
+        fdir = result_root + r'\Moving_window_coupling_analysis\output\\'
+        outdir = result_root + r'\Moving_window_coupling_analysis\moving_window_extraction_5year_slice\\'
+        T.mk_dir(outdir, force=True)
+        window_size=18
+        for f in os.listdir(fdir):
 
-        for pix in out_beta_dic:
-            beta_p = np.array(out_beta_dic[pix]['intersensitivity_precip_val'])  # 降雨敏感性
-            beta_t = np.array(out_beta_dic[pix]['intersensitivity_temp_val'])  # 温度敏感性
+            fname = f.split('.')[0]
+            if  'optimal' in fname:
+                continue
+            if 'spring' in fname:
+                continue
 
-            # 去掉异常值
-            beta_p[np.abs(beta_p) > 999] = np.nan
-            beta_t[np.abs(beta_t) > 999] = np.nan
+            fpath = join(fdir, f)
+            dic = T.load_npy(fpath)
+            result_dic = {}
+            pvalue_result = {}
+            for w in range(window_size):
+                for pix in dic:
+                    vals = dic[pix][w]
+                    vals = vals
 
-            # 绘制时间序列
-            plt.figure(figsize=(8, 4))
-            plt.plot(beta_p, marker='o', color='#1f78b4', label='β_precip (rainfall sensitivity)')
-            plt.plot(beta_t, marker='s', color='#e31a1c', label='β_temp (temperature sensitivity)')
-            plt.axhline(0, color='k', lw=1)
-            plt.xlabel('Moving window index')
-            plt.ylabel('Sensitivity coefficient')
-            plt.title(f'Intersensitivity time series at pixel {pix}')
-            plt.legend()
-            plt.tight_layout()
-            plt.show()
+                    result_dic[pix] = vals
+                D.pix_dic_to_tif(result_dic, outdir + f'{fname}_corr_{w}.tif')
+                D.pix_dic_to_tif(pvalue_result, outdir + f'{fname}_pvalue_{w}.tif')
+            pass
 
+
+
+
+
+
+class PLOT_temporal_change_corr:
+    def __init__(self):
+        self.map_width = 13 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+        pass
+    def run(self):
+
+        # self.plot_SPEI_time_series()
+        self.heatmap()
+
+
+        pass
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+
+        return df
+
+
+    def plot_SPEI_time_series(self):
+        df = T.load_df(
+            result_root + rf'\Moving_window_coupling_analysis\Dataframe\Dataframe_10year.df')
+
+
+        df = self.df_clean(df)
+
+
+        eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
+        eco_region_list.append('Western US')
+
+        eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
+                           'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
+        season='summer'
+        variable_list = [f'optimal_corr_summer']
+
+
+
+        dic_label = {f'partial_corr_SPEI48_{season}': 'SPEI48',
+                     f'partial_corr_SPEI24_{season}': 'SPEI24',
+                     f'partial_corr_SPEI36_{season}': 'SPEI36',
+                     f'partial_corr_SPEI3_{season}': 'SPEI3',
+                     f'partial_corr_SPEI12_{season}': 'SPEI12',
+                     f'partial_corr_SPEI6_{season}': 'SPEI6',
+                     f'optimal_corr_summer': 'Optimal scale'
+                     }
+
+        result_dic = {}
+
+        for eco in eco_region_list:
+
+            if eco == 'Western US':
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            for var in variable_list:
+
+                mean_dic = {}
+                std_dic = {}
+
+                for year in sorted(df_i['year'].unique()):
+
+                    df_year = df_i[df_i['year'] == year]
+
+                    vals = df_year[var].values.astype(float)
+                    weight = df_year['area_weight'].values.astype(float)
+
+                    mask = np.isfinite(vals)
+
+                    vals = vals[mask]
+                    weight = weight[mask]
+
+                    if len(vals) == 0:
+                        mean_dic[year] = np.nan
+                        std_dic[year] = np.nan
+                        continue
+
+                    ##########################
+                    # weighted mean
+                    ##########################
+
+                    weighted_mean = np.sum(vals * weight) / np.sum(weight)
+
+                    ##########################
+                    # weighted std
+                    ##########################
+
+                    weighted_var = np.sum(
+                        weight * (vals - weighted_mean) ** 2
+                    ) / np.sum(weight)
+
+                    weighted_std = np.sqrt(weighted_var)
+
+                    mean_dic[year] = weighted_mean
+                    std_dic[year] = weighted_std
+
+                result_dic[f'{eco}_{dic_label[var]}'] = mean_dic
+                result_dic[f'{eco}_{dic_label[var]}_std'] = std_dic
+
+        df_new = pd.DataFrame(result_dic)
+        df_new.index.name = 'year'
+        df_new = df_new.reset_index()
+
+        fig, axes = plt.subplots(2, 3, figsize=(13, 8), sharex=True, sharey=True)
+
+        axes = axes.flatten()
+
+        for i, eco in enumerate(eco_region_list):
+
+            ax = axes[i]
+
+            for var in variable_list:
+                label = dic_label[var]
+
+                ax.plot(
+                    df_new['year'],
+                    df_new[f'{eco}_{label}'],
+                    lw=2,
+                    marker='o',
+                    markersize=3,
+                    label=label
+                )
+
+                # 如果想画标准差
+                # std = df_new[f'{eco}_{label}_std']
+                # ax.fill_between(
+                #     df_new['year'],
+                #     df_new[f'{eco}_{label}']-std,
+                #     df_new[f'{eco}_{label}']+std,
+                #     alpha=0.2
+                # )
+
+            ax.set_title(eco, fontsize=11)
+
+            ax.axhline(0, ls='--', color='gray', lw=1)
+
+            ax.set_ylim(-1, 1)
+
+            ax.set_xlabel('Moving window')
+            ax.set_ylabel('Correlation')
+
+        handles, labels = axes[0].get_legend_handles_labels()
+
+        fig.legend(
+            handles,
+            labels,
+            loc='upper center',
+            ncol=len(variable_list),
+            frameon=False
+        )
+
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+        plt.show()
+
+    def heatmap(self):
+
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        dff = result_root + r'\Moving_window_coupling_analysis\Dataframe\Dataframe_10year.df'
+        df = T.load_df(dff)
+
+        eco_region_list = [
+            'Western US',
+            'Western Cordillera',
+            'Upper Gila Mountains',
+            'Warm Desert',
+            'Cold Desert',
+            'Western Sierra Madre Piedmont'
+        ]
+
+        # scale_list = [1, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 48]
+        scale_list = [  'partial_corr_intensity_summer',
+                          'partial_corr_ppt_summer',
+                          'partial_corr_temp_summer',
+                          'partial_corr_rad_summer']
+
+        label_dic={'partial_corr_intensity_summer':'Rainfall intensity',
+                  'partial_corr_ppt_summer':'Rainfall amount',
+                  'partial_corr_temp_summer':'Temp',
+                  'partial_corr_rad_summer':'PAR'}
+
+
+        season = 'summer'
+
+        fig, axes = plt.subplots(
+            2,
+            3,
+            figsize=(8, 4),
+            sharex=True,
+            sharey=True
+        )
+
+        axes = axes.flatten()
+
+        for i, eco in enumerate(eco_region_list):
+
+            ax = axes[i]
+
+            if eco == 'Western US':
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            years = sorted(df_i['year'].unique())
+
+            heatmap = []
+
+            for scale in scale_list:
+
+                col_corr = scale
+                # optimal=f'optimal_corr_summer'
+                # col_p = f'partial_p_SPEI{scale}_{season}'
+
+
+                corr_list = []
+
+                for year in years:
+
+                    # 先筛年份
+                    df_year = df_i[df_i['year'] == year]
+
+                    # 再筛显著
+                    # df_year = df_year[df_year[col_p] < 0.05]
+
+                    vals = np.array(df_year[col_corr], dtype=float)
+                    weight = np.array(df_year['area_weight'], dtype=float)
+
+                    mask = np.isfinite(vals)
+
+                    if np.sum(mask) == 0:
+                        corr_list.append(np.nan)
+                        continue
+
+                    weighted_mean = np.sum(vals[mask] * weight[mask]) / np.sum(weight[mask])
+
+                    corr_list.append(weighted_mean)
+
+                heatmap.append(corr_list)
+
+            heatmap = np.array(heatmap)
+
+            sns.heatmap(
+                heatmap[::-1],
+                ax=ax,
+                cmap='Spectral',
+                center=0,
+                vmin=-.8,
+                vmax=.8,
+                xticklabels=years,
+                yticklabels=[label_dic[scale] for scale in scale_list][::-1],
+                cbar=(i == 5),
+                cbar_kws={'label': 'Pearson r'}
+            )
+
+            ax.set_title(eco)
+
+            ax.set_xlabel('Moving window')
+
+            ax.set_ylabel('')
+
+        plt.tight_layout()
+
+        plt.show()
 
 class categroy:
     def __init__(self):
@@ -527,12 +1045,13 @@ class categroy:
         print(len(df))
         df = self.df_clean(df)
         season='summer'
+        scale=6
         conditions = [
 
             # 1. Drying + Greening
             (
-                    (df[f' {season}_SPEI6_trend'] < 0) &
-                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
+                    (df[f' {season}_SPEI{scale}_trend'] < 0) &
+                    (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
 
                     (df[f' {season}_LAI_trend'] > 0) &
                     (df[f' {season}_LAI_p_value'] < 0.05)
@@ -542,8 +1061,8 @@ class categroy:
 
             # 2. Drying + LAI no change
             (
-                    (df[f' {season}_SPEI6_trend'] < 0) &
-                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
+                    (df[f' {season}_SPEI{scale}_trend'] < 0) &
+                    (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
 
                     (df[f' {season}_LAI_p_value'] >= 0.05)
 
@@ -551,8 +1070,8 @@ class categroy:
 
             # 3. Drying + Browning
             (
-                    (df[f' {season}_SPEI6_trend'] < 0) &
-                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
+                    (df[f' {season}_SPEI{scale}_trend'] < 0) &
+                    (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
 
                     (df[f' {season}_LAI_trend'] < 0) &
                     (df[f' {season}_LAI_p_value'] < 0.05)
@@ -562,8 +1081,8 @@ class categroy:
 
             # 4. wetting + Greening
             (
-                    (df[f' {season}_SPEI6_trend'] > 0) &
-                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
+                    (df[f' {season}_SPEI{scale}_trend'] > 0) &
+                    (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
 
                     (df[f' {season}_LAI_trend'] > 0) &
                     (df[f' {season}_LAI_p_value']< 0.05)
@@ -572,8 +1091,8 @@ class categroy:
             ),
             # 5. wetting + no change
             (
-                    (df[f' {season}_SPEI6_trend'] > 0) &
-                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
+                    (df[f' {season}_SPEI{scale}_trend'] > 0) &
+                    (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
 
 
                     (df[f' {season}_LAI_p_value'] >= 0.05)
@@ -582,9 +1101,8 @@ class categroy:
 
             # 6. wetting+ Browning
             (
-                    (df[f' {season}_SPEI6_trend'] > 0) &
-                    (df[f' {season}_SPEI6_p_value'] < 0.05) &
-
+                    (df[f' {season}_SPEI{scale}_trend'] > 0) &
+                    (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
 
                     (df[f' {season}_LAI_trend'] < 0) &
                     (df[f' {season}_LAI_p_value'] < 0.05)
@@ -595,7 +1113,7 @@ class categroy:
             # 7 others
 
                 (
-                (df[f' {season}_SPEI6_p_value'] >= 0.05)
+                (df[f' {season}_SPEI{scale}_p_value'] >= 0.05)
 
             )
 
@@ -617,7 +1135,7 @@ class categroy:
         outdir=result_root + rf'\coupling_anaysis\\categroy_analysis\\'
         T.mk_dir(outdir, force=True)
 
-        D.arr_to_tif(arr, outdir + rf'summer_class.tif')
+        D.arr_to_tif(arr, outdir + rf'summer_class_{scale}.tif')
 
 
         #
@@ -671,7 +1189,7 @@ class categroy:
 class SHAP():
 
     def __init__(self):
-        self.y_variable = 'summer_LAI_anomaly'
+        self.y_variable = 'summer_LAI_trend'
 
         self.this_class_png = result_root + rf'\SHAP\\png\\RF_{self.y_variable}\\'
         T.mk_dir(self.this_class_png, force=True)
@@ -864,13 +1382,13 @@ class SHAP():
         self.x_variable_list = [
             #
 
-            'tmax_summer_npy_anomaly',
-            'vpd_summer_npy_anomaly',
-            # 'ppt_winter_npy_anomaly',
-            'ppt_summer_npy_anomaly',
+            'summer_rainfall_amount_trend',
+            'tmax_summer_npy_trend',
+
+            'summer_rainfall_intensity_trend',
 
              # 'spring_SPEI6',
-            'srad_summer_npy_anomaly'
+            'srad_summer_npy_trend'
 
 
 
@@ -1003,6 +1521,7 @@ class SHAP():
         df = df[df['lon'] < -105]
         df = df[df['lat'] > 30]
         df = df[df['lat'] < 45]
+        df=df[df['summer_class_6']!=7]
 
         # eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
         #                    'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
@@ -1040,11 +1559,11 @@ class SHAP():
         df = T.load_df(dff)
         df = self.df_clean(df)
 
-        eco_region_list = [ 'Western Cordillera', 'Upper Gila Mountains',
-                           'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont','Western US',]
+
 
         eco_region_list = [ 'Western Cordillera', 'Upper Gila Mountains',
                            'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont', ]
+        eco_region_list = ['Western US',   ]
 
         for eco in eco_region_list:
 
@@ -1307,12 +1826,14 @@ class SHAP():
 
                 y_mean_list = SMOOTH().smooth_convolve(y_mean_list, window_len=11)
 
-                name_dic = {'srad_summer_npy_anomaly': 'Incoming solar radiation anomaly (W/m²)',
-                            'vpd_summer_npy_anomaly': 'VPD anomaly(Kpa)',
+                name_dic = {'srad_summer_npy_trend': 'Incoming solar radiation trend (W/m²)',
+                            'vpd_summer_npy_trend': 'VPD trend(Kpa)',
                             'ppt_winter_npy_anomaly':'Winter_precip anomaly (mm)',
                             'ppt_summer_npy_anomaly':'Summer_precip anomaly (mm)',
-                            'tmax_summer_npy_anomaly':'Tmax (degree)',
-                            'spring_SPEI6': 'SPEI6',
+                            'tmax_summer_npy_trend':'Tmax trend(degree)',
+                            'summer_rainfall_amount_trend': 'Rainfall amount trend',
+                'summer_rainfall_intensity_trend': 'Rainfall intensity trend'
+
                             }
 
                 plt.plot(x_mean_list, y_mean_list, c='blue')
@@ -1322,7 +1843,7 @@ class SHAP():
 
                 flag += 1
 
-                plt.ylim(-.2,.2)
+                plt.ylim(-.01,.01)
             region=f.split('.')[0]
 
             plt.suptitle(region)
@@ -2734,11 +3255,32 @@ class SHAP():
         plt.ylim(0.6, 1.2)
         plt.show()
 
+def check_data():
+    fdir=result_root+rf'\Moving_window_coupling_analysis\output\10year\\'
+    result_dic={}
+    for f in T.listdir(fdir):
+        if not f.endswith('.npy'):
+            continue
+        print(f)
+        spatial_dic=T.load_npy(join(fdir,f))
+        for pix in spatial_dic:
+            vals=spatial_dic[pix]
+            result_dic[pix]=len(vals)
+        array=D.pix_dic_to_spatial_arr(result_dic)
+        plt.imshow(array, cmap='Spectral', interpolation='nearest')
+        plt.title(f)
+        plt.show()
+
+
+    pass
+
 def main():
     # coupling_anaysis().run()
-    Moving_window_coupling_analysis().run()
+    # Moving_window_coupling_analysis().run()
+    # PLOT_temporal_change_corr().run()
+    # check_data()
     # categroy().run()
-    # SHAP().run()
+    SHAP().run()
 
 
 
