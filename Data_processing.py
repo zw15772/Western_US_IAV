@@ -1062,7 +1062,8 @@ class Data_processing_Terraclimate:
         # self.spring_season_LAI_mean()
         # self.winter_precip()
         # self.anomaly()
-        self.detrend()
+        # self.detrend()
+
         pass
     pass
 
@@ -1433,8 +1434,8 @@ class Data_processing_Terraclimate:
 
     def detrend(self):
 
-        fdir = result_root + rf'Terraclimate\climate\\'
-        outdir = result_root + rf'\\detrend\\climate\\'
+        fdir = result_root + rf'\Terraclimate\climate\\'
+        outdir = result_root + rf'\\Terraclimate\\detrend\\climate\\'
         T.mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -1488,6 +1489,113 @@ class Data_processing_Terraclimate:
 
             np.save(outf, detrend_zscore_dic)
 
+
+class calculating_mean_CV:
+    def __init__(self):
+        pass
+    def run(self):
+        # self.calculating_mean_terrclimate()
+        # self.calculating_mean_LAI()
+        # self.calculating_CV()
+        self.calculating_annual_mean()
+
+    def calculating_mean_terrclimate(self):
+        fdir = result_root + rf'\Terraclimate\climate\\'
+        outdir = result_root + rf'\\calculating_mean\\'
+        Tools().mk_dir(outdir, force=True)
+        for f in os.listdir(fdir):
+            result_dic = {}
+            if not f.endswith('.npy'):
+                continue
+            spatial_dic = T.load_npy(fdir + f)
+            for pix in tqdm(spatial_dic):
+                vals = spatial_dic[pix]
+                mean_value = np.nanmean(vals)
+                result_dic[pix] = mean_value
+            outf = outdir + f.split('.')[0] + '_mean.npy'
+            T.save_npy(result_dic,outf)
+
+
+        pass
+
+    def calculating_mean_LAI(self):
+        fdir = result_root + rf'\MODIS_LAI\MODIS_LAI\\'
+        outdir = result_root + rf'\\calculating_mean\\'
+        Tools().mk_dir(outdir, force=True)
+        for f in os.listdir(fdir):
+            result_dic = {}
+            if not f.endswith('.npy'):
+                continue
+            spatial_dic = T.load_npy(fdir + f)
+            for pix in tqdm(spatial_dic):
+                vals = spatial_dic[pix]
+                mean_value = np.nanmean(vals)
+                result_dic[pix] = mean_value
+            outf = outdir + f.split('.')[0] + '_mean.npy'
+            T.save_npy(result_dic, outf)
+
+        pass
+    def calculating_CV(self):
+        fdir=result_root + rf'\detrend\climate\\'
+        outdir = result_root + rf'\calculating_CV\\'
+        Tools().mk_dir(outdir, force=True)
+        for f in os.listdir(fdir):
+            if not 'tmax' in f:
+                continue
+            result_dic = {}
+            if not f.endswith('.npy'):
+                continue
+            dic= T.load_npy(fdir + f)
+            for pix in tqdm(dic):
+                vals = dic[pix]
+                mean_value = np.nanmean(vals)
+                std_value=np.nanstd(vals)
+                result_dic[pix] = std_value/mean_value*100
+            outf = outdir + f.split('.')[0] + '_CV.npy'
+            T.save_npy(result_dic, outf)
+
+
+        pass
+
+    def calculating_annual_mean(self):
+        fdir_tmax=data_root + rf'\Terraclimate\tmax\dic\\'
+        fdir_tmin=data_root + rf'\Terraclimate\tmin\dic\\'
+
+        outdir = result_root + rf'\calculating_annual_mean\\'
+        Tools().mk_dir(outdir, force=True)
+        tmax_dic=T.load_npy_dir(fdir_tmax)
+        tmin_dic=T.load_npy_dir(fdir_tmin)
+        result_dic={}
+        for pix in tqdm(tmin_dic):
+            if not pix in tmax_dic:
+                continue
+            tmax_vals=tmax_dic[pix]
+            if np.isnan(np.nanmax(tmax_vals)):
+                continue
+            tmin_vals=tmin_dic[pix]
+            tmax_reshape=np.reshape(tmax_vals,(-1,12))
+            tmax_annual_mean=np.nanmean(tmax_reshape,axis=1)
+            tmin_reshape=np.reshape(tmin_vals,(-1,12))
+            tmin_annual_mean=np.nanmean(tmin_reshape,axis=1)
+
+
+            tmean=(tmax_annual_mean+tmin_annual_mean)/2
+            # plt.plot(tmax_annual_mean, 'r')
+            # plt.plot(tmin_annual_mean, 'b')
+            # plt.plot(tmean,'g')
+            # plt.show()
+            result_dic[pix]=tmean
+        T.save_npy(result_dic,outdir+'tmean.npy')
+
+
+
+
+
+
+
+
+
+        pass
 
 class Trend_analysis:
     def __init__(self):
@@ -2751,8 +2859,9 @@ def main():
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
     # Data_processing_Terraclimate().run()
+    calculating_mean_CV().run()
     # Data_processing_Daymet().run()
-    Trend_analysis().run()
+    # Trend_analysis().run()
     # general_anaysis().run()
 
      # check_data().run()

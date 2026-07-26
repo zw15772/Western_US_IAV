@@ -1030,7 +1030,7 @@ class PLOT_SPEI():
         df = T.load_df(dff)
 
         df = self.df_clean(df)
-        scale=3
+        scale=6
 
         year_list = list(range(2003, 2025))
         result_dic = {}
@@ -1698,7 +1698,7 @@ class PLOT_Daymet:
     def __init__(self):
         pass
     def run(self):
-        self.plot_violin()
+        self.plot_barplot()
         pass
     def df_clean(self, df):
         T.print_head_n(df)
@@ -1716,7 +1716,7 @@ class PLOT_Daymet:
         return df
 
 
-    def plot_violin(self):
+    def plot_barplot(self):
         dff = result_root + rf'\Daymet\Dataframe\Dataframe.df'
         df = T.load_df(dff)
         df = self.df_clean(df)
@@ -1725,25 +1725,32 @@ class PLOT_Daymet:
             'intensity',
             'maximum_dryspell',
             'fq',
-            'amount'
+            'amount',
+
         ]
 
+        variable_list = [
+            'vpd',
 
-        eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
-                           'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
+
+        ]
+
+        # eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
+        #                    'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
+
+        eco_region_list = [1,2,3]
 
         df_plot = pd.DataFrame()
         season='summer'
 
         for eco in eco_region_list:
 
-            if eco == 'Western US':
-                df_i = df.copy()
-            else:
-                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            df_i = df[df['summer_class_3'] == eco]
 
             for variable in variable_list:
-                col = f'{season}_rainfall_{variable}_zscore_trend'
+                # col = f'{season}_rainfall_{variable}_trend'
+                col = f'{variable}_{season}_npy_trend'
 
                 tmp = pd.DataFrame({
                     'Region': eco,

@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'\SPEI_Greening\Dataframe\\')
+                result_root +  rf'SHAp\Dataframe\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'\\\Dataframe_detrend.df'
+        self.dff = self.this_class_arr + rf'\\\Dataframe.df'
 
 
         pass
@@ -37,10 +37,10 @@ class build_dataframe():
 
         # df = self.add_detrend_zscore_to_df(df)
 
-        # df=self.add_trend_to_df(df)
+        df=self.add_trend_to_df(df)
         # # df=self.add_phenology_type_to_df(df)
         #
-        df=self.add_categroy_to_df(df)
+        # df=self.add_categroy_to_df(df)
         #
         # # # #
         #
@@ -262,7 +262,7 @@ class build_dataframe():
 
     def foo2(self, df):  # 新建trend
 
-        f = result_root + rf'\coupling_anaysis\spring\\3_r.tif'
+        f = result_root + rf'\MODIS_LAI\trend_analysis\\summer_LAI_trend.tif'
         array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
         array = np.array(array, dtype=float)
         val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
@@ -493,15 +493,14 @@ class build_dataframe():
 
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\Daymet\trend_analysis\\'
+        fdir = result_root + rf'Daymet\trend_analysis\\'
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
                 continue
             if not 'summer' in f:
                 continue
-            if not 'intensity' in f:
-                continue
+
 
             variable = (f.split('.')[0])
             print(variable)

@@ -1039,100 +1039,62 @@ class categroy:
         pass
 
     def categroy_analysis(self):
+        import numpy as np
         from matplotlib.colors import ListedColormap
+
         dff = result_root + rf'\coupling_anaysis\Dataframe\\Dataframe.df'
         df = T.load_df(dff)
         print(len(df))
         df = self.df_clean(df)
-        season='summer'
-        scale=6
+        for col in df.columns:
+            print(col)
+
+        season = 'summer'
+        scale = 9
+
+        # 重新梳理后的条件列表（核心聚焦于干旱加剧下的生态响应）
         conditions = [
-
-            # 1. Drying + Greening
+            # 1. Drying + Greening (干旱加剧但显著变绿)
             (
                     (df[f' {season}_SPEI{scale}_trend'] < 0) &
                     (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
-
                     (df[f' {season}_LAI_trend'] > 0) &
                     (df[f' {season}_LAI_p_value'] < 0.05)
-
-
             ),
 
-            # 2. Drying + LAI no change
+            # 2. Drying + LAI no change (干旱加剧但无显著变化 - 核心悖论区)
             (
                     (df[f' {season}_SPEI{scale}_trend'] < 0) &
                     (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
-
                     (df[f' {season}_LAI_p_value'] >= 0.05)
-
             ),
 
-            # 3. Drying + Browning
+            # 3. Drying + Browning (干旱加剧且显著变黄/退化)
             (
                     (df[f' {season}_SPEI{scale}_trend'] < 0) &
                     (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
-
                     (df[f' {season}_LAI_trend'] < 0) &
                     (df[f' {season}_LAI_p_value'] < 0.05)
-
-
             ),
 
-            # 4. wetting + Greening
+            # 4. Wetting overall (气候变湿区域作为整体对照)
             (
                     (df[f' {season}_SPEI{scale}_trend'] > 0) &
-                    (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
-
-                    (df[f' {season}_LAI_trend'] > 0) &
-                    (df[f' {season}_LAI_p_value']< 0.05)
-
-
-            ),
-            # 5. wetting + no change
-            (
-                    (df[f' {season}_SPEI{scale}_trend'] > 0) &
-                    (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
-
-
-                    (df[f' {season}_LAI_p_value'] >= 0.05)
-
-            ),
-
-            # 6. wetting+ Browning
-            (
-                    (df[f' {season}_SPEI{scale}_trend'] > 0) &
-                    (df[f' {season}_SPEI{scale}_p_value'] < 0.05) &
-
-                    (df[f' {season}_LAI_trend'] < 0) &
-                    (df[f' {season}_LAI_p_value'] < 0.05)
-
-
-            ),
-
-            # 7 others
-
-                (
-                (df[f' {season}_SPEI{scale}_p_value'] >= 0.05)
-
+                    (df[f' {season}_SPEI{scale}_p_value'] < 0.05)
             )
-
         ]
 
-        choices = [1, 2, 3, 4,5,6,7]
+        # 对应的数值标签 (1, 2, 3 对应干旱的三种命运，4 对应变湿区)
+        choices = [1, 2, 3, 4]
 
+        # 赋值（如果你不需要重复写 Class 和 summer_class，可以只保留其中一个）
         df['Class'] = np.select(conditions, choices, default=np.nan)
-
-        df['summer_class'] = np.select(
-            conditions,
-            choices,
-            default=np.nan
-        )
+        df['summer_class'] = np.select(conditions, choices, default=np.nan)
 
         spatial_dic = T.df_to_spatial_dic(df, 'summer_class')
-
         arr = D.pix_dic_to_spatial_arr(spatial_dic)
-        outdir=result_root + rf'\coupling_anaysis\\categroy_analysis\\'
+
+        outdir = result_root + rf'\coupling_anaysis\\categroy_analysis\\'
         T.mk_dir(outdir, force=True)
 
         D.arr_to_tif(arr, outdir + rf'summer_class_{scale}.tif')
@@ -3255,6 +3217,139 @@ class SHAP():
         plt.ylim(0.6, 1.2)
         plt.show()
 
+class SHAP_classsification:
+    def __init__(self):
+        self.feature_cols = [
+            'vpd_summer_npy_trend', 'tmax_summer_npy_trend', 'soil_summer_npy_trend',
+            'srad_summer_npy_trend', 'summer_rainfall_intensity_trend',
+        ]
+        self.dff = result_root + rf'\SHAP\Dataframe\\Dataframe.df'
+
+        pass
+    def run(self):
+        self.show_colinear()
+        # self.SHAP_classsification_function()
+        # self.pdp_plot()
+        pass
+
+    def show_colinear(self, ):
+        dff = self.dff
+        df = T.load_df(dff)
+        vars_list = self.feature_cols
+        df = df[vars_list]
+        ## add LAI4g_raw
+        # df['composite_LAI_beta_mean_zscore'] = T.load_df(dff)['composite_LAI_beta_mean_zscore']
+        ## plot heat map to show the colinear variables
+
+
+
+        import seaborn as sns
+        fig, ax=plt.subplots(figsize=(8, 5))
+        ### x tick label rotate
+        vmin = -1
+        vmax = 1
+
+
+        sns.heatmap(df.corr(), annot=True, fmt=".2f",vmin=vmin, vmax=vmax,cmap="RdBu")
+        plt.xticks(rotation=45)
+        ax.set_yticks(np.arange(len(vars_list)) + 0.5)
+        # ax.set_yticklabels(model_list[::-1], rotation=0, va='center')
+        ##get name from dic
+        # ax.set_yticklabels([name_dic[x] for x in vars_list], rotation=0, va='center')
+        #
+        # ax.set_xticks(np.arange(len(vars_list)) + 0.5)
+        # ax.set_xticklabels([name_dic[x] for x in vars_list], rotation=45, ha='center')
+        # ax.set_aspect('equal')
+
+        plt.tight_layout()
+        plt.show()
+
+    def SHAP_classsification_function(self):
+
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.model_selection import train_test_split
+        from sklearn.metrics import classification_report, confusion_matrix
+        import pandas as pd
+        import joblib  # 用于保存模型
+
+        dff=result_root+rf'\SHAP\Dataframe\\Dataframe.df'
+        df=T.load_df(dff)
+        feature_cols = [
+            'vpd_summer_npy_trend', 'tmax_summer_npy_trend', 'soil_summer_npy_trend',
+            'srad_summer_npy_trend', 'summer_rainfall_intensity_trend',
+        ]
+        model_df = df[feature_cols + ['summer_class_3']].dropna()
+
+        X = model_df[feature_cols]
+        y = model_df['summer_class_3']
+
+        # 划分训练集和测试集
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+
+        # 初始化随机森林分类器
+        rf_clf = RandomForestClassifier(n_estimators=150, max_depth=12, random_state=42, n_jobs=-1)
+        rf_clf.fit(X_train, y_train)
+
+        # 评估模型准确率
+        y_pred = rf_clf.predict(X_test)
+        print(classification_report(y_test, y_pred))
+
+        # 提取特征重要性（Feature Importance）
+        importances = pd.Series(rf_clf.feature_importances_, index=feature_cols).sort_values(ascending=False)
+
+        plt.figure(figsize=(8, 6))
+        importances.plot(kind='barh', color='teal', edgecolor='black')
+
+        plt.xlabel('Importance Score', fontsize=10)
+        plt.ylabel('Environmental Features', fontsize=10)
+        plt.grid(axis='x', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+        plt.show()
+
+        # 【核心：保存训练好的模型到本地】
+        outdir=result_root+rf'\SHAP\output\\'
+        T.mk_dir(outdir, force=True)
+        model_filename = join(outdir, 'rf_classifier_model.pkl')
+        joblib.dump(rf_clf, model_filename)
+
+
+    def pdp_plot(self):
+        import joblib  #
+        from sklearn.inspection import PartialDependenceDisplay
+        pkl_path=result_root+rf'\SHAP\output\\rf_classifier_model.pkl'
+
+        dff = result_root + rf'\SHAP\Dataframe\\Dataframe.df'
+        df = T.load_df(dff)
+        feature_cols = [
+            'vpd_summer_npy_trend', 'tmax_summer_npy_trend', 'soil_summer_npy_trend',
+            'srad_summer_npy_trend', 'summer_rainfall_intensity_trend',
+        ]
+        X_data = df[feature_cols].dropna()
+
+
+        rf_clf = joblib.load(pkl_path)
+
+        features_to_plot = ['vpd_summer_npy_trend', 'tmax_summer_npy_trend',
+                            'soil_summer_npy_trend','srad_summer_npy_trend']
+
+        # 3. 画出多分类的 PDP 概率响应曲线
+        fig, ax = plt.subplots(figsize=(15, 5), ncols=len(features_to_plot))
+
+        # target 参数可以指定你想看哪几个类别，或者让它把多分类的各类别曲线都画出来
+        display = PartialDependenceDisplay.from_estimator(
+            estimator=rf_clf,
+            X=X_data,
+            target=2.0,
+            features=features_to_plot,
+            kind='average',  # 画平均趋势线
+            ax=ax,
+            response_method='predict_proba'  # 画预测概率
+        )
+
+        plt.suptitle("Probability Response Curves by Ecological Class", fontsize=14, fontweight='bold', y=1.05)
+        plt.tight_layout()
+        plt.show()
+
 def check_data():
     fdir=result_root+rf'\Moving_window_coupling_analysis\output\10year\\'
     result_dic={}
@@ -3273,6 +3368,12 @@ def check_data():
 
 
     pass
+class Prepare_datasets_for_RF:
+    def __init__(self):
+        pass
+    def run(self):
+        pass
+
 
 def main():
     # coupling_anaysis().run()
@@ -3280,7 +3381,8 @@ def main():
     # PLOT_temporal_change_corr().run()
     # check_data()
     # categroy().run()
-    SHAP().run()
+    # SHAP().run()
+    SHAP_classsification().run()
 
 
 
