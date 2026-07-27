@@ -1494,16 +1494,18 @@ class calculating_mean_CV:
     def __init__(self):
         pass
     def run(self):
-        # self.calculating_mean_terrclimate()
+        self.calculating_mean_terrclimate()
         # self.calculating_mean_LAI()
         # self.calculating_CV()
-        self.calculating_annual_mean()
+        # self.calculating_annual_mean()
 
     def calculating_mean_terrclimate(self):
         fdir = result_root + rf'\Terraclimate\climate\\'
         outdir = result_root + rf'\\calculating_mean\\'
         Tools().mk_dir(outdir, force=True)
         for f in os.listdir(fdir):
+            if not 'tmean' in f:
+                continue
             result_dic = {}
             if not f.endswith('.npy'):
                 continue
@@ -1561,7 +1563,7 @@ class calculating_mean_CV:
         fdir_tmax=data_root + rf'\Terraclimate\tmax\dic\\'
         fdir_tmin=data_root + rf'\Terraclimate\tmin\dic\\'
 
-        outdir = result_root + rf'\calculating_annual_mean\\'
+        outdir = data_root + rf'\Terraclimate\\tmean\\dic\\'
         Tools().mk_dir(outdir, force=True)
         tmax_dic=T.load_npy_dir(fdir_tmax)
         tmin_dic=T.load_npy_dir(fdir_tmin)
@@ -1585,7 +1587,7 @@ class calculating_mean_CV:
             # plt.plot(tmean,'g')
             # plt.show()
             result_dic[pix]=tmean
-        T.save_npy(result_dic,outdir+'tmean.npy')
+        T.save_npy(result_dic,outdir+'dic.npy')
 
 
 
@@ -1617,6 +1619,8 @@ class Trend_analysis:
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
+            if not 'winter' in f:
+                continue
 
 
             outf = outdir + f.split('.')[0]
@@ -2738,7 +2742,58 @@ class Data_processing_Daymet:
     #
     #         np.save(outf + '_trend', arr_trend)
     #         np.save(outf + '_p_value', arr_p)
+class Data_processing_ERA5land:
 
+    def __init__(self):
+        pass
+
+    def run(self):
+        # self.resample()
+        self.extract_tif_from_shp()
+
+        pass
+
+    def resample(self):
+        fdir=join(data_root, 'SWE',  'tiff_unify')
+        outdir=join(data_root, 'SWE',  'resample')
+        T.mk_dir(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            if not f.endswith('.tif'):
+                continue
+            fpath=join(fdir, f)
+            outf=join(outdir, f)
+            dataset = gdal.Open(fpath)
+
+
+            try:
+                gdal.Warp(outf, dataset, xRes=0.05, yRes=0.05, dstSRS='EPSG:4326')
+            # 如果不想使用默认的最近邻重采样方法，那么就在Warp函数里面增加resampleAlg参数，指定要使用的重采样方法，例如下面一行指定了重采样方法为双线性重采样：
+            # gdal.Warp("resampletif.tif", dataset, width=newCols, height=newRows, resampleAlg=gdalconst.GRIORA_Bilinear)
+            except Exception as e:
+                pass
+
+    def extract_tif_from_shp(self):
+        shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
+        fdir=join(data_root, 'SWE',  'resample')
+        outdir=join(data_root, 'SWE',  'extract_tif')
+        T.mk_dir(outdir,force=True)
+        for f in tqdm(os.listdir(fdir)):
+
+            if not f.endswith('.tif'):
+                continue
+            fpath=join(fdir,f)
+            outf=join(outdir,f)
+            if isfile(outf):
+                continue
+
+            ToRaster().clip_array(fpath, outf,shp_f)
+
+
+        pass
+
+
+
+    pass
 class convert_dic_to_tiff:   ### display in QGIS
     def run(self):
         self.add_nan()
@@ -2859,8 +2914,9 @@ def main():
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
     # Data_processing_Terraclimate().run()
-    calculating_mean_CV().run()
+    # calculating_mean_CV().run()
     # Data_processing_Daymet().run()
+    Data_processing_ERA5land().run()
     # Trend_analysis().run()
     # general_anaysis().run()
 

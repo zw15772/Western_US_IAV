@@ -38,6 +38,7 @@ class build_dataframe():
         # df = self.add_detrend_zscore_to_df(df)
 
         df=self.add_trend_to_df(df)
+        # df=self.add_mean_to_df(df)
         # # df=self.add_phenology_type_to_df(df)
         #
         # df=self.add_categroy_to_df(df)
@@ -493,12 +494,12 @@ class build_dataframe():
 
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'Daymet\trend_analysis\\'
+        fdir = result_root + rf'\Terraclimate\climate\trend_analysis\\'
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
                 continue
-            if not 'summer' in f:
+            if not 'winter' in f:
                 continue
 
 
@@ -546,6 +547,61 @@ class build_dataframe():
 
 
         return df
+
+    def add_mean_to_df(self, df):
+        fdir = result_root + rf'\calculating_mean\\'
+
+        for f in os.listdir(fdir):
+
+            if not 'tmean' in f:
+                continue
+
+
+            variable = (f.split('.')[0])
+            print(variable)
+
+
+            # if 'sensitivity' in variable:
+            #     fname = variable
+            # else:
+            #     fname = f'composite_{variable}'
+            # print(fname)
+
+
+
+            # array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fdir + f)
+            # array = np.array(array, dtype=float)
+            #
+            # val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
+
+            # val_array = np.load(fdir + f)
+            val_dic=T.load_npy(fdir+f)
+
+            # val_dic = DIC_and_TIF().spatial_arr_to_dic(val_array)
+            f_name = f.split('.')[0]
+            print(f_name)
+
+            val_list = []
+            for i, row in tqdm(df.iterrows(), total=len(df)):
+                pix = row['pix']
+                if not pix in val_dic:
+                    val_list.append(np.nan)
+                    continue
+                val = val_dic[pix]
+                if val < -9999:
+                    val_list.append(np.nan)
+                    continue
+                if val > 9999:
+                    val_list.append(np.nan)
+                    continue
+                val_list.append(val)
+
+
+            df[f'{f_name}'] = val_list
+
+
+        return df
+
 
 
 

@@ -1156,7 +1156,7 @@ class SHAP():
         self.this_class_png = result_root + rf'\SHAP\\png\\RF_{self.y_variable}\\'
         T.mk_dir(self.this_class_png, force=True)
 
-        self.dff = result_root+rf'\SPEI_Greening\Dataframe\\dataframe.df'
+        self.dff = result_root+rf'\SHAP\Dataframe\dataframe.df'
 
         self.variable_list_rt()
 
@@ -1180,7 +1180,7 @@ class SHAP():
         # self.show_colinear()
         # self.check_spatial_plot()
         # self.AIC_stepwise(self.dff)
-        # self.pdp_shap()
+        self.pdp_shap()
         # # # # # #
         self.plot_pdp_shap()
         # self.plot_shaply_under_different_condition()
@@ -1342,16 +1342,10 @@ class SHAP():
     def variable_list_rt(self):
 
         self.x_variable_list = [
-            #
 
-            'summer_rainfall_amount_trend',
-            'tmax_summer_npy_trend',
-
-            'summer_rainfall_intensity_trend',
-
-             # 'spring_SPEI6',
-            'srad_summer_npy_trend'
-
+            'tmax_summer_npy_trend', 'soil_summer_npy_trend',
+            'srad_summer_npy_trend', 'summer_rainfall_intensity_trend',
+            'tmean_mean',  'ppt_winter_npy_trend'
 
 
 
@@ -1483,7 +1477,7 @@ class SHAP():
         df = df[df['lon'] < -105]
         df = df[df['lat'] > 30]
         df = df[df['lat'] < 45]
-        df=df[df['summer_class_6']!=7]
+        df = df[df["summer_class_3"].isin([1, 2, 3])]
 
         # eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
         #                    'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
@@ -1774,7 +1768,7 @@ class SHAP():
                     x_mean_list.append(x_i)
                     y_err_list.append(err)
 
-                plt.subplot(2, 2, flag)
+                plt.subplot(3, 3, flag)
 
                 plt.scatter(
                     scatter_x_list,
@@ -1789,12 +1783,16 @@ class SHAP():
                 y_mean_list = SMOOTH().smooth_convolve(y_mean_list, window_len=11)
 
                 name_dic = {'srad_summer_npy_trend': 'Incoming solar radiation trend (W/m²)',
-                            'vpd_summer_npy_trend': 'VPD trend(Kpa)',
+                            'soil_summer_npy_trend': 'Soil moisture trend(Kpa)',
                             'ppt_winter_npy_anomaly':'Winter_precip anomaly (mm)',
                             'ppt_summer_npy_anomaly':'Summer_precip anomaly (mm)',
                             'tmax_summer_npy_trend':'Tmax trend(degree)',
                             'summer_rainfall_amount_trend': 'Rainfall amount trend',
-                'summer_rainfall_intensity_trend': 'Rainfall intensity trend'
+                'summer_rainfall_intensity_trend': 'Rainfall intensity trend',
+                            'ppt_winter_npy_mean':'Winter_precip mean',
+                            'ppt_winter_npy_trend':'Winter_precip trend',
+                            'tmean_mean':'MAT'
+
 
                             }
 
@@ -3220,16 +3218,17 @@ class SHAP():
 class SHAP_classsification:
     def __init__(self):
         self.feature_cols = [
-            'vpd_summer_npy_trend', 'tmax_summer_npy_trend', 'soil_summer_npy_trend',
+             'tmax_summer_npy_trend', 'soil_summer_npy_trend',
             'srad_summer_npy_trend', 'summer_rainfall_intensity_trend',
+            'tmean_mean','ppt_winter_npy_mean', 'ppt_winter_npy_trend'
         ]
         self.dff = result_root + rf'\SHAP\Dataframe\\Dataframe.df'
 
         pass
     def run(self):
-        self.show_colinear()
-        # self.SHAP_classsification_function()
-        # self.pdp_plot()
+        # self.show_colinear()
+        self.SHAP_classsification_function()
+        self.pdp_plot()
         pass
 
     def show_colinear(self, ):
@@ -3274,10 +3273,7 @@ class SHAP_classsification:
 
         dff=result_root+rf'\SHAP\Dataframe\\Dataframe.df'
         df=T.load_df(dff)
-        feature_cols = [
-            'vpd_summer_npy_trend', 'tmax_summer_npy_trend', 'soil_summer_npy_trend',
-            'srad_summer_npy_trend', 'summer_rainfall_intensity_trend',
-        ]
+        feature_cols = self.feature_cols
         model_df = df[feature_cols + ['summer_class_3']].dropna()
 
         X = model_df[feature_cols]
@@ -3320,17 +3316,13 @@ class SHAP_classsification:
 
         dff = result_root + rf'\SHAP\Dataframe\\Dataframe.df'
         df = T.load_df(dff)
-        feature_cols = [
-            'vpd_summer_npy_trend', 'tmax_summer_npy_trend', 'soil_summer_npy_trend',
-            'srad_summer_npy_trend', 'summer_rainfall_intensity_trend',
-        ]
+        feature_cols =self.feature_cols
         X_data = df[feature_cols].dropna()
 
 
         rf_clf = joblib.load(pkl_path)
 
-        features_to_plot = ['vpd_summer_npy_trend', 'tmax_summer_npy_trend',
-                            'soil_summer_npy_trend','srad_summer_npy_trend']
+        features_to_plot = self.feature_cols
 
         # 3. 画出多分类的 PDP 概率响应曲线
         fig, ax = plt.subplots(figsize=(15, 5), ncols=len(features_to_plot))
@@ -3381,8 +3373,8 @@ def main():
     # PLOT_temporal_change_corr().run()
     # check_data()
     # categroy().run()
-    # SHAP().run()
-    SHAP_classsification().run()
+    SHAP().run()
+    # SHAP_classsification().run()
 
 
 
