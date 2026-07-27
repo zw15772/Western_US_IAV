@@ -1342,10 +1342,13 @@ class SHAP():
     def variable_list_rt(self):
 
         self.x_variable_list = [
+            'SM_L4_summer_npy_trend','SM_L1_summer_npy_trend',
 
-            'tmax_summer_npy_trend', 'soil_summer_npy_trend',
-            'srad_summer_npy_trend', 'summer_rainfall_intensity_trend',
-            'tmean_mean',  'ppt_winter_npy_trend'
+
+            'tmax_summer_npy_trend',
+           'summer_rainfall_intensity_trend',
+            'tmean_mean', 'ppt_winter_npy_trend',
+            'soil_summer_npy_trend'
 
 
 
@@ -1791,7 +1794,10 @@ class SHAP():
                 'summer_rainfall_intensity_trend': 'Rainfall intensity trend',
                             'ppt_winter_npy_mean':'Winter_precip mean',
                             'ppt_winter_npy_trend':'Winter_precip trend',
-                            'tmean_mean':'MAT'
+                            'tmean_mean':'MAT',
+                            'SWE_winter_npy_trend':'Winter SWE trend',
+                            'SM_L1_summer_npy_trend':'Surface SM trend',
+                            'SM_L4_summer_npy_trend':'Root zone SM trend',
 
 
                             }

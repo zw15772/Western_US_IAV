@@ -14,7 +14,7 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'SHAp\Dataframe\\')
+                result_root +  rf'SHAP\Dataframe\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
         self.dff = self.this_class_arr + rf'\\\Dataframe.df'
@@ -494,12 +494,10 @@ class build_dataframe():
 
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\Terraclimate\climate\trend_analysis\\'
+        fdir = result_root + rf'\SWE\trend_analysis\\'
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
-                continue
-            if not 'winter' in f:
                 continue
 
 

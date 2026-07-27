@@ -1206,7 +1206,8 @@ class Data_processing_Terraclimate:
         outdir = join(data_root, 'TerraClimate', 'ppt', 'dic')
         T.mk_dir(outdir, force=True)
 
-        year_list = list(range(2002, 2025))
+        year_list = list(range(2002, 2025)) ##
+        # 一般是2003 开始只有ppt是2002 因为要考虑冬天
         # 作为筛选条件
 
         all_array = []  #### so important  it should be go with T.mk_dic
@@ -1614,13 +1615,12 @@ class Trend_analysis:
         import matplotlib.pyplot as plt
         ##each window average trend
 
-        fdir = result_root + r'\Terraclimate\climate\\'
-        outdir = result_root + r'\Terraclimate\\climate\\trend_analysis\\'
+        fdir = result_root + r'\SWE\\'
+        outdir = result_root + r'\SWE\\trend_analysis\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
-            if not 'winter' in f:
-                continue
+
 
 
             outf = outdir + f.split('.')[0]
@@ -2748,33 +2748,32 @@ class Data_processing_ERA5land:
         pass
 
     def run(self):
-        # self.resample()
-        self.extract_tif_from_shp()
+
+        # self.raster_align()
+
+        # self.extract_tif_from_shp()
+        # self.tif_to_dic()
+        # self.winter_SWE()
+        self.spring_season_SM_mean()
 
         pass
 
-    def resample(self):
-        fdir=join(data_root, 'SWE',  'tiff_unify')
-        outdir=join(data_root, 'SWE',  'resample')
-        T.mk_dir(outdir)
-        for f in tqdm(T.listdir(fdir)):
-            if not f.endswith('.tif'):
-                continue
+    def raster_align(self):  ## 这个函数包括了resample and align
+        fdir = join(data_root, 'SWE', 'tiff_unify')
+        outdir = join(data_root, 'SWE', 'raster_align')
+        T.mk_dir(outdir,force=True)
+        reference_path=data_root+rf'\basedata\\template_align.tif'
+        for f in tqdm(os.listdir(fdir)):
             fpath=join(fdir, f)
-            outf=join(outdir, f)
-            dataset = gdal.Open(fpath)
+            outpath=join(outdir, f)
+            My_functions().align_tif(fpath,reference_path,outpath)
+        pass
 
 
-            try:
-                gdal.Warp(outf, dataset, xRes=0.05, yRes=0.05, dstSRS='EPSG:4326')
-            # 如果不想使用默认的最近邻重采样方法，那么就在Warp函数里面增加resampleAlg参数，指定要使用的重采样方法，例如下面一行指定了重采样方法为双线性重采样：
-            # gdal.Warp("resampletif.tif", dataset, width=newCols, height=newRows, resampleAlg=gdalconst.GRIORA_Bilinear)
-            except Exception as e:
-                pass
 
     def extract_tif_from_shp(self):
         shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
-        fdir=join(data_root, 'SWE',  'resample')
+        fdir=join(data_root, 'SWE',  'raster_align')
         outdir=join(data_root, 'SWE',  'extract_tif')
         T.mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
@@ -2793,7 +2792,165 @@ class Data_processing_ERA5land:
 
 
 
-    pass
+    def tif_to_dic(self):
+
+        fdir_all = join(data_root, 'SWE',   'extract_tif')
+        outdir = join(data_root, 'SWE',   'dic')
+        T.mk_dir(outdir, force=True)
+
+        year_list = list(range(2002, 2025))
+        # 作为筛选条件
+
+        all_array = []  #### so important  it should be go with T.mk_dic
+
+
+        for f in T.listdir(fdir_all):
+            print(f)
+
+            if not f.endswith('.tif'):
+                continue
+            if int(f.split('_')[1][0:4]) not in year_list:
+                continue
+
+
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(join(fdir_all, f))
+            array = np.array(array, dtype=float)
+
+
+            # array_unify = array[:720][:720,
+            #               :1440]  # PAR是361*720   ####specify both a row index and a column index as [row_index, column_index]
+            # array_unify = array[:3600][:3600,
+            #               :7200]
+
+
+            array[array < -999] = np.nan
+            # array_unify[array_unify > 10] = np.nan
+            # array[array ==0] = np.nan
+
+            # array[array < 0] = np.nan
+
+
+            # plt.imshow(array)
+            # plt.show()
+
+
+
+
+            array_dryland = array
+            # plt.imshow(array_dryland)
+            # plt.show()
+
+            all_array.append(array_dryland)
+
+        row = len(all_array[0])
+        col = len(all_array[0][0])
+        key_list = []
+        dic = {}
+
+        for r in tqdm(range(row), desc='构造key'):  # 构造字典的键值，并且字典的键：值初始化
+            for c in range(col):
+                dic[(r, c)] = []
+                key_list.append((r, c))
+        # print(dic_key_list)
+
+        for r in tqdm(range(row), desc='构造time series'):  # 构造time series
+            for c in range(col):
+                for arr in all_array:
+                    value = arr[r][c]
+                    dic[(r, c)].append(value)
+                # print(dic)
+        time_series = []
+        flag = 0
+        temp_dic = {}
+        for key in tqdm(key_list, desc='output...'):  # 存数据
+            flag = flag + 1
+            time_series = dic[key]
+            time_series = np.array(time_series)
+            temp_dic[key] = time_series
+            if flag % 10000 == 0:
+                # print(flag)
+                np.save(outdir + rf'/per_pix_dic_%03d' % (flag / 10000), temp_dic)
+                temp_dic = {}
+        np.save(outdir + rf'/per_pix_dic_%03d' % 0, temp_dic)
+
+    def winter_SWE(self):
+        fdir=data_root + rf'\SWE\dic\\'
+        outdir=result_root + rf'SWE\\'
+        T.mk_dir(outdir,force=True)
+        var='SWE'
+        # print(var);exit()
+        spatial_dic=T.load_npy_dir(fdir)
+        winter_result_dic={}
+
+        for pix in tqdm(spatial_dic):
+            r,c=pix
+            vals=spatial_dic[pix]
+            if T.is_all_nan(vals):
+                continue
+            if np.isnan(np.nanmean(vals)):
+                continue
+            vals=np.array(vals)
+            vals=np.reshape(vals,(-1,12))
+            # plt.imshow(vals)
+            # plt.show()
+            winter_list=[]
+
+            for i in range(1, len(vals)):
+                prev_oct_dec = vals[i - 1][9:12]  # Oct Nov Dec
+                curr_jan_feb = vals[i][0:2]  # Jan Feb
+
+                winter = np.concatenate([prev_oct_dec, curr_jan_feb])
+
+                winter_mean = np.nansum(winter)  # 如果是降雨建议用sum
+                winter_list.append(winter_mean)
+            # print(len(winter_list))
+
+            winter_result_dic[pix] = winter_list
+
+
+
+        outwinter=outdir+rf'{var}_winter_npy'
+
+        T.save_npy(winter_result_dic,outwinter)
+    def spring_season_SM_mean(self):
+        fdir=data_root + rf'\SM\L4\dic\\'
+        outdir=result_root + rf'SM\\'
+        T.mk_dir(outdir,force=True)
+        var='SM_L4'
+        # print(var);exit()
+        spatial_dic=T.load_npy_dir(fdir)
+        spring_result_dic={}
+        summer_result_dic={}
+        for pix in tqdm(spatial_dic):
+            r,c=pix
+            vals=spatial_dic[pix]
+            if T.is_all_nan(vals):
+                continue
+            if np.isnan(np.nanmean(vals)):
+                continue
+            vals=np.array(vals)
+            vals=np.reshape(vals,(-1,12))
+            # plt.imshow(vals)
+            # plt.show()
+            spring_list=[]
+            summer_list=[]
+
+            for i in range(len(vals)):
+                # print(vals[i][2:5])
+                ## march to may
+                spring_val=np.nansum(vals[i][2:5])
+                ## july to sept
+                summer_val=np.nansum(vals[i][6:9])
+
+                spring_list.append(spring_val)
+                summer_list.append(summer_val)
+            spring_result_dic[pix]=spring_list
+            summer_result_dic[pix]=summer_list
+        outspring=outdir+rf'{var}_spring_npy'
+        outsummer=outdir+rf'{var}_summer_npy'
+        T.save_npy(spring_result_dic,outspring)
+        T.save_npy(summer_result_dic,outsummer)
+
 class convert_dic_to_tiff:   ### display in QGIS
     def run(self):
         self.add_nan()
@@ -2906,6 +3063,101 @@ class check_data:
         plt.colorbar()
         plt.show()
 
+class Data_processing_carbonscope:
+    def __init__(self):
+        pass
+    def run(self):
+        # self.download_carbonscope()
+        # self.nc_to_tif_time_series_fast()
+        # self.resample()
+        self.extract_tif_from_shp()
+    def download_carbonscope(self):
+        url ='https://www.bgc-jena.mpg.de/CarboScope/INVERSION/OUTPUT/nbetEXToc_v2025/nbetEXToc_v2025.flux.nc'
+        outdir =data_root+'carnonscope'
+        T.mk_dir(outdir, force=True)
+        T.download_file(url,
+                        outf=None,
+                        outdir=outdir,
+                        num_threads =40,
+                        )
+    pass
+
+    def nc_to_tif_time_series_fast(self):
+
+        fdir = join(data_root, 'carbonscope', 'nc')
+        outdir = join(data_root, 'carbonscope', 'tiff')
+
+        Tools().mk_dir(outdir, force=True)
+        for f in tqdm(os.listdir(fdir)):
+
+            outdir_name = f.split('.')[0]
+            # print(outdir_name)
+
+
+            fpath = join(fdir, f)
+            nc_in = xarray.open_dataset(fpath)
+            print(nc_in)
+            time_bnds = nc_in['mtime']
+            for t in range(len(time_bnds)):
+                date = time_bnds[t]['mtime']
+                date = pd.to_datetime(date.values)
+                date_str = date.strftime('%Y%m%d')
+                date_str = date_str.split()[0]
+                outf = join(outdir, f'{date_str}.tif')
+                array = nc_in['co2flux_land'][t]
+
+                array = np.array(array)
+                # array[array < 0] = np.nan
+
+                longitude_start = nc_in['lon'].values[0]
+                latitude_start = nc_in['lat'].values[0]
+                pixelWidth = nc_in['lon'].values[1] - nc_in['lon'].values[0]
+                pixelHeight = nc_in['lat'].values[1] - nc_in['lat'].values[0]
+                ToRaster().array2raster(outf, longitude_start, latitude_start,
+                                        pixelWidth, pixelHeight, array, ndv=-999999)
+                # exit()
+
+    def resample(self):
+        fdir=join(data_root, 'carbonscope', 'tiff')
+        outdir=join(data_root, 'carbonscope',  'resample')
+        T.mk_dir(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            year=f.split('.')[0][0:4]
+            year=int(year)
+            if year<2003:
+                continue
+            if not f.endswith('.tif'):
+                continue
+            fpath=join(fdir, f)
+            outf=join(outdir, f)
+            dataset = gdal.Open(fpath)
+
+
+            try:
+                gdal.Warp(outf, dataset, xRes=0.05, yRes=0.05, dstSRS='EPSG:4326')
+            # 如果不想使用默认的最近邻重采样方法，那么就在Warp函数里面增加resampleAlg参数，指定要使用的重采样方法，例如下面一行指定了重采样方法为双线性重采样：
+            # gdal.Warp("resampletif.tif", dataset, width=newCols, height=newRows, resampleAlg=gdalconst.GRIORA_Bilinear)
+            except Exception as e:
+                pass
+
+    def extract_tif_from_shp(self):
+        shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
+        fdir=join(data_root, 'carbonscope', 'resample')
+        outdir=join(data_root, 'carbonscope', 'extract_tif')
+        T.mk_dir(outdir,force=True)
+        for f in tqdm(os.listdir(fdir)):
+
+            if not f.endswith('.tif'):
+                continue
+            fpath=join(fdir,f)
+            outf=join(outdir,f)
+            if isfile(outf):
+                continue
+
+            ToRaster().clip_array(fpath, outf,shp_f)
+
+
+        pass
 
 
 def main():
@@ -2916,7 +3168,8 @@ def main():
     # Data_processing_Terraclimate().run()
     # calculating_mean_CV().run()
     # Data_processing_Daymet().run()
-    Data_processing_ERA5land().run()
+    # Data_processing_ERA5land().run()
+    Data_processing_carbonscope().run()
     # Trend_analysis().run()
     # general_anaysis().run()
 
