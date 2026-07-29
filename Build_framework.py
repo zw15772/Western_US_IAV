@@ -14,7 +14,7 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'SHAP\Dataframe\\')
+                result_root +  rf'\Moving_window_coupling_analysis\Dataframe\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
         self.dff = self.this_class_arr + rf'\\\Dataframe.df'
@@ -55,7 +55,7 @@ class build_dataframe():
         # # # #
         # df=self.add_rooting_depth_to_df(df)
         # #
-        df=self.add_area_weighted_to_df(df)
+        # df=self.add_area_weighted_to_df(df)
 
 
         # df=self.rename_columns(df)
@@ -263,7 +263,7 @@ class build_dataframe():
 
     def foo2(self, df):  # 新建trend
 
-        f = result_root + rf'\MODIS_LAI\trend_analysis\\summer_LAI_trend.tif'
+        f = result_root + rf'\Moving_window_coupling_analysis\moving_window_extraction_5year_slice\\partial_corr_SPEI1_summer_0.tif'
         array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
         array = np.array(array, dtype=float)
         val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
@@ -311,7 +311,7 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Result\Daymet\\'
+        fdir=rf'D:\Western_US_IAV\Data\carbonscope\dic_spring_annual\\'
 
         for f in os.listdir(fdir):
 
@@ -494,11 +494,15 @@ class build_dataframe():
 
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\SWE\trend_analysis\\'
+        fdir = result_root + rf'\Terraclimate\SPEI\trend_analysis\\'
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
                 continue
+            if not 'summer' in f:
+                continue
+
+
 
 
             variable = (f.split('.')[0])
@@ -654,11 +658,13 @@ class build_dataframe():
         for col in df.columns:
             print(col)
         # exit()
-        df = df.drop(columns=['summer_July_Sept_SNU',
-                              'spring_March_May_SNU'
+        for scale in [3,6,9,12,24,36,48]:
+            df = df.drop(columns=[f'10year_ summer_SPEI{scale}_p_value',
+                                  f'10year_ summer_SPEI{scale}_trend',
 
 
-                              ])
+
+                                  ])
 
         return df
 
@@ -870,9 +876,9 @@ class build_moving_window_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                    result_root +  rf'/IAV_analysis/Dataframe/')
+                    result_root +  rf'\Moving_window_coupling_analysis\Dataframe\\moving_window\\')
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'Dataframe.df'
+        self.dff = self.this_class_arr + rf'Dataframe_5year.df'
     def run(self):
         df = self.__gen_df_init(self.dff)
         # df=self.build_df(df)
@@ -880,16 +886,18 @@ class build_moving_window_dataframe():
         # df=self.append_attributes(df)
         # df=self.add_trend_to_df(df)
         # df=self.foo1(df)
-        # df=self.add_window_to_df(df)
-        # df=self.add_phenology_type_to_df(df)
+        df=self.add_window_to_df(df)
+        # # df=self.add_phenology_type_to_df(df)
         # df=self.add_row(df)
-        df=self.add_lat_lon_to_df(df)
+        # df=self.add_lat_lon_to_df(df)
+        # df=self.add_Ecoregion_level_II_raster_to_df(df)
 
 
 
         # df=self.rename_columns(df)
         # df=self.add_columns(df)
         # df=self.drop_field_df(df)
+        self.add_area_weighted_to_df(df)
         self.show_field()
 
         T.save_df(df, self.dff)
@@ -1003,7 +1011,7 @@ class build_moving_window_dataframe():
 
     def foo1(self, df):
 
-        f =result_root+ rf'IAV_analysis/moving_window_CV_extraction_anaysis/growing_season_LAI_mean_detrend_CV.npy'
+        f =result_root+ rf'\Moving_window_coupling_analysis\moving_window_extraction_average\5year\\summer_LAI_detrend_average.npy'
         # array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
         # array = np.array(array, dtype=float)
         # dic = DIC_and_TIF().spatial_arr_to_dic(array)
@@ -1031,20 +1039,21 @@ class build_moving_window_dataframe():
 
 
         df['window'] = year
+        fname=f.split('.')[0]
 
-        df['SNU_LAI_CV'] = change_rate_list
+        df[fname] = change_rate_list
         return df
     def add_window_to_df(self, df):
 
 
-        fdir=result_root+rf'\Composite_LAI\LAImin_LAImax\\'
+        fdir=result_root+rf'\Moving_window_coupling_analysis\moving_window_extraction_average\5year\\'
 
 
         for f in os.listdir(fdir):
-            if 'max' in f:
+
+            if not 'anomaly' in f:
                 continue
-            if 'min' in f:
-                continue
+
 
 
 
@@ -1074,8 +1083,9 @@ class build_moving_window_dataframe():
                 y = window
 
                 vals = val_dic[pix]
+
                 vals=np.array(vals)
-                print(len(vals))
+                # print(len(vals));exit()
                 # exit()
                 # plt.plot(vals)
                 # plt.show()
@@ -1087,17 +1097,17 @@ class build_moving_window_dataframe():
                 ##### if len vals is 38, the end of list add np.nan
 
                 #
-                if len(vals) == 24:
-                    ## add twice nan at the end
-                    # vals=np.append([np.nan,np.nan,np.nan,np.nan,np.nan,np.nan], vals,)
-                    vals=np.append(vals,[np.nan])
+                # if len(vals) == 24:
+                #     ## add twice nan at the end
+                #     # vals=np.append([np.nan,np.nan,np.nan,np.nan,np.nan,np.nan], vals,)
+                #     vals=np.append(vals,[np.nan])
 
 
 
-                # if len(vals) !=24:
-                #
-                #     NDVI_list.append(np.nan)
-                #     continue
+                if len(vals) !=18:
+
+                    NDVI_list.append(np.nan)
+                    continue
 
 
                 if len(vals) ==0:
@@ -1247,6 +1257,50 @@ class build_moving_window_dataframe():
                               ])
         return df
 
+    def add_Ecoregion_level_II_raster_to_df(self, df):
+        tiff =data_root+rf'\basedata\Ecoregion\\Ecoregion_level_II_raster.tif'
+        array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(tiff)
+        array = np.array(array, dtype=float)
+        val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
+        f_name = 'Ecoregion_level_II'
+
+        dic_convert={10.1:'Cold Desert',6.2:'Western Cordillera',
+                     9.4:'South Central Semiarid Prairies',
+                     9.3:'West-Central Semiarid Prairies',
+                     10.2:'Warm Desert', 11.1:'Mediterranean California',
+                     13.1:'Upper Gila Mountains', 13.2:'Western Sierra Madre',
+                     12.1:'Western Sierra Madre Piedmont',
+                     7.1:'Marine West Coast Forest',
+                     14.3:'Western Pacific Coastal Plain, Hills and Canyons',
+                     -9999: np.nan
+       }
+
+        val_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            pix = row['pix']
+            if not pix in val_dic:
+                val_list.append(np.nan)
+                continue
+            val = val_dic[pix]
+            # print(val)
+            val=round(val,1)
+
+            # print(val);exit()
+
+            val_convert=dic_convert[val]
+
+            if val < -99:
+                val_list.append(np.nan)
+                continue
+            val_list.append(val_convert)
+        df[f_name] = val_list
+        return df
+
+    def add_area_weighted_to_df(self, df):
+        df['area_weight'] = np.cos(np.deg2rad(df['lat']))
+        return df
+
+
     def add_lat_lon_to_df(self, df):
         T.add_lon_lat_to_df(df, D)
         return df
@@ -1313,8 +1367,8 @@ class check_Data:
 
 
 def main ():
-    build_dataframe().run()
-    # build_moving_window_dataframe().run()
+    # build_dataframe().run()
+    build_moving_window_dataframe().run()
     # check_Data().run()
     pass
 

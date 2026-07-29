@@ -1615,8 +1615,8 @@ class Trend_analysis:
         import matplotlib.pyplot as plt
         ##each window average trend
 
-        fdir = result_root + r'\SWE\\'
-        outdir = result_root + r'\SWE\\trend_analysis\\'
+        fdir = data_root + r'\carbonscope\dic_summer_annual\\'
+        outdir = result_root + r'\carbonscope\\trend_analysis\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -1742,9 +1742,9 @@ class Data_processing_Daymet:
         # self.extract_spring_summer_rainfall_amount()
         # self.extract_spring_summer_rainfall_fq()
         # self.extract_spring_summer_rainfall_dry_spell()
-        # self.zscore()
+        self.zscore()
 
-        self.trend_analysis()
+        # self.trend_analysis()
 
         pass
 
@@ -2416,7 +2416,7 @@ class Data_processing_Daymet:
 
     def zscore(self):
 
-        fdir = result_root + rf'Daymet\\'
+        fdir = result_root + rf'MODIS_LAI\MODIS_LAI\\'
         outdir = result_root + rf'\\zscore\\'
         Tools().mk_dir(outdir, force=True)
 
@@ -2470,12 +2470,12 @@ class Data_processing_Daymet:
 
                 zscore_dic[pix] = zscore
 
-
-                plt.plot(time_series)
                 #
-                #
+                # plt.plot(time_series)
+                # #
+                # #
                 # plt.plot(zscore)
-                #
+                # #
                 # plt.legend(['raw','zscore'])
                 # plt.show()
 
@@ -3070,7 +3070,11 @@ class Data_processing_carbonscope:
         # self.download_carbonscope()
         # self.nc_to_tif_time_series_fast()
         # self.resample()
-        self.extract_tif_from_shp()
+        # self.extract_tif_from_shp()
+        # self.aggregate_spring_summer_NEE()
+        # self.tif_to_dic()
+
+        self.plot_time_series()
     def download_carbonscope(self):
         url ='https://www.bgc-jena.mpg.de/CarboScope/INVERSION/OUTPUT/nbetEXToc_v2025/nbetEXToc_v2025.flux.nc'
         outdir =data_root+'carnonscope'
@@ -3130,6 +3134,8 @@ class Data_processing_carbonscope:
                 continue
             fpath=join(fdir, f)
             outf=join(outdir, f)
+            if isfile(outf):
+                continue
             dataset = gdal.Open(fpath)
 
 
@@ -3159,6 +3165,160 @@ class Data_processing_carbonscope:
 
         pass
 
+    def aggregate_spring_summer_NEE(self):
+        from datetime import datetime
+        outdir=data_root+rf'/carbonscope/aggregate_spring_summer/'
+        T.mk_dir(outdir,force=True)
+        fdir=join(data_root, 'carbonscope', 'extract_tif')
+        spring_month=[3,4,5]
+        # summer_month=[7,8,9]
+
+        file_list = sorted([f for f in os.listdir(fdir) if f.endswith('.tif')])
+
+        years = range(2003, 2025)
+
+        for year in tqdm(years):
+
+            data = []
+            profile = None
+
+            for f in file_list:
+
+                date = datetime.strptime(os.path.splitext(f)[0], "%Y%m%d")
+
+                if date.year != year:
+                    continue
+
+                if date.month not in spring_month:
+                    continue
+
+                fpath = os.path.join(fdir, f)
+
+                with rasterio.open(fpath) as src:
+
+                    arr = src.read(1).astype(np.float32)
+
+                    arr[arr < -9990] = np.nan
+
+                    data.append(arr)
+
+                    if profile is None:
+                        profile = src.profile
+
+            if len(data) == 0:
+                print(year, "No files")
+                continue
+
+            out = np.nanmean(data, axis=0)
+            D.arr_to_tif(out, os.path.join(outdir, f"spring_NEE_{year}.tif"))
+
+
+    def tif_to_dic(self):
+
+        fdir_all = join(data_root,'carbonscope', 'aggregate_spring_summer', 'spring' )
+        outdir = join(data_root, 'carbonscope', 'dic_spring_annual')
+        T.mk_dir(outdir, force=True)
+
+        year_list = list(range(2003, 2025)) ##
+        # 一般是2003 开始只有ppt是2002 因为要考虑冬天
+        # 作为筛选条件
+
+        all_array = []  #### so important  it should be go with T.mk_dic
+
+
+        for f in T.listdir(fdir_all):
+            print(f)
+
+            if not f.endswith('.tif'):
+                continue
+            if int(f.split('_')[2][0:4]) not in year_list:
+                continue
+
+
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(join(fdir_all, f))
+            array = np.array(array, dtype=float)
+
+
+            # array_unify = array[:720][:720,
+            #               :1440]  # PAR是361*720   ####specify both a row index and a column index as [row_index, column_index]
+            # array_unify = array[:3600][:3600,
+            #               :7200]
+
+
+            array[array < -999] = np.nan
+            # array_unify[array_unify > 10] = np.nan
+            # array[array ==0] = np.nan
+
+            # array[array < 0] = np.nan
+
+
+            # plt.imshow(array)
+            # plt.show()
+
+
+
+
+            array_dryland = array
+            # plt.imshow(array_dryland)
+            # plt.show()
+
+            all_array.append(array_dryland)
+
+        row = len(all_array[0])
+        col = len(all_array[0][0])
+        key_list = []
+        dic = {}
+
+        for r in tqdm(range(row), desc='构造key'):  # 构造字典的键值，并且字典的键：值初始化
+            for c in range(col):
+                dic[(r, c)] = []
+                key_list.append((r, c))
+        # print(dic_key_list)
+
+        for r in tqdm(range(row), desc='构造time series'):  # 构造time series
+            for c in range(col):
+                for arr in all_array:
+                    value = arr[r][c]
+                    dic[(r, c)].append(value)
+                # print(dic)
+        time_series = []
+        flag = 0
+        temp_dic = {}
+        for key in tqdm(key_list, desc='output...'):  # 存数据
+            flag = flag + 1
+            time_series = dic[key]
+            time_series = np.array(time_series)
+            temp_dic[key] = time_series
+            if flag % 10000 == 0:
+                # print(flag)
+                np.save(outdir + rf'/per_pix_dic_%03d' % (flag / 10000), temp_dic)
+                temp_dic = {}
+        np.save(outdir + rf'/per_pix_dic_%03d' % 0, temp_dic)
+
+
+
+    def plot_time_series(self):
+        fdir = data_root + rf'\carbonscope\dic_summer_annual\\'
+        dic = T.load_npy_dir(fdir)
+        result_list=[]
+        for pix in dic:
+            vals = dic[pix]
+
+            if np.isnan(np.nanmean(vals)):
+                continue
+            print(len(vals))
+            time_series = dic[pix]
+            result_list.append(time_series)
+        vals_mean=np.nanmean(result_list, axis=0)
+        yearlist=np.arange(2003, 2025)
+        plt.plot(yearlist,vals_mean)
+        plt.ylabel('summer NEE')
+        plt.tight_layout()
+
+        plt.show()
+
+    pass
+
 
 def main():
 
@@ -3167,9 +3327,9 @@ def main():
     # Data_processing_MODIS_LAI().run()
     # Data_processing_Terraclimate().run()
     # calculating_mean_CV().run()
-    # Data_processing_Daymet().run()
+    Data_processing_Daymet().run()
     # Data_processing_ERA5land().run()
-    Data_processing_carbonscope().run()
+    # Data_processing_carbonscope().run()
     # Trend_analysis().run()
     # general_anaysis().run()
 

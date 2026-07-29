@@ -1030,7 +1030,7 @@ class PLOT_SPEI():
         df = T.load_df(dff)
 
         df = self.df_clean(df)
-        scale=6
+        scale=3
 
         year_list = list(range(2003, 2025))
         result_dic = {}
@@ -1382,13 +1382,13 @@ class PLOT_GPP:
         pass
 
     def plot_time_series_GPP(self):
-        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe_1982_2024.df'
+        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe.df'
         df=T.load_df(dff)
 
         df=self.df_clean(df)
 
 
-        year_list=list(range(1982, 2021))
+        year_list=list(range(2003, 2024))
         result_dic = {}
         eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
         eco_region_list.append('Western US')
@@ -1425,7 +1425,7 @@ class PLOT_GPP:
             for year in year_list:
                 df_ii = df_i[df_i['year'] == year]
                 ## scheme1
-                vals = np.array(df_ii['spring_GPP_baseline'].tolist(), dtype=float)
+                vals = np.array(df_ii['summer_NEE'].tolist(), dtype=float)
                 # vals=np.array(df_ii['summer_GPP_CFE-Hybrid'].tolist(), dtype=float)
 
                 weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
@@ -1481,14 +1481,15 @@ class PLOT_GPP:
             #                  alpha=0.2)
 
 
-            slope_s, _, _, p_s, _ = stats.linregress(year_list, vals)
+
+            slope_s, intercept_s, _, p_s, _ = stats.linregress(year_list, vals)
             ## add trend line
-            axes.plot(year_list, slope_s * np.array(year_list) + (vals[0] - slope_s * year_list[0]),
-                     linestyle='--', color='blue', )
+            trend_line = slope_s * np.array(year_list) + intercept_s
+            axes.plot(year_list, trend_line, linestyle='--', color='red')
 
 
             stats_text = (
-                f'GPP: slope={slope_s:.2f}, p={p_s:.2f}\n'
+                f'NEE: slope={slope_s:.2f}, p={p_s:.2f}\n'
 
             )
 
@@ -1545,13 +1546,13 @@ class PLOT_SNU_LAI:
         pass
 
     def plot_time_series_GPP(self):
-        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe_1982_2024.df'
+        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe.df'
         df=T.load_df(dff)
 
         df=self.df_clean(df)
 
 
-        year_list=list(range(1982, 2021))
+        year_list=list(range(2003, 2025))
         result_dic = {}
         eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
         eco_region_list.append('Western US')
@@ -1588,7 +1589,7 @@ class PLOT_SNU_LAI:
             for year in year_list:
                 df_ii = df_i[df_i['year'] == year]
                 ## scheme1
-                vals = np.array(df_ii['summer_SNU_LAI'].tolist(), dtype=float)
+                vals = np.array(df_ii['summer_NEE'].tolist(), dtype=float)
                 # vals=np.array(df_ii['summer_GPP_CFE-Hybrid'].tolist(), dtype=float)
 
                 weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
@@ -1811,10 +1812,10 @@ def main():
     # SPEI_Greening_ecoregion().run()
     # PLOT_vegetation_change().run()
     # PLOT_bar().run()
-    PLOT_Daymet().run()
+    # PLOT_Daymet().run()
     # PLOT_SPEI().run()
     # PLOT_WUE().run()
-    # PLOT_GPP().run()
+    PLOT_GPP().run()
     # PLOT_SNU_LAI().run()
 
     pass

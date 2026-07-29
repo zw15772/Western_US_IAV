@@ -10,7 +10,11 @@ from scipy.special import softmax
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from pprint import pprint
 import xgboost as xgb
-
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+import statsmodels.api as sm
+from scipy.stats import zscore
 from SPEI_processing import SPEI_calculation
 from __Global__ import *
 tif_template=  rf'D:\Western_US_IAV\Data\basedata\200902.tif'
@@ -227,21 +231,29 @@ class Moving_window_coupling_analysis:
         self.fdirX = result_root + rf'\Moving_window_coupling_analysis\\\moving_window_extraction\\'
         self.fdirY = result_root + rf'\Moving_window_coupling_analysis\\moving_window_extraction\\'
 
+
+        self.map_width = 13 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+
+
         pass
 
     def run(self):
         # self.moving_window_extraction()
+        # self.moving_window_average_anaysis()
         # self.calculating_corr_temporal()
-        self.calculating_corr_temporal_function2()
+        # self.calculating_corr_temporal_function2()
+        self.calculating_multiregression_sensitivity()
         # self.calculate_optimal_scale()
         # self.PLot_window_slices()
         # self.trend_analysis()
 
 
+
     def moving_window_extraction(self):
 
-        fdir_all =result_root+ rf'\Daymet\\'
-        outdir = result_root + rf'\\Moving_window_coupling_analysis\\moving_window_extraction_10year\\'
+        fdir_all =result_root+ rf'\zscore\\'
+        outdir = result_root + rf'\\zscore\\Moving_window\\5year\\'
 
         T.mk_dir(outdir, force=True)
         for f in os.listdir(fdir_all):
@@ -255,13 +267,13 @@ class Moving_window_coupling_analysis:
             # print(outf);exit()
 
 
-            # if os.path.isfile(outf):
-            #     continue
+            if os.path.isfile(outf):
+                continue
             # if os.path.isfile(outf):
             #     continue
 
             dic = T.load_npy(fdir_all+f)
-            window = 10
+            window = 5
 
             new_x_extraction_by_window = {}
             for pix in tqdm(dic):
@@ -336,22 +348,85 @@ class Moving_window_coupling_analysis:
         return new_x_extraction_by_window
 
 
+    def moving_window_average_anaysis(self): ## each window calculating the average
+
+        fdir = result_root + rf'\Moving_window_coupling_analysis\moving_window_extraction_5year\\'
+        outdir = result_root + rf'\Moving_window_coupling_analysis\moving_window_extraction_average\\5year\\'
+        T.mk_dir(outdir, force=True)
+        for f in os.listdir(fdir):
+            if not 'LAI' in f:
+                continue
+            if 'detrend' in f:
+                continue
+
+
+            dic = T.load_npy(fdir + f)
+
+
+            outf = outdir + f.split('.')[0] + f'_average.npy'
+            print(outf)
+
+            trend_dic = {}
+
+
+            for pix in tqdm(dic):
+                trend_list = []
+
+                time_series_all = dic[pix]
+                # plt.imshow(time_series_all)
+                # plt.show()
+                time_series_all = np.array(time_series_all)
+                # print(time_series_all)
+                if np.isnan(np.nanmean(time_series_all)):
+                    print('error')
+                    continue
+                slides = len(time_series_all)
+                for ss in range(slides):
+
+
+                    ### if all values are identical, then continue
+
+
+
+                    time_series = time_series_all[ss]
+                    # print(time_series)
+                    # if np.nanmax(time_series) == np.nanmin(time_series):
+                    #     continue
+                    # print(len(time_series))
+                    ##average
+
+                    average=np.nanmean(time_series)
+                    # print(average)
+
+                    trend_list.append(average)
+                print(trend_list)
+                # plt.plot(trend_list)
+                #
+                # plt.show()
+
+                trend_dic[pix] = trend_list
+
+                ## save
+            np.save(outf, trend_dic)
+
+
     def calculating_corr_temporal(self):
         import numpy as np
 
         from tqdm import tqdm
         from scipy.stats import pearsonr
         season='summer'
+        window_size=5
 
         # 假设这些是每个像素对应的字典，键是 pix，值是 (year, month)
 
         scale_list=['SPEI1','SPEI3', 'SPEI6', 'SPEI9',
-                    'SPEI12','SPEI15','SPEI18','SPEI21','SPEI24', 'SPEI27',
-                    'SPEI36', 'SPEI30','SPEI33',
+                    'SPEI12','SPEI24',
+                    'SPEI36',
                     'SPEI48',
                     ]
         # 假设这些是每个像素对应的字典，键是 pix，值是 (year, month)
-        fdir = result_root + rf'Moving_window_coupling_analysis\moving_window_extraction_10year\\'
+        fdir = result_root + rf'Moving_window_coupling_analysis\moving_window_extraction_{window_size}year\\'
 
         out_corr = {}
         out_p_value = {}
@@ -361,7 +436,7 @@ class Moving_window_coupling_analysis:
 
             dic_LAI = T.load_npy(fLAI)
             dic_SPEI = T.load_npy(f_SPEI)
-            outdir = result_root + r'\Moving_window_coupling_analysis\output\\10year\\'
+            outdir = result_root + rf'\Moving_window_coupling_analysis\output\\{window_size}year\\'
             T.mk_dir(outdir, force=True)
 
             outcorr= outdir + rf'partial_corr_{scale}_{season}.npy'
@@ -394,7 +469,7 @@ class Moving_window_coupling_analysis:
                     x1 = vals_SPEI[w, :]
 
                     # 有效数据检查
-                    if len(y) !=10 or len(x1) !=10:
+                    if len(y) !=window_size or len(x1) !=window_size:
 
                         beta_SPEI_list.append(np.nan)
 
@@ -417,7 +492,7 @@ class Moving_window_coupling_analysis:
                         p_SPEI_list.append(np.nan)
 
 
-                # plt.plot(beta_SPEI_list)
+                # plt.plot(p_SPEI_list)
                 # plt.show()
 
 
@@ -425,8 +500,7 @@ class Moving_window_coupling_analysis:
                 out_p_value[pix] = p_SPEI_list
 
             # === 保存输出 ===
-            outdir = result_root + r'\Moving_window_coupling_analysis\output\\'
-            T.mk_dir(outdir, force=True)
+
 
             T.save_npy(out_corr, outdir + rf'partial_corr_{scale}_{season}.npy')
             T.save_npy(out_p_value, outdir + rf'partial_p_{scale}_{season}.npy')
@@ -439,12 +513,12 @@ class Moving_window_coupling_analysis:
         season = 'summer'
 
 
-        fdir = result_root + r'\Moving_window_coupling_analysis\moving_window_extraction_10year\\'
+        fdir = result_root + r'\Moving_window_coupling_analysis\moving_window_extraction_5year\\'
 
         fLAI = fdir + rf'{season}_LAI_detrend.npy'
 
         file_dic = {
-            'ppt': fdir + rf'{season}_rainfall_amount.npy',
+            'ppt': fdir + rf'ppt_winter_npy_detrend.npy',
             'intensity': fdir + rf'{season}_rainfall_intensity.npy',
             'temp': fdir + rf'tmax_{season}_npy_detrend.npy',
             # 'vpd': fdir + rf'vpd_{season}_detrend.npy',
@@ -460,7 +534,7 @@ class Moving_window_coupling_analysis:
 
 
 
-        outdir = result_root + r'\Moving_window_coupling_analysis\output\10year\\'
+        outdir = result_root + r'\Moving_window_coupling_analysis\output\5year\\'
         T.mk_dir(outdir, force=True)
 
         ############################################
@@ -593,6 +667,201 @@ class Moving_window_coupling_analysis:
                 outdir + rf'partial_p_{var}_{season}.npy'
             )
 
+    def calculating_multiregression_sensitivity(self):
+
+
+
+        season = 'summer'
+
+        fdir = result_root + r'\zscore\Moving_window\5year\\'
+
+        fLAI = fdir + rf'{season}_LAI_zscore.npy'
+
+        file_dic = {
+            'SPEI6': fdir+rf'{season}_SPEI6.npy',
+            'ppt': fdir + rf'ppt_winter_npy_zscore.npy',
+            'intensity': fdir + rf'{season}_rainfall_intensity_zscore.npy',
+            'temp': fdir + rf'tmax_{season}_npy_zscore.npy',
+            'rad': fdir + rf'srad_{season}_npy_zscore.npy',
+        }
+
+        dic_LAI = T.load_npy(fLAI)
+
+        dic_var = {}
+        for var in file_dic:
+            dic_var[var] = T.load_npy(file_dic[var])
+
+        outdir = result_root + r'\Moving_window_coupling_analysis\output\5year_multiregression\\'
+        T.mk_dir(outdir, force=True)
+
+        var_list = list(file_dic.keys())
+
+        ############################################
+        # output
+        ############################################
+
+        result_beta = {v: {} for v in var_list}
+        result_p = {v: {} for v in var_list}
+        result_r2 = {}
+
+        ############################################
+        params_list = []
+        for pix in tqdm(dic_LAI):
+            params = (pix,dic_var,var_list,dic_LAI)
+            params_list.append(params)
+            # beta_dic, p_dic, r2_list, pix = self.kernel_calculating_multiregression_sensitivity(params)
+            # if beta_dic is None:
+            #     continue
+            # print(beta_dic)
+            # exit()
+            pass
+            pass
+        # import lytools_HPC
+        # func = self.kernel_calculating_multiregression_sensitivity
+        # lytools_HPC.sumbit_jobs_array(func,params_list,
+        #                 log_folder=None,
+        #                 job_name=None,
+        #                 job_number_limit=10,
+        #                 parallel_process_per_task=1,
+        #                 slurm_array_parallelism=10,
+        #                 parallel_process_p_or_t='t',
+        #                 cpus_per_task=1,
+        #                 mem_gb=1,
+        #                 timeout_min=30,
+        #                 slurm_partition="general",
+        #                 exclude_nodes=None,
+        #                 specific_nodes=None,
+        #                 pbar_update_freq=1,
+        #                 skip_confirmation=False,
+        #                 watch_dog_timeout_seconds=10,
+        #                 error_skip=False,
+        #                 is_skip_unavailable_nodes=True,)
+        results = MULTIPROCESS(self.kernel_calculating_multiregression_sensitivity,params_list,istqdm=True).run(ispathos=True,njobs=5,process_or_thread='p')
+
+
+
+        ############################################
+        # save
+        ############################################
+
+        for var in var_list:
+            T.save_npy(
+                result_beta[var],
+                outdir + rf'beta_{var}_{season}.npy'
+            )
+
+            T.save_npy(
+                result_p[var],
+                outdir + rf'p_{var}_{season}.npy'
+            )
+
+        T.save_npy(
+            result_r2,
+            outdir + rf'R2_{season}.npy'
+        )
+
+    def kernel_calculating_multiregression_sensitivity(self,params):
+        pix,dic_var,var_list,dic_LAI = params
+        if any(pix not in dic_var[v] for v in var_list):
+            return [None] * 4
+
+        vals_LAI = np.array(dic_LAI[pix], dtype=float)
+
+        if vals_LAI.ndim != 2:
+            return [None] * 4
+
+        n_windows, n_years = vals_LAI.shape
+
+        skip = False
+
+        for var in var_list:
+
+            arr = np.array(dic_var[var][pix], dtype=float)
+
+            if arr.ndim != 2:
+                skip = True
+                break
+
+            if arr.shape != vals_LAI.shape:
+                skip = True
+                break
+
+        if skip:
+            return [None] * 4
+
+        beta_dic = {v: [] for v in var_list}
+        p_dic = {v: [] for v in var_list}
+        r2_list = []
+
+        ############################################
+        # moving window
+        ############################################
+
+        for w in range(n_windows):
+
+            data = {
+
+                'LAI': vals_LAI[w, :]
+
+            }
+
+            for var in var_list:
+                data[var] = np.array(dic_var[var][pix], dtype=float)[w, :]
+
+            df = pd.DataFrame(data).dropna()
+
+            ############################################
+            # enough samples
+            ############################################
+
+            if len(df) < 5:
+
+                for var in var_list:
+                    beta_dic[var].append(np.nan)
+                    p_dic[var].append(np.nan)
+
+                r2_list.append(np.nan)
+
+                continue
+
+            ############################################
+            # regression
+            ############################################
+
+            X = df[var_list]
+
+            X = sm.add_constant(X)
+
+            y = df['LAI']
+
+            try:
+
+                model = sm.OLS(y, X).fit()
+
+                for var in var_list:
+                    beta_dic[var].append(model.params[var])
+
+                    p_dic[var].append(model.pvalues[var])
+
+                r2_list.append(model.rsquared)
+
+            except:
+
+                for var in var_list:
+                    beta_dic[var].append(np.nan)
+                    p_dic[var].append(np.nan)
+
+                r2_list.append(np.nan)
+
+        ############################################
+        # save pixel
+        ############################################
+        return beta_dic,p_dic,r2_list,pix
+        # for var in var_list:
+        #     result_beta[var][pix] = beta_dic[var]
+        #     result_p[var][pix] = p_dic[var]
+        #
+        # result_r2[pix] = r2_list
 
 
     def calculate_optimal_scale(self):
@@ -699,7 +968,7 @@ class Moving_window_coupling_analysis:
         fdir = result_root + r'\Moving_window_coupling_analysis\output\10year\\'
         outdir = result_root + r'\Moving_window_coupling_analysis\output\\10year\\trend\\'
         T.mk_dir(outdir, force=True)
-        for f in os.listdir(fdir):
+        for f in tqdm(os.listdir(fdir)):
 
             fname = f.split('.')[0]
 
@@ -722,30 +991,30 @@ class Moving_window_coupling_analysis:
 
     def PLot_window_slices(self):
 
-        fdir = result_root + r'\Moving_window_coupling_analysis\output\\'
-        outdir = result_root + r'\Moving_window_coupling_analysis\moving_window_extraction_5year_slice\\'
+        fdir = result_root + r'\Moving_window_coupling_analysis\output\\10year\\'
+        outdir = result_root + r'\Moving_window_coupling_analysis\moving_window_extraction_10year_slice\\'
         T.mk_dir(outdir, force=True)
-        window_size=18
+        moving_window=10
+        window_size=22-moving_window+1
         for f in os.listdir(fdir):
+            if not 'corr' in f:
+                continue
 
             fname = f.split('.')[0]
-            if  'optimal' in fname:
-                continue
-            if 'spring' in fname:
-                continue
+
 
             fpath = join(fdir, f)
             dic = T.load_npy(fpath)
             result_dic = {}
-            pvalue_result = {}
+
             for w in range(window_size):
                 for pix in dic:
                     vals = dic[pix][w]
                     vals = vals
 
                     result_dic[pix] = vals
-                D.pix_dic_to_tif(result_dic, outdir + f'{fname}_corr_{w}.tif')
-                D.pix_dic_to_tif(pvalue_result, outdir + f'{fname}_pvalue_{w}.tif')
+                D.pix_dic_to_tif(result_dic, outdir + f'{fname}_{w}.tif')
+
             pass
 
 
@@ -761,7 +1030,9 @@ class PLOT_temporal_change_corr:
     def run(self):
 
         # self.plot_SPEI_time_series()
-        self.heatmap()
+        # self.heatmap()
+        # self.plot_barplot()
+        self.plot_time_series_MODIS_record()
 
 
         pass
@@ -785,7 +1056,7 @@ class PLOT_temporal_change_corr:
 
     def plot_SPEI_time_series(self):
         df = T.load_df(
-            result_root + rf'\Moving_window_coupling_analysis\Dataframe\Dataframe_10year.df')
+            result_root + rf'\Moving_window_coupling_analysis\Dataframe\Dataframe_5year.df')
 
 
         df = self.df_clean(df)
@@ -801,7 +1072,7 @@ class PLOT_temporal_change_corr:
 
 
 
-        dic_label = {f'partial_corr_SPEI48_{season}': 'SPEI48',
+        dic_label = {f'5year_partial_corr_SPEI48_{season}': 'SPEI48',
                      f'partial_corr_SPEI24_{season}': 'SPEI24',
                      f'partial_corr_SPEI36_{season}': 'SPEI36',
                      f'partial_corr_SPEI3_{season}': 'SPEI3',
@@ -925,7 +1196,7 @@ class PLOT_temporal_change_corr:
         import matplotlib.pyplot as plt
         import seaborn as sns
 
-        dff = result_root + r'\Moving_window_coupling_analysis\Dataframe\Dataframe_10year.df'
+        dff = result_root + r'\Moving_window_coupling_analysis\Dataframe\Dataframe_5year.df'
         df = T.load_df(dff)
 
         eco_region_list = [
@@ -937,19 +1208,10 @@ class PLOT_temporal_change_corr:
             'Western Sierra Madre Piedmont'
         ]
 
-        # scale_list = [1, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 48]
-        scale_list = [  'partial_corr_intensity_summer',
-                          'partial_corr_ppt_summer',
-                          'partial_corr_temp_summer',
-                          'partial_corr_rad_summer']
-
-        label_dic={'partial_corr_intensity_summer':'Rainfall intensity',
-                  'partial_corr_ppt_summer':'Rainfall amount',
-                  'partial_corr_temp_summer':'Temp',
-                  'partial_corr_rad_summer':'PAR'}
+        scale_list = [ 3, 6,  12,  24,  36, 48]
 
 
-        season = 'summer'
+
 
         fig, axes = plt.subplots(
             2,
@@ -960,6 +1222,7 @@ class PLOT_temporal_change_corr:
         )
 
         axes = axes.flatten()
+        window_list=22+1-5
 
         for i, eco in enumerate(eco_region_list):
 
@@ -970,31 +1233,32 @@ class PLOT_temporal_change_corr:
             else:
                 df_i = df[df['Ecoregion_level_II'] == eco]
 
-            years = sorted(df_i['year'].unique())
+
 
             heatmap = []
 
             for scale in scale_list:
 
-                col_corr = scale
+
                 # optimal=f'optimal_corr_summer'
                 # col_p = f'partial_p_SPEI{scale}_{season}'
 
 
                 corr_list = []
 
-                for year in years:
+                for window in np.arange(int(window_list)):
 
-                    # 先筛年份
-                    df_year = df_i[df_i['year'] == year]
 
-                    # 再筛显著
-                    # df_year = df_year[df_year[col_p] < 0.05]
 
-                    vals = np.array(df_year[col_corr], dtype=float)
-                    weight = np.array(df_year['area_weight'], dtype=float)
 
-                    mask = np.isfinite(vals)
+                    vals = df_i[f'5year_partial_corr_SPEI{scale}_summer_{window}']
+                    pval = df_i[f'5year_partial_p_SPEI{scale}_summer_{window}']
+
+                    # mask = (pval < 0.05) & np.isfinite(vals)
+                    mask=np.isfinite(vals)
+                    weight = np.array(df_i['area_weight'], dtype=float)
+
+
 
                     if np.sum(mask) == 0:
                         corr_list.append(np.nan)
@@ -1011,12 +1275,12 @@ class PLOT_temporal_change_corr:
             sns.heatmap(
                 heatmap[::-1],
                 ax=ax,
-                cmap='Spectral',
-                center=0,
-                vmin=-.8,
+                cmap='RdBu',
+                # center=0,
+                vmin=-.2,
                 vmax=.8,
-                xticklabels=years,
-                yticklabels=[label_dic[scale] for scale in scale_list][::-1],
+                xticklabels=np.arange(window_list),
+                yticklabels=scale_list[::-1],
                 cbar=(i == 5),
                 cbar_kws={'label': 'Pearson r'}
             )
@@ -1030,6 +1294,957 @@ class PLOT_temporal_change_corr:
         plt.tight_layout()
 
         plt.show()
+
+    def plot_barplot(self):
+
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        dff = result_root + r'\Moving_window_coupling_analysis\Dataframe\Dataframe_5year.df'
+        df = T.load_df(dff)
+
+        eco_region_list = [
+            'Western US',
+            'Western Cordillera',
+            'Upper Gila Mountains',
+            'Warm Desert',
+            'Cold Desert',
+            'Western Sierra Madre Piedmont'
+        ]
+
+        scale_list = [3, 6, 9, 12,   36, 48]
+        window_num = 22 + 1 - 5
+
+        positive_dic = {}
+        negative_dic = {}
+
+        for i, eco in enumerate(eco_region_list):
+
+
+
+            if eco == 'Western US':
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            for scale in scale_list:
+
+                positive_area = []
+                negative_area = []
+
+                df_scale = df_i[df_i[f' summer_SPEI{scale}_trend'] < 0].copy()
+                print(len(df_scale))
+                # print(len(df_i));exit()
+                spatial_dic=T.df_to_spatial_dic(df,col_name=' summer_SPEI3_trend',reduce_method=np.mean)
+                array=D.pix_dic_to_spatial_arr(spatial_dic)
+                # plt.imshow(array, cmap='RdBu', vmin=-.8, vmax=.8)
+                # plt.show()
+                # df_scale = df_i
+
+                for window in range(window_num):
+
+
+                    r = np.array(
+                        df_scale[f'5year_partial_corr_SPEI{scale}_summer_{window}'],
+                        dtype=float
+                    )
+
+                    p = np.array(
+                        df_scale[f'5year_partial_p_SPEI{scale}_summer_{window}'],
+                        dtype=float
+                    )
+
+                    valid = np.isfinite(r) & np.isfinite(p)
+
+                    r = r[valid]
+                    p = p[valid]
+
+                    total_valid = len(r)
+
+                    if total_valid == 0:
+                        positive_area.append(np.nan)
+                        negative_area.append(np.nan)
+                        continue
+
+                    # print(
+                    #     scale,
+                    # #     window,
+                    #     len(df_scale),
+                    #     np.sum((r > 0) & (p < 0.05)),
+                    #     np.sum((r < 0) & (p < 0.05))
+                    # );exit()
+
+                    # Positive significant (%)
+                    pos = np.sum((r > 0) & (p < 0.05)) / total_valid * 100
+
+                    # Negative significant (%)
+                    neg = np.sum((r < 0) & (p < 0.05)) / total_valid * 100
+
+                    positive_area.append(pos)
+                    negative_area.append(neg)
+                positive_dic[scale] = positive_area
+                negative_dic[scale] = negative_area
+
+            fig, axes = plt.subplots(3, 2, figsize=(8, 6), sharey=True)
+
+            axes = axes.flatten()
+
+            years = np.arange(window_num)
+
+            for i, scale in enumerate(scale_list):
+                ax = axes[i]
+
+                pos = np.array(positive_dic[scale])
+                neg = np.array(negative_dic[scale])
+
+                ax.bar(
+                    years,
+                    pos,
+                    color='royalblue',
+                    label='Positive'
+                )
+
+                ax.bar(
+                    years,
+                    -neg,
+                    color='firebrick',
+                    label='Negative'
+                )
+
+                ax.axhline(0, color='k', lw=0.8)
+
+                ax.set_title(f'SPEI-{scale}')
+
+
+
+                ax.set_ylim(-5, 35)
+
+            axes[0].set_ylabel('Area (%)')
+
+            handles, labels = axes[0].get_legend_handles_labels()
+            fig.legend(handles, labels, loc='upper center', ncol=2)
+
+            plt.tight_layout()
+            plt.show()
+
+        pass
+
+    def plot_time_series_SPEI(self):
+        dff = result_root + rf'\Moving_window_coupling_analysis\Dataframe\moving_window\Dataframe_5year.df'
+        df = T.load_df(dff)
+
+        df = self.df_clean(df)
+
+        window_list = list(range(0, 18))
+        result_dic = {}
+        eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
+        eco_region_list.append('Western US')
+
+        eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
+                           'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
+
+        for eco in eco_region_list:
+
+            if eco == 'Western US':
+                # 2. Use a single '=' for assignment, and handle the logic
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            pix_list = df_i['pix'].tolist()
+            unique_pix_list = list(set(pix_list))
+            spatial_dic = {}
+
+            # for pix in unique_pix_list:
+            #     spatial_dic[pix] = 1
+            # arr = D.pix_dic_to_spatial_arr(spatial_dic)
+            # plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+            # plt.colorbar()
+            # plt.title(f'{eco}')
+            # plt.show()
+            for scale in [3,6,12,24,36,48]:
+                mean_dic = {}
+                std_dic = {}
+
+                for year in window_list:
+                    df_ii = df_i[df_i['window'] == year]
+                    ## scheme1
+                    vals = np.array(df_ii[f'summer_SPEI{scale}_average'].tolist(), dtype=float)
+                    vals_len = len(vals)
+                    weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
+                    weighted_mean = (
+                            np.nansum(vals * weight)
+                            / np.nansum(weight * np.isfinite(vals))
+                    )
+                    # weighted_mean=np.nanmean(vals)
+                    # weighted_std = np.nanstd(vals)
+
+                    #####加权方差
+                    weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+
+                    weighted_std = np.sqrt(weighted_var)
+
+                    mean_dic[year] = weighted_mean
+                    std_dic[year] = weighted_std
+                    # print(weighted_std)
+
+                result_dic[f'{eco}_SPEI{scale}_mean'] = mean_dic
+                result_dic[f'{eco}_SPEI{scale}_std'] = std_dic
+
+                # 只存一次长度
+                result_dic[f'{eco}_len'] = len(df_i)
+
+            # 转成 DataFrame
+        df_new = pd.DataFrame(result_dic).reset_index()
+
+        # T.print_head_n(df_new);exit()
+
+        flag = 0
+
+        for eco in eco_region_list:
+
+            for scale in [3, 6, 12, 24, 36, 48]:
+                plt.figure(figsize=(self.map_width * 1.5, self.map_height))
+
+
+                summer_vals = df_new[f'{eco}_SPEI{scale}_mean']
+
+                summer_std = df_new[f'{eco}_SPEI{scale}_std']
+
+                vals_len = df_new[f'{eco}_len'][0]
+
+
+
+                # -----------------------------
+                # Summer
+                # -----------------------------
+                color_summer = '#48526F'
+
+                plt.plot(
+                    window_list,
+                    summer_vals,
+                    color=color_summer,
+                    lw=2,
+                    label='Summer'
+                )
+
+                slope, intercept, r, p, _ = stats.linregress(window_list, summer_vals)
+                window_array = np.array(window_list)
+
+                plt.plot(
+                    window_list,
+                    slope * window_array + intercept,
+                    '--',
+                    color=color_summer,
+                    lw=2,
+
+                )
+
+
+                plt.fill_between(
+                    window_list,
+                    summer_vals - summer_std,
+                    summer_vals + summer_std,
+                    color=color_summer,
+                    alpha=0.2
+                )
+                plt.legend()
+
+                stats_text = (
+
+                    f'Summer: slope={slope:.2f}, p={p:.2f}'
+                )
+
+                plt.text(0.95, 0.95, stats_text,
+                         transform=plt.gca().transAxes,
+                         verticalalignment='top',
+                         horizontalalignment='right',
+                         )
+
+                plt.ylabel(f'SPEI{scale}', fontsize=12)
+
+                plt.title(f'{eco}_n={vals_len}', fontsize=12)
+
+                plt.grid(True, axis='x')
+
+                plt.show()
+                plt.close()
+
+            pass
+
+    def plot_time_series_MODIS_record(self):
+        dff = result_root + rf'\Moving_window_coupling_analysis\Dataframe\moving_window\Dataframe_5year.df'
+        df = T.load_df(dff)
+
+        df = self.df_clean(df)
+
+        window_list = list(range(0,18))
+        result_dic = {}
+        eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
+        eco_region_list.append('Western US')
+
+        eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
+                           'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
+
+        for eco in eco_region_list:
+
+            if eco == 'Western US':
+                # 2. Use a single '=' for assignment, and handle the logic
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            pix_list = df_i['pix'].tolist()
+            unique_pix_list = list(set(pix_list))
+            spatial_dic = {}
+
+            # for pix in unique_pix_list:
+            #     spatial_dic[pix] = 1
+            # arr = D.pix_dic_to_spatial_arr(spatial_dic)
+            # plt.imshow(arr, vmin=-0.5, vmax=0.5, cmap='jet', interpolation='nearest')
+            # plt.colorbar()
+            # plt.title(f'{eco}')
+            # plt.show()
+
+            mean_dic = {}
+            std_dic = {}
+
+            for year in window_list:
+                df_ii = df_i[df_i['window'] == year]
+                ## scheme1
+                vals = np.array(df_ii['summer_LAI_anomaly_average'].tolist(), dtype=float)
+                vals_len = len(vals)
+                weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
+                weighted_mean = (
+                        np.nansum(vals * weight)
+                        / np.nansum(weight * np.isfinite(vals))
+                )
+                # weighted_mean=np.nanmean(vals)
+                # weighted_std = np.nanstd(vals)
+
+                #####加权方差
+                weighted_var = np.nansum(weight * (vals - weighted_mean) ** 2) / np.nansum(weight)
+
+                weighted_std = np.sqrt(weighted_var)
+
+                mean_dic[year] = weighted_mean
+                std_dic[year] = weighted_std
+                # print(weighted_std)
+                # print(
+                #     eco,
+                #     year,
+                #     np.nanmean(vals),
+                #     np.nanstd(vals),
+                #     weighted_std,
+                # );exit()
+
+            result_dic[f'{eco}_summer_LAI_mean'] = mean_dic
+            result_dic[f'{eco}_summer_LAI_std'] = std_dic
+
+            # 只存一次长度
+            result_dic[f'{eco}_len'] = len(df_i)
+
+            # 转成 DataFrame
+        df_new = pd.DataFrame(result_dic).reset_index()
+
+        # T.print_head_n(df_new);exit()
+
+        flag = 0
+
+        for eco in eco_region_list:
+            plt.figure(figsize=(self.map_width * 1.5, self.map_height))
+
+
+            summer_vals = df_new[f'{eco}_summer_LAI_mean']
+
+            summer_std = df_new[f'{eco}_summer_LAI_std']
+
+            vals_len = df_new[f'{eco}_len'][0]
+
+
+            # -----------------------------
+            # Summer
+            # -----------------------------
+
+            color_summer = '#07967F'
+
+            plt.plot(
+                window_list,
+                summer_vals,
+                color=color_summer,
+                lw=2,
+                label='Summer'
+            )
+
+            slope, intercept, r, p, _ = stats.linregress(window_list, summer_vals)
+            window_array=np.array(window_list)
+
+            plt.plot(
+                window_list,
+                slope * window_array + intercept,
+                '--',
+                color=color_summer,
+                lw=2,
+
+            )
+
+
+            plt.fill_between(
+                window_list,
+                summer_vals - summer_std,
+                summer_vals + summer_std,
+                color=color_summer,
+                alpha=0.2
+            )
+            plt.legend()
+
+            stats_text = (
+
+                f'Summer: slope={slope:.2f}, p={p:.2f}'
+            )
+
+            plt.text(0.95, 0.95, stats_text,
+                     transform=plt.gca().transAxes,
+                     verticalalignment='top',
+                     horizontalalignment='right',
+                     )
+
+            plt.ylabel('MODIS_LAI_anomaly(m2/m2)', fontsize=12)
+
+            plt.title(f'{eco}_n={vals_len}', fontsize=12)
+            # plt.ylim(1.1,1.3)
+
+            plt.grid(True, axis='x')
+
+            plt.show()
+            plt.close()
+
+class Breakdown_data:
+    def __init__(self):
+
+        pass
+
+    def run(self):
+        self.break_down_data()
+        pass
+
+    def break_down_data(self):
+        fdir=result_root + rf'\zscore\Moving_window\5year\\'
+        outdir =result_root + rf'\zscore\Moving_window\\\breakdown\\'
+        T.mkdir(outdir)
+        for f in T.listdir(fdir):
+            if not 'winter' in f:
+                continue
+            outdir_i=join(outdir, f.split('.')[0])
+            T.mkdir(outdir_i)
+            dic=T.load_npy(fdir+f)
+            T.save_distributed_perpix_dic(dic, outdir_i, n=1000,prefix='spatial_dict',istqdm=True)
+
+
+
+        pass
+
+    pass
+
+class PLOT_bivariate():  ##
+    def __init__(self):
+        self.map_width = 8.2 * centimeter_factor
+        self.map_height = 8.2 * centimeter_factor
+        self.__color_idx_array()
+        pass
+
+    def run(self):
+        ## step 1
+        self.bivariate_map()
+        ## step 2
+        # self.Figure_robinson_reprojection()  # convert figure to robinson and no need to plot robinson again
+
+       ## step 3
+        # self.statistic_pdf()
+
+
+        pass
+    def bivariate_map(self):  ## figure 1  ## LAImin and LAImax bivariate
+        import xymap
+
+
+        fdir_corr=result_root + rf'\bivariate\corr_10year_trend\\'
+        fdir_SPEI=result_root + rf'\bivariate\SPEI_trend\\'
+
+        outdir =result_root + rf'bivariate\\'
+
+        T.mkdir(outdir)
+
+        outtif = join(outdir,'SPEI48.tif')
+
+
+        fpath1 = join(fdir_corr,'partial_corr_SPEI48_summer_trend.tif')
+
+        fpath2 = join(fdir_SPEI,'summer_SPEI48_trend.tif')
+
+
+        tif1_label, tif2_label = 'partial_corr_trend','SPEI_trend'
+
+        #1
+        # min1, max1 = -1, 1
+        # min2, max2 = -1, 1
+
+        #2
+        min1, max1 = -.1, .1
+        min2, max2 = 0, .1
+
+        arr1 = ToRaster().raster2array(fpath1)[0]
+        arr2 = ToRaster().raster2array(fpath2)[0]
+
+        arr1[arr1<-9999] = np.nan
+        arr2[arr2<-9999] = np.nan
+
+        arr1_flattened = arr1.flatten()
+        arr2_flattened = arr2.flatten()
+
+
+        # plt.hist(arr1_flattened,bins=100)
+        # plt.title('arr1')
+        # plt.figure()
+        # plt.hist(arr2_flattened,bins=100)
+        # plt.title('arr2')
+        # plt.show()
+
+        # choice 1
+        upper_left_color = (193,92,156)
+        upper_right_color =(112, 196, 181)
+        lower_left_color = (237, 125, 49)
+        lower_right_color = (0, 0, 110)
+        center_color = (240, 240, 240)
+
+        ## CV greening option
+
+        # upper_left_color = (194, 0, 120)
+        # upper_right_color = (0,170,237)
+        # lower_left_color = (233, 55, 43)
+        # # lower_right_color = (160, 108, 168)
+        # lower_right_color = (234, 233, 46)
+        # center_color = (240, 240, 240)
+
+        # upper_left_color = (0, 0, 110)
+        # upper_right_color = (112, 196, 181)
+        # lower_left_color = (237, 125, 49)
+        #
+        # lower_right_color = (193, 92, 156)
+        # center_color = (240, 240, 240)
+
+
+        xymap.Bivariate_plot_1(res = 4,
+                         alpha = 255,
+                         upper_left_color = upper_left_color, #
+                         upper_right_color = upper_right_color, #
+                         lower_left_color = lower_left_color, #
+                         lower_right_color = lower_right_color, #
+                         center_color = center_color).plot_bivariate(
+                                                                    fpath1, fpath2,
+                                                                    tif1_label, tif2_label,
+                                                                    min1, max1,
+                                                                    min2, max2,
+                                                                    outtif,
+                                                                    n_x = 5, n_y = 5
+                                                                    )
+
+        T.open_path_and_file(outdir)
+
+
+
+    def Figure_robinson_reprojection(self):  # convert figure to robinson
+
+        fdir_trend = result_root +  rf'\bivariate\std_mean\\'
+        temp_root = result_root + rf'\bivariate\std_mean\\\\\\'
+        outdir = result_root + rf'\bivariate\std_mean\\\\\\ROBINSON\\'
+        T.mk_dir(outdir, force=True)
+        T.mk_dir(temp_root, force=True)
+
+        for f in os.listdir(fdir_trend):
+            if not 'std_mean' in f:
+                continue
+
+            if not f.endswith('.tif'):
+                continue
+
+            fname = f.split('.')[0]
+
+            fpath = fdir_trend + f
+            outf=outdir + fname + '.tif'
+            srcSRS=self.wkt_84()
+            dstSRS=self.wkt_robinson()
+
+            ToRaster().resample_reproj(fpath,outf, 50000, srcSRS=srcSRS, dstSRS=dstSRS)
+
+            T.open_path_and_file(outdir)
+
+
+
+
+    def wkt_robinson(self):
+        wkt='''PROJCRS["World_Robinson",
+    BASEGEOGCRS["WGS 84",
+        DATUM["World Geodetic System 1984",
+            ELLIPSOID["WGS 84",6378137,298.257223563,
+                LENGTHUNIT["metre",1]]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["Degree",0.0174532925199433]]],
+    CONVERSION["World_Robinson",
+        METHOD["Robinson"],
+        PARAMETER["Longitude of natural origin",0,
+            ANGLEUNIT["Degree",0.0174532925199433],
+            ID["EPSG",8802]],
+        PARAMETER["False easting",0,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8806]],
+        PARAMETER["False northing",0,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8807]]],
+    CS[Cartesian,2],
+        AXIS["(E)",east,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["(N)",north,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Not known."],
+        AREA["World."],
+        BBOX[-90,-180,90,180]],
+    ID["ESRI",54030]]
+        '''
+        return wkt
+
+
+    def wkt_84(self):
+        wkt = '''GEOGCRS["WGS 84",
+    ENSEMBLE["World Geodetic System 1984 ensemble",
+        MEMBER["World Geodetic System 1984 (Transit)"],
+        MEMBER["World Geodetic System 1984 (G730)"],
+        MEMBER["World Geodetic System 1984 (G873)"],
+        MEMBER["World Geodetic System 1984 (G1150)"],
+        MEMBER["World Geodetic System 1984 (G1674)"],
+        MEMBER["World Geodetic System 1984 (G1762)"],
+        MEMBER["World Geodetic System 1984 (G2139)"],
+        ELLIPSOID["WGS 84",6378137,298.257223563,
+            LENGTHUNIT["metre",1]],
+        ENSEMBLEACCURACY[2.0]],
+    PRIMEM["Greenwich",0,
+        ANGLEUNIT["degree",0.0174532925199433]],
+    CS[ellipsoidal,2],
+        AXIS["geodetic latitude (Lat)",north,
+            ORDER[1],
+            ANGLEUNIT["degree",0.0174532925199433]],
+        AXIS["geodetic longitude (Lon)",east,
+            ORDER[2],
+            ANGLEUNIT["degree",0.0174532925199433]],
+    USAGE[
+        SCOPE["Horizontal component of 3D system."],
+        AREA["World."],
+        BBOX[-90,-180,90,180]],
+    ID["EPSG",4326]]'''
+        return wkt
+
+
+    def RGBA_to_tif(self,blend_arr,outf,originX, originY, pixelWidth, pixelHeight):
+        import PIL.Image as Image
+        img = Image.fromarray(blend_arr.astype('uint8'), 'RGBA')
+        img.save(outf)
+        # define a projection and extent
+        raster = gdal.Open(outf)
+        geotransform = raster.GetGeoTransform()
+        raster.SetGeoTransform((originX, pixelWidth, 0, originY, 0, pixelHeight))
+        outRasterSRS = osr.SpatialReference()
+        projection = self.wkt_84()
+        # outRasterSRS.ImportFromEPSG(4326)
+        # outRasterSRS.ImportFromEPSG(projection)
+        # raster.SetProjection(outRasterSRS.ExportToWkt())
+        raster.SetProjection(projection)
+        pass
+
+
+
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+        df = df[df['row'] > 60]
+        df = df[df['Aridity'] < 0.65]
+        df = df[df['LC_max'] < 10]
+        df = df[df['MODIS_LUCC'] != 12]
+
+        df = df[df['landcover_classfication'] != 'Cropland']
+
+        return df
+
+    def statistic_pdf(self):
+        dff= result_root + rf'\3mm\product_consistency\dataframe\\moving_window.df'
+        df=T.load_df(dff)
+        df=self.df_clean(df)
+        vals_min=df['composite_LAI_std_trend'].tolist()
+        vals_max=df['composite_LAI_mean_trend'].tolist()
+        vals_min=np.array(vals_min)
+        vals_max=np.array(vals_max)
+        vals_min[vals_min>99]=np.nan
+        vals_min[vals_min<-99]=np.nan
+        vals_max[vals_max>99]=np.nan
+        vals_max[vals_max<-99]=np.nan
+
+
+        figure, ax = plt.subplots(figsize=(3,2),  )
+        sns.kdeplot(vals_min, ax=ax, label=f'std trend', fill=False,color='#9fd7e9',linewidth=2)
+        sns.kdeplot(vals_max, ax=ax, label=f'mean trend', fill=False,color='#fcd590',linewidth=2)
+        # ax.legend()
+        # === 添加均值线和标注 ===
+        mean_min = np.nanmean(vals_min)
+        mean_max = np.nanmean(vals_max)
+
+        ax.axvline(mean_min, color='#9fd7e9', linestyle='--', linewidth=1)
+        ax.axvline(mean_max, color='#fcd590', linestyle='--', linewidth=1)
+        # plt.legend()
+
+        # 在图顶写出均值
+        # ylim = ax.get_ylim()
+        # ax.text(mean_min, ylim[1] * 0.9, f'{mean_min:.4f}',
+        #         color='#f599a1', rotation=90, va='top', ha='right', fontsize=8)
+        # ax.text(mean_max, ylim[1] * 0.9, f'{mean_max:.4f}',
+        #         color='#a577ad', rotation=90, va='top', ha='left', fontsize=8)
+
+        plt.ylabel('')
+        plt.xlim(-0.01, 0.01)
+        # plt.tight_layout()
+        # plt.show()
+        outf=result_root + rf'\3mm\product_consistency\pdf\\std_mean_trend.pdf'
+        plt.savefig(outf,bbox_inches='tight',pad_inches=0,dpi=300)
+
+
+
+
+
+
+
+    def classify(self,row):
+        if row['composite_LAI_CV_trend'] > 0 and row['composite_LAI_relative_change_mean_trend'] > 0:
+            return 1
+        elif row['composite_LAI_CV_trend'] > 0 and row['composite_LAI_relative_change_mean_trend'] < 0:
+            return 2
+        elif row['composite_LAI_CV_trend'] < 0 and row['composite_LAI_relative_change_mean_trend'] > 0:
+            return 3
+        elif row['composite_LAI_CV_trend'] < 0 and row['composite_LAI_relative_change_mean_trend'] < 0:
+            return 4
+        else:
+            return 'Other'
+
+        # Apply classification
+
+    def bivariate_scheme3(self):
+
+        import xymap
+
+        fdir = result_root + rf'\3mm\extract_composite_phenology_year\trend\\'
+
+        outdir = result_root + rf'\3mm\extract_composite_phenology_year\bivariate\\'
+
+        T.mkdir(outdir)
+
+        outtif = join(outdir, 'std_mean.tif')
+
+        fpath1 = join(fdir, 'composite_LAI_std_trend.tif')
+
+        fpath2 = join(fdir, 'composite_LAI_mean_trend.tif')
+
+        tif1_label, tif2_label = 'std_trend', 'mean_trend'
+
+
+
+        # 2
+
+        bins_x = np.array([-np.inf, -0.01, 0, 0.01, np.inf])
+        bins_y = np.array([-np.inf, -0.01, 0, 0.01, np.inf])
+
+        arr1 = ToRaster().raster2array(fpath1)[0]
+        arr2 = ToRaster().raster2array(fpath2)[0]
+
+        arr1[arr1 < -9999] = np.nan
+        arr2[arr2 < -9999] = np.nan
+
+        dict1 = DIC_and_TIF().spatial_arr_to_dic(arr1)
+        dict2 = DIC_and_TIF().spatial_arr_to_dic(arr2)
+        dict_list = {'std_trend': dict1, 'mean_trend': dict2}
+        df_new = T.spatial_dics_to_df(dict_list)
+        df_new = df_new.dropna(how='any')
+        ##
+        T.print_head_n(df_new)
+
+        arr_count = np.zeros((len(bins_x) - 1, len(bins_y) - 1)).flatten()
+        arr = np.ones((360, 720, 4)) * 0
+        for i, row in tqdm(df_new.iterrows(), total=len(df_new)):
+            pix = row['pix']
+            x = row[tif1_label]
+            y = row[tif2_label]
+            color_idx, color = self.get_color(x, y, bins_x, bins_y)
+            arr_count[color_idx - 1] = arr_count[color_idx - 1] + 1
+            # print('binsx',bins_x)
+            # print('binsy',bins_y)
+            # print(x,y,color_idx,color);exit()
+
+            r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+            a = 255
+            arr[pix] = np.array([r, g, b, a])
+        self.RGBA_to_tif(arr, outtif, -180, 90, 0.5, -0.5)
+        arr_count = arr_count.reshape((len(bins_x) - 1, len(bins_y) - 1))
+
+        self.plot_legend(outdir,arr_count)
+
+        T.open_path_and_file(outdir)
+
+
+    def get_color(self, x, y, bins_x, bins_y):
+        # color_array = [
+        #     ['#f26d21 ', '#f598a1', '#ec1d8f', '#ec1d0f'],
+        #     ['#c7e86e', '#7BC8F6', '#d3a3cb', '#f26d21'],
+        #     ['#0e6b3f ', '#98cdd2', '#5d4a8d', '#f598a1'],
+        #     ['#0e6b3f ', '#98cdd2', '#5d4a8d', '#7BC8F6'],
+        # ][::-1]
+        color_idx_array = self.color_idx_array
+        color_dict = self.color_dict
+        color_idx_array = np.array(color_idx_array)
+        idx_x = np.digitize(x, bins_x) - 1
+        idx_y = np.digitize(y, bins_y) - 1
+        color_idx = color_idx_array[idx_y][idx_x]
+        color = color_dict[color_idx]
+        return color_idx, color
+
+    def __color_idx_array(self):
+        self.color_idx_array = [
+                                   [1, 2, 3, 4],
+                                   [5, 6, 7, 8],
+                                   [9, 10, 11, 12],
+                                   [13, 14, 15, 16]
+                               ][::-1]
+        self.color_dict = {
+            4: '#3182bd',
+            3: '#6baed6',
+            2: '#bd9e39',
+            1: '#8c6d31',
+            12: '#e6550d',
+            11: '#fd8d3c',
+            10: '#ad494a',
+            9: '#843c39',
+            8: '#31a354',
+            7: '#74c476',
+            6: '#e7969c',
+            5: '#d6616b',
+            16: '#756bb1',
+            15: '#9e9ac8',
+            14: '#cedb9c',
+            13: '#b5cf6b'
+        }
+
+    def plot_legend(self, outdir,count_arr):
+
+        color_array = []
+        for row in self.color_idx_array:
+            color_array_i = []
+            for col in row:
+                color = self.color_dict[col]
+                rgb_color = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)  ### convert hex to rgb
+                color_array_i.append(rgb_color)
+            color_array.append(color_array_i)
+        color_array = np.array(color_array)[::-1]
+        sns.heatmap(self.color_idx_array,annot=count_arr, fmt='g',alpha=0,annot_kws={'alpha':1,'color':'k'})
+        plt.imshow(color_array)
+
+        plt.show()
+        # plt.savefig(join(outdir, 'legend.pdf'))
+        # plt.close()
+        pass
+
+
+
+
+
+
+    def Figure2b_test(self):
+        fdir = result_root + rf'\3mm\extract_composite_phenology_year\trend\\'
+
+        outdir = result_root + rf'\3mm\extract_composite_phenology_year\bivariate\\'
+        self.plot_legend(outdir)
+
+        T.mkdir(outdir)
+
+        outtif = join(outdir, 'CV_trend_test.tif')
+        # outtif = join(outdir, 'LAImin_LAImax.tif')
+
+        # fpath1 = join(fdir,'composite_LAI_detrend_relative_change_min_trend.tif')
+        fpath1 = join(fdir, 'composite_LAI_CV_trend.tif')
+        # fpath2 = join(fdir,'composite_LAI_detrend_relative_change_max_trend.tif')
+        fpath2 = join(fdir, 'composite_LAI_relative_change_mean_trend.tif')
+
+        # 1
+        # tif1_label, tif2_label = 'LAImin_trend','LAImax_trend'
+        # 2
+        tif1_label, tif2_label = 'LAI_CV_trend', 'LAI_trend'
+
+        # 2
+        bins_x = np.array([-np.inf, -0.5, 0, 0.5, np.inf])
+        bins_y = np.array([-np.inf, -0.3, 0, 0.3, np.inf])
+
+        arr1 = ToRaster().raster2array(fpath1)[0]
+        arr2 = ToRaster().raster2array(fpath2)[0]
+
+        arr1[arr1 < -9999] = np.nan
+        arr2[arr2 < -9999] = np.nan
+
+        dict1 = DIC_and_TIF().spatial_arr_to_dic(arr1)
+        dict2 = DIC_and_TIF().spatial_arr_to_dic(arr2)
+        dict_list = {'LAI_CV_trend': dict1, 'LAI_trend': dict2}
+        df_new = T.spatial_dics_to_df(dict_list)
+        df_new = df_new.dropna(how='any')
+        ##
+        T.print_head_n(df_new)
+
+        arr_count=np.zeros((len(bins_x)-1,len(bins_y)-1)).flatten()
+        for i, row in tqdm(df_new.iterrows(), total=len(df_new)):
+            pix = row['pix']
+            x = row[tif1_label]
+            y = row[tif2_label]
+            color_idx, color = self.get_color(x, y, bins_x, bins_y)
+            arr_count[color_idx-1]=arr_count[color_idx-1]+1
+
+        arr_count=arr_count.reshape((len(bins_x)-1,len(bins_y)-1))
+        arr_percentage=arr_count/np.nansum(arr_count)*100
+        arr_log=np.log10(arr_count)
+        fig,ax=plt.subplots(1,1,figsize=(5,5))
+
+        plt.imshow(arr_percentage, cmap='GnBu', vmin=5, vmax=40)
+        ## add line y=0 and x=0
+        ax.axhline(y=1.5, color='k', linewidth=1)
+        ax.axvline(x=1.5, color='k', linewidth=1)
+        ## add label
+        ax.set_xlabel('Trend in CVLAI (%/yr)', fontsize=10)
+        ax.set_ylabel('Trend in LAI (%/yr)',fontsize=10)
+        ## xtick is empty
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ## set colorbar name 'percentage
+        # cbar = plt.colorbar()
+        # cbar.ax.set_title('Percentage', fontsize=10)
+
+        # plt.tight_layout()
+        plt.colorbar()
+
+        plt.show()
+
+        # plt.savefig(outtif, dpi=300, bbox_inches='tight')
+        # plt.close()
+
+    pass
+
 
 class categroy:
     def __init__(self):
@@ -1177,7 +2392,7 @@ class SHAP():
         # # #
         # self.check_variables_ranges()
         # #
-        # self.show_colinear()
+        self.show_colinear()
         # self.check_spatial_plot()
         # self.AIC_stepwise(self.dff)
         self.pdp_shap()
@@ -1342,13 +2557,21 @@ class SHAP():
     def variable_list_rt(self):
 
         self.x_variable_list = [
-            'SM_L4_summer_npy_trend','SM_L1_summer_npy_trend',
-
-
+             ' summer_SPEI3_trend',
+            # ' spring_SPEI3_trend',
+            # 'SM_L4_summer_npy_trend',
+            # 'SM_L1_summer_npy_trend',
+            'srad_summer_npy_trend',
+            'SWE_winter_npy_trend',
+            # 'summer_rainfall_fq_trend',
             'tmax_summer_npy_trend',
+            # 'vpd_summer_npy_trend',
+            # 'ppt_summer_npy_trend',
+            # 'ppt_spring_npy_trend',
            'summer_rainfall_intensity_trend',
-            'tmean_mean', 'ppt_winter_npy_trend',
-            'soil_summer_npy_trend'
+           #  'tmean_mean',
+            # 'ppt_winter_npy_trend',
+            # 'soil_summer_npy_trend'
 
 
 
@@ -1480,7 +2703,7 @@ class SHAP():
         df = df[df['lon'] < -105]
         df = df[df['lat'] > 30]
         df = df[df['lat'] < 45]
-        df = df[df["summer_class_3"].isin([1, 2, 3])]
+        # df = df[df["summer_class_3"].isin([1, 2, 3])]
 
         # eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
         #                    'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
@@ -1798,6 +3021,13 @@ class SHAP():
                             'SWE_winter_npy_trend':'Winter SWE trend',
                             'SM_L1_summer_npy_trend':'Surface SM trend',
                             'SM_L4_summer_npy_trend':'Root zone SM trend',
+                            'ppt_summer_npy_trend':'Summer_precip trend',
+                            'summer_rainfall_fq_trend':'Rainfall frequency trend',
+                            'ppt_spring_npy_trend':'Spring_precip trend',
+                            'vpd_summer_npy_trend':'Summer VPD trend',
+
+                            ' summer_SPEI3_trend':'Summer SPEI3 trend',
+                            ' spring_SPEI3_trend': 'Spring SPEI3 trend',
 
 
                             }
@@ -1809,7 +3039,7 @@ class SHAP():
 
                 flag += 1
 
-                plt.ylim(-.01,.01)
+                plt.ylim(-.005,.005)
             region=f.split('.')[0]
 
             plt.suptitle(region)
@@ -3375,11 +4605,14 @@ class Prepare_datasets_for_RF:
 
 def main():
     # coupling_anaysis().run()
+    Breakdown_data().run()
     # Moving_window_coupling_analysis().run()
     # PLOT_temporal_change_corr().run()
+    # PLOT_bivariate().run()
+
     # check_data()
     # categroy().run()
-    SHAP().run()
+    # SHAP().run()
     # SHAP_classsification().run()
 
 
