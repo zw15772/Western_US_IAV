@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'\Moving_window_coupling_analysis\Dataframe\\')
+                result_root +  rf'\multiregression\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'\\\Dataframe.df'
+        self.dff = self.this_class_arr + rf'\\\Dataframe\\VIF.df'
 
 
         pass
@@ -35,9 +35,9 @@ class build_dataframe():
         # df=self.append_cluster(df)  ## 加属性
         # df=self.append_value(df)   ## insert or append value
 
-        # df = self.add_detrend_zscore_to_df(df)
+        df = self.add_detrend_zscore_to_df(df)
 
-        df=self.add_trend_to_df(df)
+        # df=self.add_trend_to_df(df)
         # df=self.add_mean_to_df(df)
         # # df=self.add_phenology_type_to_df(df)
         #
@@ -47,20 +47,22 @@ class build_dataframe():
         #
         # df=self.add_row(df)  ## use this
         # df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
-        # # # # # # # # # # # # # # # # # # #
+        # # # # # # # # # # # # # # # # # #
         # df=self.add_lat_lon_to_df(df)  ## use this
-        # df=self.add_continent_to_df(df)
-        # df=self.add_residual_to_df(df)
-
-        # # # #
-        # df=self.add_rooting_depth_to_df(df)
-        # #
+        # # df=self.add_continent_to_df(df)
+        # # df=self.add_residual_to_df(df)
+        #
+        # # # # #
+        # # df=self.add_rooting_depth_to_df(df)
+        #
+        # # #
         # df=self.add_area_weighted_to_df(df)
 
 
         # df=self.rename_columns(df)
         # df = self.drop_field_df(df)
         # df=self.remove_duplicate_columns(df)
+        # df=self.delete_strip(df)
         df=self.show_field(df)
 
 
@@ -227,12 +229,13 @@ class build_dataframe():
 
 
     def foo1(self, df):
-        fdir=result_root+rf'\detrend\MODIS_LAI\\'
+        fdir=result_root+rf'multiregression\input\\'
         for f in os.listdir(fdir):
             if not f.endswith('.npy'):
                 continue
-            if not 'summer' in f:
+            if not 'growing_season_LAI_zscore_detrend' in f:
                 continue
+
 
 
             dic = T.load_npy(fdir + f)
@@ -263,7 +266,7 @@ class build_dataframe():
 
     def foo2(self, df):  # 新建trend
 
-        f = result_root + rf'\Moving_window_coupling_analysis\moving_window_extraction_5year_slice\\partial_corr_SPEI1_summer_0.tif'
+        f = result_root + rf'multiregression\output\first\tiff\\beta_intensity_summer.tif'
         array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
         array = np.array(array, dtype=float)
         val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
@@ -311,18 +314,18 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=rf'D:\Western_US_IAV\Data\carbonscope\dic_spring_annual\\'
+        fdir=result_root+rf'\multiregression\input\\'
 
         for f in os.listdir(fdir):
+            if not'ppt_winter_npy_zscore_detrend' in f:
+                continue
 
 
             variable= f.split('.')[0]
 
             print(variable)
-            if not 'summer' in f:
-                continue
-            if not 'intensity' in f:
-                continue
+
+
 
 
             if not f.endswith('.npy'):
@@ -494,12 +497,10 @@ class build_dataframe():
 
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\Terraclimate\SPEI\trend_analysis\\'
+        fdir = result_root + rf'\multiregression\output\second\tiff\\'
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
-                continue
-            if not 'summer' in f:
                 continue
 
 
@@ -545,7 +546,7 @@ class build_dataframe():
                 val_list.append(val)
 
 
-            df[f'{f_name}'] = val_list
+            df[f'{f_name}_second'] = val_list
 
 
         return df
@@ -640,6 +641,10 @@ class build_dataframe():
 
 
 
+        return df
+
+    def delete_strip(self, df):
+        df.columns = df.columns.str.strip()
         return df
 
 
@@ -878,15 +883,16 @@ class build_moving_window_dataframe():
         self.this_class_arr = (
                     result_root +  rf'\Moving_window_coupling_analysis\Dataframe\\moving_window\\')
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'Dataframe_5year.df'
+        self.dff = self.this_class_arr + rf'Dataframe_10year_trend.df'
     def run(self):
         df = self.__gen_df_init(self.dff)
         # df=self.build_df(df)
         # self.append_value(df)
         # df=self.append_attributes(df)
         # df=self.add_trend_to_df(df)
+
         # df=self.foo1(df)
-        df=self.add_window_to_df(df)
+        # df=self.add_window_to_df(df)
         # # df=self.add_phenology_type_to_df(df)
         # df=self.add_row(df)
         # df=self.add_lat_lon_to_df(df)
@@ -897,11 +903,17 @@ class build_moving_window_dataframe():
         # df=self.rename_columns(df)
         # df=self.add_columns(df)
         # df=self.drop_field_df(df)
-        self.add_area_weighted_to_df(df)
+        # self.add_area_weighted_to_df(df)
+        self.delete_strip(df)
         self.show_field()
 
         T.save_df(df, self.dff)
         self.__df_to_excel(df, self.dff)
+
+    def delete_strip(self, df):
+        df.columns = df.columns.str.strip()
+        return df
+
     def show_field(self):
         df = T.load_df(self.dff)
         for col in df.columns:
@@ -1011,7 +1023,7 @@ class build_moving_window_dataframe():
 
     def foo1(self, df):
 
-        f =result_root+ rf'\Moving_window_coupling_analysis\moving_window_extraction_average\5year\\summer_LAI_detrend_average.npy'
+        f =result_root+ rf'Moving_window_coupling_analysis\output\10year_trend\\partial_corr_SPEI9_summer.npy'
         # array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
         # array = np.array(array, dtype=float)
         # dic = DIC_and_TIF().spatial_arr_to_dic(array)
@@ -1041,18 +1053,17 @@ class build_moving_window_dataframe():
         df['window'] = year
         fname=f.split('.')[0]
 
-        df[fname] = change_rate_list
+        df['partial_corr_SPEI9_summer'] = change_rate_list
         return df
     def add_window_to_df(self, df):
 
 
-        fdir=result_root+rf'\Moving_window_coupling_analysis\moving_window_extraction_average\5year\\'
+        fdir=result_root+rf'\Moving_window_coupling_analysis\output\10year_trend\\'
 
 
         for f in os.listdir(fdir):
 
-            if not 'anomaly' in f:
-                continue
+
 
 
 
@@ -1315,11 +1326,13 @@ class build_moving_window_dataframe():
         return df
 
     def add_trend_to_df(self, df):
-        fdir=result_root+rf'\bivariate\rainfallmin_rainfallmax\trend\\'
+        fdir=result_root+rf'\Terraclimate\SPEI\trend_analysis\\'
         for f in os.listdir(fdir):
-
             if not f.endswith('.tif'):
                 continue
+            if not 'summer' in f:
+                continue
+
             print(f)
             array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fdir+f)
             array = np.array(array, dtype=float)
@@ -1338,6 +1351,7 @@ class build_moving_window_dataframe():
                     val_list.append(np.nan)
                     continue
                 val_list.append(val)
+
             df[f_name] = val_list
         return df
 
@@ -1367,8 +1381,8 @@ class check_Data:
 
 
 def main ():
-    # build_dataframe().run()
-    build_moving_window_dataframe().run()
+    build_dataframe().run()
+    # build_moving_window_dataframe().run()
     # check_Data().run()
     pass
 
