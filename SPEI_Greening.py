@@ -1806,6 +1806,171 @@ class PLOT_Daymet:
 
         pass
 
+class PLOT_heatmap:
+    def __init__(self):
+        pass
+
+
+    def run(self):
+        self.heatmap()
+        pass
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+        return df
+
+    def heatmap(self):
+        dff=result_root+rf'\Dataframe\Trend_analysis\\Trend_analysis.df'
+        df=T.load_df(dff)
+        df=self.df_clean(df)
+        for col in df.columns:
+            print(col)
+
+
+
+
+        x_var = 'summer_SPEI12_trend_whole'
+        y_var = 'SWE_winter_anomaly_trend'
+        z_var = 'summer_LAI_anomaly_trend_whole'
+
+        # ==============================
+        # 1. 提取数据
+        # ==============================
+        df_i = df[[x_var, y_var, z_var]].copy()
+        df_i = df_i.replace([np.inf, -np.inf], np.nan).dropna()
+
+        # 可选：去掉极端值，避免少数 outliers 拉伸坐标轴
+        for var in [x_var, y_var]:
+            q_low = df_i[var].quantile(0.01)
+            q_high = df_i[var].quantile(0.99)
+            df_i = df_i[
+                (df_i[var] >= q_low) &
+                (df_i[var] <= q_high)
+                ]
+        SPEI=df_i[x_var].tolist()
+        plt.hist(SPEI)
+        plt.show()
+        winter_ppt=df_i[y_var].tolist()
+        plt.hist(winter_ppt)
+        plt.show()
+
+        # ==============================
+        # 2. 设置 bin
+        # ==============================
+        n_bins = 10
+
+        x_bins = np.linspace(
+            -0.07,
+            0.02,
+            n_bins + 1
+        )
+
+        y_bins = np.linspace(
+            -1,
+            1,
+            n_bins + 1
+        )
+
+        # ==============================
+        # 3. 分箱
+        # ==============================
+        df_i['x_bin'] = pd.cut(
+            df_i[x_var],
+            bins=x_bins,
+            labels=False,
+            include_lowest=True
+        )
+
+        df_i['y_bin'] = pd.cut(
+            df_i[y_var],
+            bins=y_bins,
+            labels=False,
+            include_lowest=True
+        )
+
+        # ==============================
+        # 4. 每个 bin 计算 mean LAI trend
+        # ==============================
+        heatmap = df_i.groupby(
+            ['y_bin', 'x_bin'],
+            observed=False
+        )[z_var].mean().unstack()
+
+        # 保证所有 bins 都存在
+        heatmap = heatmap.reindex(
+            index=range(n_bins),
+            columns=range(n_bins)
+        )
+
+        # ==============================
+        # 5. bin 中心
+        # ==============================
+        x_centers = (x_bins[:-1] + x_bins[1:]) / 2
+        y_centers = (y_bins[:-1] + y_bins[1:]) / 2
+
+        # ==============================
+        # 6. Plot
+        # ==============================
+        fig, ax = plt.subplots(figsize=(7, 6))
+
+        # 让 0 两边颜色对称
+        vmax = np.nanpercentile(
+            np.abs(heatmap.values),
+            95
+        )
+
+        im = ax.imshow(
+            heatmap.values,
+            origin='lower',
+            aspect='auto',
+            cmap='RdBu',
+            vmin=-vmax,
+            vmax=vmax,
+            extent=[
+                x_bins[0],
+                x_bins[-1],
+                y_bins[0],
+                y_bins[-1]
+            ]
+        )
+
+        # 0 trend reference lines
+        ax.axvline(
+            0,
+            color='black',
+            linestyle='--',
+            linewidth=1
+        )
+
+        ax.axhline(
+            0,
+            color='black',
+            linestyle='--',
+            linewidth=1
+        )
+
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label('Growing season LAI trend')
+
+        ax.set_xlabel('SPEI trend')
+        ax.set_ylabel('SWE trend')
+
+        plt.tight_layout()
+        plt.show()
+
+        pass
+
 
 def main():
     # SPEI_Greening_categorize().run()
@@ -1815,7 +1980,8 @@ def main():
     # PLOT_Daymet().run()
     # PLOT_SPEI().run()
     # PLOT_WUE().run()
-    PLOT_GPP().run()
+    # PLOT_GPP().run()
+    PLOT_heatmap().run()
     # PLOT_SNU_LAI().run()
 
     pass

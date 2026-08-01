@@ -512,7 +512,7 @@ class Data_processing_MODIS_LAI:
         # self.MVC()
         # self.raster_align()
         # self.tif_to_dic()
-        # self.spring_season_LAI_mean()
+        self.spring_season_LAI_mean()
         self.growing_season()
         # self.trend_analysis()
         pass
@@ -766,8 +766,8 @@ class Data_processing_MODIS_LAI:
                 # print(vals[i][2:5])
                 ## march to may
                 spring_val=np.nanmean(vals[i][2:5])
-                ## july to sept
-                summer_val=np.nanmean(vals[i][6:9])
+                ## july to Oct
+                summer_val=np.nanmean(vals[i][6:10])
 
                 spring_list.append(spring_val)
                 summer_list.append(summer_val)
@@ -1102,8 +1102,8 @@ class Data_processing_Terraclimate:
         # self.spring_season_LAI_mean()
         # self.growing_season()
         # self.winter_precip()
-        # self.anomaly()
-        self.detrend()
+        self.anomaly()
+        # self.detrend()
 
         pass
     pass
@@ -1324,7 +1324,7 @@ class Data_processing_Terraclimate:
         np.save(outdir + rf'/per_pix_dic_%03d' % 0, temp_dic)
 
     def spring_season_LAI_mean(self):
-        fdir=data_root + rf'\Terraclimate\ppt\dic\\'
+        fdir=data_root + rf'\Terraclimate\srad\dic\\'
         outdir=result_root + rf'Terraclimate\\'
         T.mk_dir(outdir,force=True)
         var=fdir.split('\\')[-4]
@@ -1350,21 +1350,23 @@ class Data_processing_Terraclimate:
                 # print(vals[i][2:5])
                 ## march to may
                 spring_val=np.nansum(vals[i][2:5])
-                ## july to sept
-                summer_val=np.nansum(vals[i][6:9])
+                ## july to oct
+                summer_val=np.nansum(vals[i][6:10])
 
                 spring_list.append(spring_val)
                 summer_list.append(summer_val)
-            spring_result_dic[pix]=spring_list[1:]
-            summer_result_dic[pix]=summer_list[1:]
-        outspring=outdir+rf'{var}_spring_npy'
-        outsummer=outdir+rf'{var}_summer_npy'
+            print(len(spring_list))
+            spring_result_dic[pix]=spring_list
+            summer_result_dic[pix]=summer_list
+        outspring=outdir+rf'{var}_spring'
+        outsummer=outdir+rf'{var}_summer'
         T.save_npy(spring_result_dic,outspring)
         T.save_npy(summer_result_dic,outsummer)
 
     def growing_season(self):
-        fdir = data_root + rf'\Terraclimate\ppt\dic\\'
-        outdir = result_root + rf'Terraclimate\\'
+        variable_list=['srad','vpd','tmin','tmax','ppt','soil']
+        fdir = data_root + rf'\Terraclimate\srad\dic\\'
+        outdir = result_root + rf'Terraclimate\\growing_season\\'
         var = fdir.split('\\')[-4]
         T.mk_dir(outdir,force=True)
         spatial_dic=T.load_npy_dir(fdir)
@@ -1393,10 +1395,10 @@ class Data_processing_Terraclimate:
                 growing_season_list.append(growing_season_val)
             print(len(growing_season_list))
 
-            growing_season_result_dic[pix]=growing_season_list[1:]
+            growing_season_result_dic[pix]=growing_season_list
 
 
-        outspring=outdir+rf'{var}_growing_season_npy'
+        outspring=outdir+rf'{var}_growing_season'
         np.save(outspring,growing_season_result_dic)
 
 
@@ -1445,15 +1447,16 @@ class Data_processing_Terraclimate:
 
     def anomaly(self):
 
-        fdir = result_root + rf'\Terraclimate\climate\\'
+        fdir = result_root + rf'\SM\\'
         outdir = result_root + rf'\\anomaly\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
             if not f.endswith('.npy'):
                 continue
-            if not 'ppt' in f:
-                continue
+            # if not 'winter' in f:
+            #     continue
+
 
             outf = outdir + f.split('.')[0]+'_anomaly.npy'
             # if isfile(outf):
@@ -1515,15 +1518,17 @@ class Data_processing_Terraclimate:
 
     def detrend(self):
 
-        fdir = result_root + rf'\zscore\\'
+        fdir = result_root + rf'\anomaly\climate\\'
         outdir = result_root + rf'detrend\\'
         T.mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
             if not f.endswith('.npy'):
                 continue
-            if not 'growing_season' in f:
+            if not 'winter' in f:
                 continue
+
+
 
             print(f)
 
@@ -1697,13 +1702,13 @@ class Trend_analysis:
         import matplotlib.pyplot as plt
         ##each window average trend
 
-        fdir = result_root + r'\Daymet\\'
-        outdir = result_root + r'\Daymet\\trend_analysis\\'
+        fdir = result_root + r'\anomaly\\'
+        outdir = result_root + r'\anomaly\\trend_analysis\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
-            if not 'intensity' in f:
-                continue
+            # if not 'ppt_winter_npy' in f:
+            #     continue
 
 
             outf = outdir + f.split('.')[0]
@@ -1823,9 +1828,9 @@ class Data_processing_Daymet:
         # self.extract_spring_summer_rainfall_metrics() ## not use
         # self.extract_spring_summer_rainfall_intensity()
         # self.extract_spring_summer_rainfall_amount()
-        # self.extract_spring_summer_rainfall_fq()
+        self.extract_spring_summer_rainfall_fq()
         # self.extract_spring_summer_rainfall_dry_spell()
-        self.zscore()
+        # self.zscore()
 
         # self.trend_analysis()
 
@@ -2306,6 +2311,7 @@ class Data_processing_Daymet:
         fdir = r'D:\Western_US_IAV\Data\Daymet\prcp\transform_dic'
         spring_result = {}
         summer_result = {}
+        growing_result={}
         for f in T.listdir(fdir):
             # if not '05' in f:
             #     continue
@@ -2322,6 +2328,7 @@ class Data_processing_Daymet:
                 vals = vals.reshape(-1, 365)
 
                 spring_frequency_list = []
+                growing_season_frequency_list=[]
 
 
                 summer_frequency_list = []
@@ -2335,16 +2342,23 @@ class Data_processing_Daymet:
                     spring_vals = vals[i, 59:151]
 
 
-                    # 雨日 (>3 mm)
-                    spring_wet = spring_vals[spring_vals > 3]
+                    # 雨日 (>5 mm)
+                    spring_wet = spring_vals[spring_vals > 5]
                     spring_frequency = len(spring_wet)
                     spring_frequency_list.append(spring_frequency)
 
+                    ## growing season
+
+                    growing_season_vals = vals[i, 59:304]
+                    growing_season_wet = growing_season_vals[growing_season_vals > 5]
+                    growing_season_frequency = len(growing_season_wet)
+                    growing_season_frequency_list.append(growing_season_frequency)
 
 
+############################  summer
                     summer_vals = vals[i, 181:304]
 
-                    summer_wet = summer_vals[summer_vals > 3]
+                    summer_wet = summer_vals[summer_vals > 5]
                     summer_frequency = len(summer_wet)
 
                     summer_frequency_list.append(summer_frequency)
@@ -2352,14 +2366,16 @@ class Data_processing_Daymet:
                 # 保存
                 spring_result[pix] =spring_frequency_list
 
-
                 summer_result[pix]=summer_frequency_list
+                growing_result[pix]=growing_season_frequency_list
         outdir = result_root + rf'\Daymet\\'
         T.mkdir(outdir,force=True)
         outf_spring=outdir+rf'spring_rainfall_fq.npy'
         np.save(outf_spring,spring_result)
         outf_summer=outdir+rf'summer_rainfall_fq.npy'
         np.save(outf_summer,summer_result)
+        outf_growing_season=outdir+rf'growing_season_rainfall_fq.npy'
+        np.save(outf_growing_season,growing_result)
 
     def extract_spring_summer_rainfall_amount(self):
         fdir = r'D:\Western_US_IAV\Data\Daymet\prcp\transform_dic'
@@ -2857,8 +2873,9 @@ class Data_processing_ERA5land:
 
         # self.extract_tif_from_shp()
         # self.tif_to_dic()
-        self.winter_SWE()
+        # self.winter_SWE()
         # self.spring_season_SM_mean()
+        self.growing_season()
 
         pass
 
@@ -3000,12 +3017,12 @@ class Data_processing_ERA5land:
             winter_list=[]
 
             for i in range(1, len(vals)):
-                prev_oct_dec = vals[i - 1][10:12]  # Oct Nov Dec
+                prev_oct_dec = vals[i - 1][11:12]  # Oct Nov Dec
                 curr_jan_feb = vals[i][0:2]  # Jan Feb
 
                 winter = np.concatenate([prev_oct_dec, curr_jan_feb])
 
-                winter_mean = np.nansum(winter)  # 如果是降雨建议用sum
+                winter_mean = np.nanmean(winter)  # 如果是降雨建议用sum
                 winter_list.append(winter_mean)
             # print(len(winter_list))
 
@@ -3013,14 +3030,53 @@ class Data_processing_ERA5land:
 
 
 
-        outwinter=outdir+rf'{var}_winter_npy'
+        outwinter=outdir+rf'{var}_winter'
 
         T.save_npy(winter_result_dic,outwinter)
+
+    def growing_season(self):
+        fdir = data_root + rf'\SM\L4\dic\\'
+        outdir = result_root + rf'SM\\'
+        T.mk_dir(outdir, force=True)
+        var = 'SM_L4'
+        # print(var);exit()
+        spatial_dic = T.load_npy_dir(fdir)
+        spring_result_dic = {}
+
+        for pix in tqdm(spatial_dic):
+            r, c = pix
+            vals = spatial_dic[pix]
+            if T.is_all_nan(vals):
+                continue
+            if np.isnan(np.nanmean(vals)):
+                continue
+            vals = np.array(vals)
+            vals = np.reshape(vals, (-1, 12))
+            # plt.imshow(vals)
+            # plt.show()
+            spring_list = []
+
+
+            for i in range(len(vals)):
+                # print(vals[i][2:5])
+                ## march to may
+                spring_val = np.nansum(vals[i][2:10])
+
+
+                spring_list.append(spring_val)
+
+            spring_result_dic[pix] = spring_list
+
+        outspring = outdir + rf'{var}_growing_season'
+
+        T.save_npy(spring_result_dic, outspring)
+
+
     def spring_season_SM_mean(self):
-        fdir=data_root + rf'\SM\L4\dic\\'
+        fdir=data_root + rf'\SM\L3\dic\\'
         outdir=result_root + rf'SM\\'
         T.mk_dir(outdir,force=True)
-        var='SM_L4'
+        var='SM_L3'
         # print(var);exit()
         spatial_dic=T.load_npy_dir(fdir)
         spring_result_dic={}
@@ -3044,14 +3100,14 @@ class Data_processing_ERA5land:
                 ## march to may
                 spring_val=np.nansum(vals[i][2:5])
                 ## july to sept
-                summer_val=np.nansum(vals[i][6:9])
+                summer_val=np.nansum(vals[i][6:10])
 
                 spring_list.append(spring_val)
                 summer_list.append(summer_val)
             spring_result_dic[pix]=spring_list
             summer_result_dic[pix]=summer_list
-        outspring=outdir+rf'{var}_spring_npy'
-        outsummer=outdir+rf'{var}_summer_npy'
+        outspring=outdir+rf'{var}_spring'
+        outsummer=outdir+rf'{var}_summer'
         T.save_npy(spring_result_dic,outspring)
         T.save_npy(summer_result_dic,outsummer)
 
@@ -3146,26 +3202,32 @@ class check_data:
             plt.show()
 
     def check_spatial_coverage(self):
-        f = result_root+rf'\greening_analysis\relative_change\\SNU_LAI_detrend.npy'
-        dic = T.load_npy(f)
-        spatial_coverage = {}
+        fdir=result_root+rf'\anomaly\climate\\'
 
-
-        for pix in dic:
-            vals = dic[pix]
-            # if len(vals) == 42:
-            #     plt.plot(vals)
-            #     plt.show()
-
-            if np.isnan(np.nanmean(vals)):
+        for f in T.listdir(fdir):
+            if not 'winter' in f:
                 continue
-            # print(len(vals))
-            length = len(vals)
-            spatial_coverage[pix] = length
-        arr=D.pix_dic_to_spatial_arr(spatial_coverage)
-        plt.imshow(arr,cmap='jet',vmin=41,vmax=43)
-        plt.colorbar()
-        plt.show()
+
+            dic = T.load_npy(fdir+f)
+            spatial_coverage = {}
+
+
+            for pix in dic:
+                vals = dic[pix]
+                # if len(vals) == 42:
+                #     plt.plot(vals)
+                #     plt.show()
+
+                if np.isnan(np.nanmean(vals)):
+                    continue
+                # print(len(vals))
+                length = len(vals)
+                spatial_coverage[pix] = length
+            arr=D.pix_dic_to_spatial_arr(spatial_coverage)
+            plt.imshow(arr,cmap='jet',vmin=21,vmax=22)
+            plt.title(f)
+            plt.colorbar()
+            plt.show()
 
 class Data_processing_carbonscope:
     def __init__(self):
@@ -3429,13 +3491,14 @@ def main():
      # Data_processing_vegetation().run()
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
-    Data_processing_Terraclimate().run()
+    # Data_processing_Terraclimate().run()
     # calculating_mean_CV().run()
-    # Data_processing_Daymet().run()
+    Data_processing_Daymet().run()
     # Data_processing_ERA5land().run()
     # Data_processing_carbonscope().run()
     # Trend_analysis().run()
     # general_anaysis().run()
+
 
      # check_data().run()
     # convert_dic_to_tiff().run()

@@ -2662,9 +2662,9 @@ class SHAP():
         # self.show_colinear()
         # # self.check_spatial_plot()
         # # self.AIC_stepwise(self.dff)
-        # self.pdp_shap()
+        self.pdp_shap()
         # # # # # #
-        self.plot_pdp_shap()
+        # self.plot_pdp_shap()
         # self.plot_shaply_under_different_condition()
         # self.heatmap()
         # self.plot_bar_landcover()
@@ -2825,7 +2825,7 @@ class SHAP():
 
         self.x_variable_list = [
              'srad_summer_npy_detrend',
-            # 'ppt_winter_npy_detrend',
+            'ppt_winter_npy_detrend',
             # 'SM_L4_summer_npy_trend',
             # 'spring_LAI_detrend',
 

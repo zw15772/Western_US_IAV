@@ -29,9 +29,11 @@ class Multiregression:
 
     def run(self):
         # self.VIF()
-        self.trend_analysis()
+        # self.trend_analysis()
+        # self.contribution_analysis()
         # self.calculating_multiregression_sensitivity()
         # self.plot_sensitivity()
+        self.PLOT_contribution_bar()
         # self.plot_distribution()
         pass
 
@@ -85,28 +87,34 @@ class Multiregression:
         import matplotlib.pyplot as plt
         ##each window average trend
 
-        fdir = result_root + r'\multiregression\input\\input1\\'
-        outdir = result_root + r'\multiregression\\trend_analysis\\first\\'
+        fdir = result_root + r'\multiregression\input\input\zscore\\'
+        outdir = result_root + r'\multiregression\\trend_analysis\\whole\\'
         Tools().mk_dir(outdir, force=True)
+        season='growing_season'
 
-        for f in os.listdir(fdir):
 
 
-            outf = outdir + f.split('.')[0]
-            # if os.path.isfile(outf + '_trend.tif'):
-            #     continue
-            # print(outf);exit()
+        file_dic = {
 
-            if not f.endswith('.npy'):
-                continue
-            dic = np.load(fdir + f, allow_pickle=True, encoding='latin1').item()
+            'rainfall intensity': fdir + rf'{season}_rainfall_intensity_zscore.npy',
+            'tmax': fdir + rf'tmax_{season}_zscore.npy',
+            'srad': fdir + rf'srad_{season}_zscore.npy',
+            'ppt_winter': fdir + rf'ppt_winter_zscore.npy',
+            'ppt': fdir + rf'ppt_{season}_zscore.npy',
+        }
+
+        for var in file_dic:
+            dic = T.load_npy(file_dic[var])
+
+            outf = outdir + rf'{var}'
+
 
             trend_dic = {}
             p_value_dic = {}
             for pix in tqdm(dic):
                 r, c = pix
 
-                time_series = dic[pix][0:11]
+                time_series = dic[pix]
                 print(len(time_series))
                 # plt.plot(time_series)
                 # plt.show()
@@ -154,17 +162,17 @@ class Multiregression:
 
         season = 'growing_season'
 
-        fdir = result_root + r'\multiregression\input\\'
+        fdir = result_root + r'multiregression\input\input\detrend_zscore\\\\'
 
         fLAI = fdir + rf'{season}_LAI_zscore_detrend.npy'
 
         file_dic = {
 
-            'intensity': fdir + rf'{season}_rainfall_intensity_zscore.npy',
-            'temp': fdir + rf'tmax_{season}_npy_zscore_detrend.npy',
-            'rad': fdir + rf'srad_{season}_npy_zscore_detrend.npy',
-            'ppt_winter': fdir + rf'ppt_winter_npy_zscore_detrend.npy',
-            'ppt': fdir + rf'ppt_{season}_npy_zscore_detrend.npy',
+            'rainfall intensity': fdir + rf'{season}_rainfall_intensity_zscore.npy',
+            'tmax': fdir + rf'tmax_{season}_zscore_detrend.npy',
+            'srad': fdir + rf'srad_{season}_zscore_detrend.npy',
+            'ppt_winter': fdir + rf'ppt_winter_zscore_detrend.npy',
+            'ppt': fdir + rf'ppt_{season}_zscore_detrend.npy',
         }
 
         dic_LAI = T.load_npy(fLAI)
@@ -175,7 +183,7 @@ class Multiregression:
 
 
 
-        outdir = result_root + r'\multiregression\output\second\\npy\\'
+        outdir = result_root + r'\multiregression\output\whole\\npy\\'
         T.mk_dir(outdir, force=True)
 
         var_list = list(file_dic.keys())
@@ -231,12 +239,14 @@ class Multiregression:
             data = {
 
                 # 'LAI': vals_LAI[0:11]
-                'LAI': vals_LAI[11:]
+                # 'LAI': vals_LAI[11:],
+                'LAI': vals_LAI,
 
             }
 
             for var in var_list:
-                data[var] = np.array(dic_var[var][pix], dtype=float)[11:]
+                # data[var] = np.array(dic_var[var][pix], dtype=float)[11:]
+                data[var] = np.array(dic_var[var][pix], dtype=float)
 
             df = pd.DataFrame(data)
             # T.print_head_n(df)
@@ -312,12 +322,12 @@ class Multiregression:
         for var in var_list:
             T.save_npy(
                 result_beta[var],
-                outdir + rf'beta_{var}_{season}.npy'
+                outdir + rf'beta_{var}.npy'
             )
 
             T.save_npy(
                 result_p[var],
-                outdir + rf'p_value_{var}_{season}.npy'
+                outdir + rf'p_value_{var}.npy'
             )
 
         T.save_npy(
@@ -326,9 +336,68 @@ class Multiregression:
         )
 
 
+    def contribution_analysis(self):
+        fdir_sensitivity=result_root + rf'\multiregression\output\first\\npy\\'
+        fdir_trend=result_root + rf'\multiregression\trend_analysis\first\\'
+
+
+
+        var_list = [
+            f'ppt',
+           f'ppt_winter',
+            f'tmax',
+            f'srad',
+            f'rainfall intensity',
+        ]
+        # f_LAI=result_root + rf'multiregression\trend_analysis\second\\growing_season_LAI_zscore_trend.tif'
+        # array_LAI, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f_LAI)
+        # array_LAI= np.array(array_LAI, dtype=float)
+        #
+        # val_dic_LAI = D.spatial_arr_to_dic(array_LAI)
+
+
+        outdir = result_root + r'multiregression\Contribution\\first\\'
+        T.mk_dir(outdir,force=True)
+
+        for var in var_list:
+
+            beta = T.load_npy(os.path.join(fdir_sensitivity, f'beta_{var}.npy'))
+            array_climate, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(os.path.join(fdir_trend, f'{var}_trend.tif'))
+            array_climate = np.array(array_climate, dtype=float)
+            val_dic_climate= D.spatial_arr_to_dic(array_climate)
+
+            contribution = {}
+
+            pix_common = set(beta.keys()) & set(val_dic_climate.keys())
+
+            for pix in pix_common:
+
+
+                b = beta[pix][0]
+                t = val_dic_climate[pix]
+
+
+                if np.isnan(b) or np.isnan(t):
+                    continue
+
+                contribution[pix] = b * t
+            array_contribution = D.pix_dic_to_spatial_arr(contribution)
+            plt.imshow(array_contribution, cmap='RdBu',vmin=10, vmax=30)
+            # plt.colorbar()
+            # plt.show()
+            D.arr_to_tif(array_contribution,  outdir + f'contribution_{var}.tif')
+
+            T.save_npy(contribution,
+                       os.path.join(outdir, f'{var}_contribution.npy'))
+
+
+
+        pass
+
+
     def plot_sensitivity(self):
-        fdir=result_root + rf'\multiregression\output\second\\npy\\'
-        outdir=result_root + rf'\multiregression\output\\second\\tiff\\'
+        fdir=result_root + rf'\multiregression\output\whole\\npy\\'
+        outdir=result_root + rf'\multiregression\output\\whole\\tiff\\'
         T.mk_dir(outdir, force=True)
         for f in T.listdir(fdir):
             fname=f.split('.')[0]
@@ -350,6 +419,31 @@ class Multiregression:
         pass
 
     pass
+
+    def PLOT_contribution_bar(self):
+        dff=result_root + rf'multiregression\Dataframe\\contribution.df'
+        df=T.load_df(dff)
+        df=self.df_clean(df)
+        periods=['first','second','whole']
+        variable_list=['ppt_winter','ppt','tmax','srad','rainfall intensity']
+        for period in periods:
+            result_list=[]
+            for var in variable_list:
+                vals=df[f'contribution_{var}_{period}'].to_list()
+                vals_mean=np.nanmean(vals)
+                result_list.append(vals_mean)
+            LAItrend=df[f'growing_season_LAI_zscore_trend_{period}'].to_list()
+            result_list.append(np.nanmean(LAItrend))
+            result_list = np.array(result_list)
+            new_variable_list=variable_list.copy()
+            new_variable_list.append('LAI trend')
+            plt.figure(figsize=(6, 4))
+            plt.bar(new_variable_list, result_list, color='steelblue')
+            plt.title(period)
+            plt.ylabel('Mean contribution')
+            plt.xticks(rotation=30)
+            plt.tight_layout()
+            plt.show()
 
     def df_clean(self, df):
         T.print_head_n(df)
@@ -462,7 +556,24 @@ class Partial_corr:
 
     def run(self):
         # self.calculate_partial_corr()
-        self.plot_sensitivity()
+        # self.plot_sensitivity()
+        self.PLOT_corr_bar()
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+
+        return df
 
     def calculate_partial_corr(self):
 
@@ -471,19 +582,19 @@ class Partial_corr:
         from tqdm import tqdm
         import statsmodels.api as sm
 
-        season = 'growing_season'
+        season = 'summer'
 
-        fdir = result_root + r'\calculate_partial_corr\input\\'
+        fdir = result_root + rf'\detrend\{season}\\'
 
-        fLAI = fdir + rf'{season}_LAI_detrend.npy'
+        fLAI = fdir + rf'{season}_LAI_anomaly_detrend.npy'
 
         file_dic = {
 
-            'intensity': fdir + rf'{season}_rainfall_intensity.npy',
-            'temp': fdir + rf'tmax_{season}_npy_detrend.npy',
-            'rad': fdir + rf'srad_{season}_npy_detrend.npy',
-            'ppt_growing_season': fdir + rf'ppt_{season}_npy_detrend.npy',
-            'ppt_winter': fdir + rf'ppt_winter_npy_detrend.npy',
+            'rainfall_intensity': fdir + rf'{season}_rainfall_intensity.npy',
+            'tmax': fdir + rf'tmax_{season}_anomaly_detrend.npy',
+            'srad': fdir + rf'srad_{season}_anomaly_detrend.npy',
+            'ppt': fdir + rf'ppt_{season}_anomaly_detrend.npy',
+            'ppt_winter': fdir + rf'ppt_winter_anomaly_detrend.npy',
         }
 
         dic_LAI = T.load_npy(fLAI)
@@ -492,7 +603,7 @@ class Partial_corr:
         for var in file_dic:
             dic_var[var] = T.load_npy(file_dic[var])
 
-        outdir = result_root + r'\calculate_partial_corr\output\second\\npy\\'
+        outdir = result_root + rf'\calculate_partial_corr\output\\{season}\\npy\\'
         T.mk_dir(outdir, force=True)
 
         var_list = list(file_dic.keys())
@@ -545,12 +656,12 @@ class Partial_corr:
             data = {
 
                 # 'LAI': vals_LAI[0:11]
-                'LAI': vals_LAI[11:]
+                'LAI': vals_LAI
 
             }
 
             for var in var_list:
-                data[var] = np.array(dic_var[var][pix], dtype=float)[11:]
+                data[var] = np.array(dic_var[var][pix], dtype=float)
 
             df = pd.DataFrame(data)
             # T.print_head_n(df)
@@ -629,8 +740,9 @@ class Partial_corr:
             )
 
     def plot_sensitivity(self):
-        fdir=result_root + rf'\calculate_partial_corr\output\second\\npy\\'
-        outdir=result_root + rf'\calculate_partial_corr\output\\second\\tiff\\'
+        season='growing_season'
+        fdir=result_root + rf'\calculate_partial_corr\output\{season}\npy\\'
+        outdir=result_root + rf'\calculate_partial_corr\output\\{season}\\tiff\\'
         T.mk_dir(outdir, force=True)
         for f in T.listdir(fdir):
             fname=f.split('.')[0]
@@ -649,9 +761,54 @@ class Partial_corr:
 
             pass
 
+    def PLOT_corr_bar(self):
+        dff = result_root + rf'\calculate_partial_corr\Dataframe\\partial_corr.df'
+        df = T.load_df(dff)
+        df = self.df_clean(df)
+        season='spring'
+
+
+        variable_list = [
+            rf'partial_corr_ppt_winter_{season}_whole',
+            f'partial_corr_rainfall_intensity_{season}_whole',
+            f'partial_corr_ppt_winter_{season}_whole',
+        ]
+
+        eco_region_list = ['Western US', 'Western Cordillera', 'Upper Gila Mountains',
+                           'Warm Desert', 'Cold Desert', 'Western Sierra Madre Piedmont']
+
+        for eco in eco_region_list:
+
+            if eco == 'Western US':
+                df_i = df.copy()
+            else:
+                df_i = df[df['Ecoregion_level_II'] == eco]
+
+            result_list = []
+
+            for var in variable_list:
+                vals = df_i[var].to_numpy(dtype=float)
+
+                vals = vals[~np.isnan(vals)]
+
+                result_list.append(vals)
+
+            plt.figure(figsize=(6, 5))
+
+            plt.boxplot(
+                result_list,
+                labels=['GS ppt', 'Intensity', 'Winter ppt'],
+                showfliers=False
+            )
+
+            plt.axhline(0, color='gray', linestyle='--')
+            plt.ylabel('Partial correlation')
+            plt.title(eco)
+            plt.tight_layout()
+            plt.show()
 def main():
-    Multiregression().run()
-    # Partial_corr().run()
+    # Multiregression().run()
+    Partial_corr().run()
 
 if __name__ == '__main__':
     main()

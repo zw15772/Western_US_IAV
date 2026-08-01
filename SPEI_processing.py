@@ -320,7 +320,8 @@ class SPEI_calculation:
         # self.calculate_SPEI()
         # self.compute_spei_NOAA()
         # self.calculating_annual_mean()
-        self.spring_season_LAI_mean()
+        self.spring_season_mean()
+        self.growing_season()
 
 
         # self.trend_analysis()
@@ -595,8 +596,8 @@ class SPEI_calculation:
 
         T.save_npy(new_dic, outf)
 
-    def spring_season_LAI_mean(self):
-        scale_list=np.arange(1,2,1)
+    def spring_season_mean(self):
+        scale_list = [1] + list(range(3, 13, 3))
         for scale in scale_list:
             scale=int(scale)
             fdir=data_root + f'\Terraclimate\SPEI\\SPEI_{scale}_NOAA\\dic\\'
@@ -624,8 +625,8 @@ class SPEI_calculation:
                     # print(vals[i][2:5])
                     ## march to may
                     spring_val=np.nanmean(vals[i][2:5])
-                    ## july to sept
-                    summer_val=np.nanmean(vals[i][6:9])
+                    ## july to Oct
+                    summer_val=np.nanmean(vals[i][6:10])
 
                     spring_list.append(spring_val)
                     summer_list.append(summer_val)
@@ -634,10 +635,54 @@ class SPEI_calculation:
                 summer_result_dic[pix]=summer_list
 
 
-            outspring_f=outdir+rf'spring_SPEI{scale}'
-            outsummer_f=outdir+rf'summer_SPEI{scale}'
+
+            outspring_f=outdir+rf'spring_SPEI{scale:02d}.npy'
+            outsummer_f=outdir+rf'summer_SPEI{scale:02d}.npy'
+
             T.save_npy(spring_result_dic,outspring_f)
             T.save_npy(summer_result_dic,outsummer_f)
+
+    def growing_season(self):
+        scale_list = [1] + list(range(3, 13, 3))
+        for scale in scale_list:
+            scale = int(scale)
+            fdir = data_root + f'\Terraclimate\SPEI\\SPEI_{scale}_NOAA\\dic\\'
+            outdir = result_root + f'Terraclimate\SPEI\\'
+            T.mk_dir(outdir, force=True)
+            spatial_dic = T.load_npy_dir(fdir)
+            spring_result_dic = {}
+            summer_result_dic = {}
+            for pix in tqdm(spatial_dic):
+                r, c = pix
+                vals = spatial_dic[pix]
+                if T.is_all_nan(vals):
+                    continue
+                if np.isnan(np.nanmean(vals)):
+                    continue
+                vals = np.array(vals)
+                vals = np.reshape(vals, (-1, 12))
+                vals = vals[45:]
+                # plt.imshow(vals)
+                # plt.show()
+                spring_list = []
+
+
+                for i in range(len(vals)):
+                    # print(vals[i][2:5])
+                    ## march to may
+                    spring_val = np.nanmean(vals[i][2:10])
+
+
+                    spring_list.append(spring_val)
+
+                spring_result_dic[pix] = spring_list
+
+
+            outspring_f = outdir + rf'growing_season_SPEI{scale:02d}.npy'
+
+
+            T.save_npy(spring_result_dic, outspring_f)
+
 
 
 

@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'\multiregression\\')
+                result_root +  rf'\Dataframe\\Trend_analysis\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'\\\Dataframe\\VIF.df'
+        self.dff = self.this_class_arr + rf'\\Trend_analysis.df'
 
 
         pass
@@ -35,9 +35,9 @@ class build_dataframe():
         # df=self.append_cluster(df)  ## 加属性
         # df=self.append_value(df)   ## insert or append value
 
-        df = self.add_detrend_zscore_to_df(df)
+        # df = self.add_detrend_zscore_to_df(df)
 
-        # df=self.add_trend_to_df(df)
+        df=self.add_trend_to_df(df)
         # df=self.add_mean_to_df(df)
         # # df=self.add_phenology_type_to_df(df)
         #
@@ -45,10 +45,10 @@ class build_dataframe():
         #
         # # # #
         #
-        # df=self.add_row(df)  ## use this
-        # df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
-        # # # # # # # # # # # # # # # # # #
-        # df=self.add_lat_lon_to_df(df)  ## use this
+        df=self.add_row(df)  ## use this
+        df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
+        # # # # # # # # # # # # # # # # #
+        df=self.add_lat_lon_to_df(df)  ## use this
         # # df=self.add_continent_to_df(df)
         # # df=self.add_residual_to_df(df)
         #
@@ -229,11 +229,11 @@ class build_dataframe():
 
 
     def foo1(self, df):
-        fdir=result_root+rf'multiregression\input\\'
+        fdir=result_root+rf'\detrend\growing_season\\'
         for f in os.listdir(fdir):
             if not f.endswith('.npy'):
                 continue
-            if not 'growing_season_LAI_zscore_detrend' in f:
+            if not 'LAI' in f:
                 continue
 
 
@@ -266,7 +266,7 @@ class build_dataframe():
 
     def foo2(self, df):  # 新建trend
 
-        f = result_root + rf'multiregression\output\first\tiff\\beta_intensity_summer.tif'
+        f = result_root + rf'\anomaly\climate\trend_analysis\\ppt_winter_npy_anomaly_trend.tif'
         array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
         array = np.array(array, dtype=float)
         val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
@@ -310,15 +310,12 @@ class build_dataframe():
 
 
 
-
-
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=result_root+rf'\multiregression\input\\'
+        fdir=result_root+rf'\detrend\growing_season\\'
 
         for f in os.listdir(fdir):
-            if not'ppt_winter_npy_zscore_detrend' in f:
-                continue
+
 
 
             variable= f.split('.')[0]
@@ -497,12 +494,11 @@ class build_dataframe():
 
 
     def add_trend_to_df(self, df):
-        fdir = result_root + rf'\multiregression\output\second\tiff\\'
+        fdir = result_root + rf'anomaly\climate\trend_analysis\\'
 
         for f in os.listdir(fdir):
             if not f.endswith('.tif'):
                 continue
-
 
 
 
@@ -546,7 +542,7 @@ class build_dataframe():
                 val_list.append(val)
 
 
-            df[f'{f_name}_second'] = val_list
+            df[f'{f_name}'] = val_list
 
 
         return df
