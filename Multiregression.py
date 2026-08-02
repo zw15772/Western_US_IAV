@@ -806,9 +806,266 @@ class Partial_corr:
             plt.title(eco)
             plt.tight_layout()
             plt.show()
+
+class SEM:
+    def __init__(self):
+        pass
+
+    def df_clean(self, df):
+        T.print_head_n(df)
+        # df = df.dropna(subset=[self.y_variable])
+        # T.print_head_n(df)
+        # exit()
+
+        df = df[df['lon'] > -125]
+        df = df[df['lon'] < -105]
+        df = df[df['lat'] > 30]
+        df = df[df['lat'] < 45]
+        #
+        # df = df[df['landcover_classfication'] != 'Cropland']
+
+
+        return df
+
+    def run(self):
+        # self.SEM_calculation()
+        self.SEM_wet_dry()
+
+
+    def SEM_calculation(self):
+        from semopy import Model, calc_stats
+        from scipy.stats import pearsonr
+
+        dff=result_root+rf'\SEM\\Dataframe\\SEM.df'
+        outdir=result_root + rf'\SEM\\output\\'
+        T.mk_dir(outdir, force=True)
+        df=T.load_df(dff)
+        df=self.df_clean(df)
+
+        df = df[[
+            'SWE_winter_anomaly_detrend',
+            'spring_rainfall_fq_5mm_anomaly_detrend',
+            'ppt_summer_anomaly_detrend',
+            'SM_L1_growing_season_anomaly_detrend',
+            'summer_LAI_anomaly_detrend'
+        ]].copy()
+
+        df_sem = df.rename(columns={
+            'SWE_winter_anomaly_detrend': 'SWE',
+            'spring_rainfall_fq_5mm_anomaly_detrend': 'Rain_Fq',
+            'ppt_summer_anomaly_detrend': 'Summer_PPT',
+            'SM_L1_growing_season_anomaly_detrend': 'SM',
+            'summer_LAI_anomaly_detrend': 'LAI'
+        })
+
+        df_corr = df_sem[
+            ['Rain_Fq', 'Summer_PPT']
+        ].replace(
+            [np.inf, -np.inf],
+            np.nan
+        ).dropna()
+
+
+        r, p = pearsonr(
+            df_corr['Rain_Fq'],
+            df_corr['Summer_PPT']
+        )
+
+        print('r =', r)
+        print('p =', p)
+
+
+        print(
+            df_sem[
+                ['SWE', 'Rain_Fq', 'Summer_PPT', 'SM', 'LAI']
+            ].corr().round(2)
+        )
+        exit()
+
+        model_desc = """
+
+        # ==========================================
+        # Soil moisture
+        # ==========================================
+        SM ~ SWE + Rain_Fq + Summer_PPT
+
+
+        # ==========================================
+        # Vegetation
+        # ==========================================
+        LAI ~ SM + Rain_Fq + Summer_PPT
+        
+        
+        # ==========================================
+        # Covariance among climate drivers
+        # ==========================================
+        SWE ~~ Rain_Fq
+        SWE ~~ Summer_PPT
+        Rain_Fq ~~ Summer_PPT
+        
+                """
+
+        model = Model(model_desc)
+
+        model.fit(
+            df_sem[
+                [
+                    'SWE',
+                    'Rain_Fq',
+                    'Summer_PPT',
+                    'SM',
+                    'LAI'
+                ]
+            ]
+        )
+
+        # standardized path coefficients
+        est = model.inspect(std_est=True)
+
+        path_result = est[
+            est['op'] == '~'
+            ][
+            [
+                'lval',
+                'rval',
+                'Estimate',
+                'Est. Std',
+                'p-value'
+            ]
+        ]
+
+        print(path_result)
+
+        # model fit
+        stats = calc_stats(model)
+
+        print(stats.T)
+
+
+        from semopy import semplot
+
+        semplot(
+            model,
+            outdir+rf'SEM_path.png',
+            plot_covs=True,
+            std_ests=True,
+            show=False
+        )
+
+    def SEM_wet_dry(self):
+        from semopy import Model, calc_stats
+        from scipy.stats import pearsonr
+
+        dff = result_root + rf'\SEM\\Dataframe\\SEM.df'
+        outdir = result_root + rf'\SEM\\output\\'
+        T.mk_dir(outdir, force=True)
+        df = T.load_df(dff)
+        df = self.df_clean(df)
+
+        df = df[[
+            'SWE_winter_anomaly_detrend',
+            'spring_rainfall_fq_5mm_anomaly_detrend',
+            'ppt_summer_anomaly_detrend',
+            'SM_L1_growing_season_anomaly_detrend',
+            'summer_LAI_anomaly_detrend',
+            'summer_SPEI06',
+        ]].copy()
+
+        df_sem = df.rename(columns={
+            'SWE_winter_anomaly_detrend': 'SWE',
+            'spring_rainfall_fq_5mm_anomaly_detrend': 'Rain_Fq',
+            'ppt_summer_anomaly_detrend': 'Summer_PPT',
+            'SM_L1_growing_season_anomaly_detrend': 'SM',
+            'summer_LAI_anomaly_detrend': 'LAI',
+
+        })
+
+
+        df_dry = df_sem[df_sem['summer_SPEI06'] < -0.5].copy()
+        df_wet = df_sem[df_sem['summer_SPEI06'] >= 0.5].copy()
+
+        df_dic = {
+            'wet': df_wet,
+            'dry': df_dry,
+        }
+
+        for condition, df_ii in df_dic.items():
+
+            #
+            model_desc = """
+    
+            # ==========================================
+            # Soil moisture
+            # ==========================================
+            SM ~ SWE + Rain_Fq + Summer_PPT
+    
+    
+            # ==========================================
+            # Vegetation
+            # ==========================================
+            LAI ~ SM + Rain_Fq + Summer_PPT
+    
+    
+            # ==========================================
+            # Covariance among climate drivers
+            # ==========================================
+            SWE ~~ Rain_Fq
+            SWE ~~ Summer_PPT
+            Rain_Fq ~~ Summer_PPT
+    
+                    """
+
+            model = Model(model_desc)
+
+            model.fit(
+                df_ii[
+                    [
+                        'SWE',
+                        'Rain_Fq',
+                        'Summer_PPT',
+                        'SM',
+                        'LAI'
+                    ]
+                ]
+            )
+
+            # standardized path coefficients
+            est = model.inspect(std_est=True)
+
+            path_result = est[
+                est['op'] == '~'
+                ][
+                [
+                    'lval',
+                    'rval',
+                    'Estimate',
+                    'Est. Std',
+                    'p-value'
+                ]
+            ]
+
+            print(path_result)
+
+            # model fit
+            stats = calc_stats(model)
+
+            print(stats.T)
+
+            from semopy import semplot
+
+            semplot(
+                model,
+                outdir + rf'SEM_path_{condition}.png',
+                plot_covs=True,
+                std_ests=True,
+                show=False
+            )
+
+
 def main():
     # Multiregression().run()
-    Partial_corr().run()
+    # Partial_corr().run()
+    SEM().run()
 
 if __name__ == '__main__':
     main()

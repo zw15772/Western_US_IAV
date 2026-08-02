@@ -1102,8 +1102,8 @@ class Data_processing_Terraclimate:
         # self.spring_season_LAI_mean()
         # self.growing_season()
         # self.winter_precip()
-        self.anomaly()
-        # self.detrend()
+        # self.anomaly()
+        self.detrend()
 
         pass
     pass
@@ -1447,15 +1447,15 @@ class Data_processing_Terraclimate:
 
     def anomaly(self):
 
-        fdir = result_root + rf'\SM\\'
+        fdir = result_root + rf'\Daymet\\'
         outdir = result_root + rf'\\anomaly\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
             if not f.endswith('.npy'):
                 continue
-            # if not 'winter' in f:
-            #     continue
+            if not 'fq' in f:
+                continue
 
 
             outf = outdir + f.split('.')[0]+'_anomaly.npy'
@@ -1518,15 +1518,14 @@ class Data_processing_Terraclimate:
 
     def detrend(self):
 
-        fdir = result_root + rf'\anomaly\climate\\'
-        outdir = result_root + rf'detrend\\'
+        fdir = result_root + rf'\anomaly\MODIS_LAI\\'
+        outdir = result_root + rf'detrend\\MODIS_LAI\\'
         T.mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
             if not f.endswith('.npy'):
                 continue
-            if not 'winter' in f:
-                continue
+
 
 
 
@@ -1702,8 +1701,8 @@ class Trend_analysis:
         import matplotlib.pyplot as plt
         ##each window average trend
 
-        fdir = result_root + r'\anomaly\\'
-        outdir = result_root + r'\anomaly\\trend_analysis\\'
+        fdir = result_root + r'\anomaly\climate\spring\\'
+        outdir = result_root + r'\\anomaly\climate\spring\\trend_analysis\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
@@ -1712,8 +1711,8 @@ class Trend_analysis:
 
 
             outf = outdir + f.split('.')[0]
-            # if os.path.isfile(outf + '_trend.tif'):
-            #     continue
+            if os.path.isfile(outf + '_trend.tif'):
+                continue
             # print(outf);exit()
 
             if not f.endswith('.npy'):
@@ -2308,7 +2307,7 @@ class Data_processing_Daymet:
 
 
     def extract_spring_summer_rainfall_fq(self):
-        fdir = r'D:\Western_US_IAV\Data\Daymet\prcp\transform_dic'
+        fdir = r'C:\Users\wenzhang1.BLUECAT\Desktop\\transform_dic'
         spring_result = {}
         summer_result = {}
         growing_result={}
@@ -2343,14 +2342,14 @@ class Data_processing_Daymet:
 
 
                     # 雨日 (>5 mm)
-                    spring_wet = spring_vals[spring_vals > 5]
+                    spring_wet = spring_vals[spring_vals > 10]
                     spring_frequency = len(spring_wet)
                     spring_frequency_list.append(spring_frequency)
 
                     ## growing season
 
                     growing_season_vals = vals[i, 59:304]
-                    growing_season_wet = growing_season_vals[growing_season_vals > 5]
+                    growing_season_wet = growing_season_vals[growing_season_vals > 10]
                     growing_season_frequency = len(growing_season_wet)
                     growing_season_frequency_list.append(growing_season_frequency)
 
@@ -2358,7 +2357,7 @@ class Data_processing_Daymet:
 ############################  summer
                     summer_vals = vals[i, 181:304]
 
-                    summer_wet = summer_vals[summer_vals > 5]
+                    summer_wet = summer_vals[summer_vals > 10]
                     summer_frequency = len(summer_wet)
 
                     summer_frequency_list.append(summer_frequency)
@@ -2370,11 +2369,11 @@ class Data_processing_Daymet:
                 growing_result[pix]=growing_season_frequency_list
         outdir = result_root + rf'\Daymet\\'
         T.mkdir(outdir,force=True)
-        outf_spring=outdir+rf'spring_rainfall_fq.npy'
+        outf_spring=outdir+rf'spring_rainfall_fq_10mm.npy'
         np.save(outf_spring,spring_result)
-        outf_summer=outdir+rf'summer_rainfall_fq.npy'
+        outf_summer=outdir+rf'summer_rainfall_fq_10mm.npy'
         np.save(outf_summer,summer_result)
-        outf_growing_season=outdir+rf'growing_season_rainfall_fq.npy'
+        outf_growing_season=outdir+rf'growing_season_rainfall_fq_10mm.npy'
         np.save(outf_growing_season,growing_result)
 
     def extract_spring_summer_rainfall_amount(self):
@@ -3491,9 +3490,9 @@ def main():
      # Data_processing_vegetation().run()
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
-    # Data_processing_Terraclimate().run()
+    Data_processing_Terraclimate().run()
     # calculating_mean_CV().run()
-    Data_processing_Daymet().run()
+    # Data_processing_Daymet().run()
     # Data_processing_ERA5land().run()
     # Data_processing_carbonscope().run()
     # Trend_analysis().run()

@@ -1813,6 +1813,7 @@ class PLOT_heatmap:
 
     def run(self):
         self.heatmap()
+        # self.count_map()
         pass
 
     def df_clean(self, df):
@@ -1838,11 +1839,9 @@ class PLOT_heatmap:
             print(col)
 
 
-
-
-        x_var = 'summer_SPEI12_trend_whole'
-        y_var = 'SWE_winter_anomaly_trend'
-        z_var = 'summer_LAI_anomaly_trend_whole'
+        x_var = 'summer_SPEI06_trend'
+        y_var = 'summer_vpd_anomaly_trend'
+        z_var = 'summer_LAI_anomaly_trend'
 
         # ==============================
         # 1. 提取数据
@@ -1851,13 +1850,13 @@ class PLOT_heatmap:
         df_i = df_i.replace([np.inf, -np.inf], np.nan).dropna()
 
         # 可选：去掉极端值，避免少数 outliers 拉伸坐标轴
-        for var in [x_var, y_var]:
-            q_low = df_i[var].quantile(0.01)
-            q_high = df_i[var].quantile(0.99)
-            df_i = df_i[
-                (df_i[var] >= q_low) &
-                (df_i[var] <= q_high)
-                ]
+        # for var in [x_var, y_var]:
+        #     q_low = df_i[var].quantile(0.01)
+        #     q_high = df_i[var].quantile(0.99)
+        #     df_i = df_i[
+        #         (df_i[var] >= q_low) &
+        #         (df_i[var] <= q_high)
+        #         ]
         SPEI=df_i[x_var].tolist()
         plt.hist(SPEI)
         plt.show()
@@ -1871,14 +1870,14 @@ class PLOT_heatmap:
         n_bins = 10
 
         x_bins = np.linspace(
-            -0.07,
+            -0.06,
             0.02,
             n_bins + 1
         )
 
         y_bins = np.linspace(
-            -1,
-            1,
+            -.4,
+            .4,
             n_bins + 1
         )
 
@@ -1913,6 +1912,16 @@ class PLOT_heatmap:
             columns=range(n_bins)
         )
 
+        count_map = df_i.groupby(
+            ['y_bin', 'x_bin'],
+            observed=False
+        )[z_var].count().unstack()
+
+        count_map = count_map.reindex(
+            index=range(n_bins),
+            columns=range(n_bins)
+        ).fillna(0)
+
         # ==============================
         # 5. bin 中心
         # ==============================
@@ -1945,7 +1954,35 @@ class PLOT_heatmap:
             ]
         )
 
-        # 0 trend reference lines
+        # ==============================
+        # 添加圆圈
+        # circle size = pixel count
+        # ==============================
+        max_count = np.nanmax(count_map.values)
+
+        for i in range(n_bins):
+            for j in range(n_bins):
+
+                count = count_map.iloc[i, j]
+
+                if count == 0:
+                    continue
+
+                # 根据 pixel number 调整圆圈大小
+                size = 300 * count / max_count
+
+                ax.scatter(
+                    x_centers[j],
+                    y_centers[i],
+                    s=size,
+                    facecolors='none',
+                    edgecolors='black',
+                    linewidth=0.7
+                )
+
+        # ==============================
+        # Reference lines
+        # ==============================
         ax.axvline(
             0,
             color='black',
@@ -1964,12 +2001,127 @@ class PLOT_heatmap:
         cbar.set_label('Growing season LAI trend')
 
         ax.set_xlabel('SPEI trend')
-        ax.set_ylabel('SWE trend')
+        ax.set_ylabel('Rainfall frequency trend')
 
         plt.tight_layout()
         plt.show()
 
-        pass
+    def count_map(self):
+        dff = result_root + rf'\Dataframe\Trend_analysis\\Trend_analysis.df'
+        df = T.load_df(dff)
+        df = self.df_clean(df)
+        for col in df.columns:
+            print(col)
+
+        x_var = 'summer_SPEI06_trend'
+        y_var = 'growing_season_rainfall_fq_5mm_anomaly_trend'
+        z_var = 'summer_LAI_anomaly_trend'
+
+        # ==============================
+        # 1. 提取数据
+        # ==============================
+        df_i = df[[x_var, y_var, z_var]].copy()
+        df_i = df_i.replace([np.inf, -np.inf], np.nan).dropna()
+
+        # 可选：去掉极端值，避免少数 outliers 拉伸坐标轴
+        # for var in [x_var, y_var]:
+        #     q_low = df_i[var].quantile(0.01)
+        #     q_high = df_i[var].quantile(0.99)
+        #     df_i = df_i[
+        #         (df_i[var] >= q_low) &
+        #         (df_i[var] <= q_high)
+        #         ]
+        SPEI = df_i[x_var].tolist()
+        plt.hist(SPEI)
+        plt.show()
+        winter_ppt = df_i[y_var].tolist()
+        plt.hist(winter_ppt)
+        plt.show()
+
+        # ==============================
+        # 2. 设置 bin
+        # ==============================
+        n_bins = 10
+
+        x_bins = np.linspace(
+            -0.06,
+            0.02,
+            n_bins + 1
+        )
+
+        y_bins = np.linspace(
+            -.4,
+            .4,
+            n_bins + 1
+        )
+
+        # ==============================
+        # 3. 分箱
+        # ==============================
+        df_i['x_bin'] = pd.cut(
+            df_i[x_var],
+            bins=x_bins,
+            labels=False,
+            include_lowest=True
+        )
+
+        df_i['y_bin'] = pd.cut(
+            df_i[y_var],
+            bins=y_bins,
+            labels=False,
+            include_lowest=True
+        )
+        heatmap = df_i.groupby(
+            ['y_bin', 'x_bin'],
+            observed=False
+        )[z_var].mean().unstack()
+
+        heatmap = heatmap.reindex(
+            index=range(n_bins),
+            columns=range(n_bins)
+        )
+
+        # ==============================
+        # 4.1 每个 bin 的 pixel number
+        # ==============================
+        count_map = df_i.groupby(
+            ['y_bin', 'x_bin'],
+            observed=False
+        )[z_var].count().unstack()
+
+        count_map = count_map.reindex(
+            index=range(n_bins),
+            columns=range(n_bins)
+        ).fillna(0)
+
+        print(count_map)
+
+        fig, ax = plt.subplots(figsize=(7, 6))
+
+        im = ax.imshow(
+            count_map.values,
+            origin='lower',
+            aspect='auto',
+            cmap='viridis',
+            extent=[
+                x_bins[0],
+                x_bins[-1],
+                y_bins[0],
+                y_bins[-1]
+            ]
+        )
+
+        ax.axvline(0, color='black', linestyle='--', linewidth=1)
+        ax.axhline(0, color='black', linestyle='--', linewidth=1)
+
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label('Pixel number')
+
+        ax.set_xlabel('SPEI trend')
+        ax.set_ylabel('Rainfall frequency trend')
+
+        plt.tight_layout()
+        plt.show()
 
 
 def main():
