@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'\SEM\\Dataframe\\')
+                result_root +  rf'\\Dataframe\\zscore\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'\\SEM.df'
+        self.dff = self.this_class_arr + rf'\\zscore.df'
 
 
         pass
@@ -49,14 +49,14 @@ class build_dataframe():
         # df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
         # # # # # # # # # # # # # # # # # #
         # df=self.add_lat_lon_to_df(df)  ## use this
-        # # df=self.add_continent_to_df(df)
-        # # df=self.add_residual_to_df(df)
+        # df=self.add_continent_to_df(df)
+        # df=self.add_residual_to_df(df)
         #
         # # # # #
         # # df=self.add_rooting_depth_to_df(df)
         #
         # # #
-        # df=self.add_area_weighted_to_df(df)
+        df=self.add_area_weighted_to_df(df)
 
 
         # df=self.rename_columns(df)
@@ -229,11 +229,11 @@ class build_dataframe():
 
 
     def foo1(self, df):
-        fdir=result_root+rf'\SEM\input\\'
+        fdir=result_root+rf'\zscore\\'
         for f in os.listdir(fdir):
             if not f.endswith('.npy'):
                 continue
-            if not 'LAI' in f:
+            if not 'ppt_spring_zscore' in f:
                 continue
 
 
@@ -312,14 +312,14 @@ class build_dataframe():
 
     def add_detrend_zscore_to_df(self, df):
 
-        fdir=result_root+rf'\SEM\input\\'
+        fdir=result_root+rf'\zscore\\'
 
         for f in os.listdir(fdir):
 
 
 
             variable= f.split('.')[0]
-            if not 'SPEI' in f:
+            if not 'winter' in f:
                 continue
 
             print(variable)
@@ -1362,16 +1362,19 @@ class check_Data:
         self.spatial_plot()
     def spatial_plot(self):
 
-        fdir=rf'D:\Western_US_IAV\Data\LT_Baseline_NT\spring_summer_season_LAI_mean\\'
+        fdir=rf'D:\Western_US_IAV\Result\zscore\\'
         spatial_len={}
 
         for f in os.listdir(fdir):
+            if not 'SWE' in f:
+                continue
             dic=T.load_npy(fdir+f)
             for pix in dic:
-                vals=dic[pix]['spring']
+                vals=dic[pix]
                 length=len(vals)
-                spatial_len[pix]=np.nanmean(vals)
+                spatial_len[pix]=length
             array=D.pix_dic_to_spatial_arr(spatial_len)
+            plt.title(f)
             plt.imshow(array)
             plt.show()
 

@@ -1701,19 +1701,19 @@ class Trend_analysis:
         import matplotlib.pyplot as plt
         ##each window average trend
 
-        fdir = result_root + r'\anomaly\climate\spring\\'
-        outdir = result_root + r'\\anomaly\climate\spring\\trend_analysis\\'
+        fdir = result_root + r'\Terraclimate\SPEI\\'
+        outdir = result_root + r'\\Terraclimate\\SPEI\\trend_analysis\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
-            # if not 'ppt_winter_npy' in f:
-            #     continue
+            if not 'spring_SPEI03' in f:
+                continue
 
 
             outf = outdir + f.split('.')[0]
-            if os.path.isfile(outf + '_trend.tif'):
-                continue
-            # print(outf);exit()
+            # if os.path.isfile(outf + '_trend.tif'):
+            #     continue
+            # # print(outf);exit()
 
             if not f.endswith('.npy'):
                 continue
@@ -1765,8 +1765,8 @@ class Trend_analysis:
             im = ax.imshow(
                 arr_trend,
                 cmap='RdBu',
-                vmin=-0.01,
-                vmax=0.01,
+                vmin=-.05,
+                vmax=.05,
                 extent=[-124.55, -102.04, 25.59, 49],
                 transform=ccrs.PlateCarree()
             )
@@ -1827,9 +1827,10 @@ class Data_processing_Daymet:
         # self.extract_spring_summer_rainfall_metrics() ## not use
         # self.extract_spring_summer_rainfall_intensity()
         # self.extract_spring_summer_rainfall_amount()
-        self.extract_spring_summer_rainfall_fq()
+        # self.extract_spring_summer_rainfall_fq()
         # self.extract_spring_summer_rainfall_dry_spell()
-        # self.zscore()
+        # self.extract_spring_summer_rainfall_wet_spell()
+        self.zscore()
 
         # self.trend_analysis()
 
@@ -2533,13 +2534,13 @@ class Data_processing_Daymet:
 
     def zscore(self):
 
-        fdir = result_root + rf'\MODIS_LAI\MODIS_LAI\\'
+        fdir = result_root + rf'\Terraclimate\climate\\'
         outdir = result_root + rf'zscore\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
-            if not 'growing_season' in f:
-                continue
+            # if not 'growing_season' in f:
+            #     continue
             if not f.endswith('.npy'):
                 continue
 
@@ -3490,9 +3491,9 @@ def main():
      # Data_processing_vegetation().run()
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
-    Data_processing_Terraclimate().run()
+    # Data_processing_Terraclimate().run()
     # calculating_mean_CV().run()
-    # Data_processing_Daymet().run()
+    Data_processing_Daymet().run()
     # Data_processing_ERA5land().run()
     # Data_processing_carbonscope().run()
     # Trend_analysis().run()
