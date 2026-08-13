@@ -1653,7 +1653,7 @@ class PLOT_heatmap:
 
 
     def run(self):
-        self.heatmap()
+        self.heatmap_SWE()
         # self.count_map()
         pass
 
@@ -1672,7 +1672,7 @@ class PLOT_heatmap:
 
         return df
 
-    def heatmap(self):
+    def heatmap_rainfall_fq(self):
         dff=result_root+rf'\Dataframe\Trend_analysis\\Trend_analysis.df'
         df=T.load_df(dff)
         df=self.df_clean(df)
@@ -1706,25 +1706,36 @@ class PLOT_heatmap:
         plt.show()
 
         # ==============================
-        # 2. 设置 bin
-        # ==============================
-        n_bins = 10
-
-        x_bins = np.linspace(
+        # x bins
+        x_bins = np.arange(
             -0.06,
-            0.03,
-            n_bins + 1
+            0.0301,
+            0.01
         )
 
-        y_bins = np.linspace(
-            -.4,
-            .3,
-            n_bins + 1
+        # y bins
+        # 保证 0 是一个 bin edge
+        y_bins = np.arange(
+            -0.40,
+            0.3001,
+            0.05
         )
+
+        # 分别计算 x/y bin 数量
+        n_x_bins = len(x_bins) - 1
+        n_y_bins = len(y_bins) - 1
+
+        print('x bins:', x_bins)
+        print('y bins:', y_bins)
+
+        print('n_x_bins:', n_x_bins)
+        print('n_y_bins:', n_y_bins)
 
         # ==============================
         # 3. 分箱
         # ==============================
+        df_i = df_i.copy()
+
         df_i['x_bin'] = pd.cut(
             df_i[x_var],
             bins=x_bins,
@@ -1742,44 +1753,70 @@ class PLOT_heatmap:
         # ==============================
         # 4. 每个 bin 计算 mean LAI trend
         # ==============================
-        heatmap = df_i.groupby(
-            ['y_bin', 'x_bin'],
-            observed=False
-        )[z_var].mean().unstack()
+        heatmap = (
+            df_i
+            .groupby(
+                ['y_bin', 'x_bin'],
+                observed=False
+            )[z_var]
+            .mean()
+            .unstack()
+        )
 
         # 保证所有 bins 都存在
         heatmap = heatmap.reindex(
-            index=range(n_bins),
-            columns=range(n_bins)
+            index=range(n_y_bins),
+            columns=range(n_x_bins)
         )
 
-        count_map = df_i.groupby(
-            ['y_bin', 'x_bin'],
-            observed=False
-        )[z_var].count().unstack()
+        # ==============================
+        # 5. 每个 bin 的 pixel 数量
+        # ==============================
+        count_map = (
+            df_i
+            .groupby(
+                ['y_bin', 'x_bin'],
+                observed=False
+            )[z_var]
+            .count()
+            .unstack()
+        )
 
         count_map = count_map.reindex(
-            index=range(n_bins),
-            columns=range(n_bins)
+            index=range(n_y_bins),
+            columns=range(n_x_bins)
         ).fillna(0)
 
         # ==============================
-        # 5. bin 中心
+        # 6. bin centers
         # ==============================
-        x_centers = (x_bins[:-1] + x_bins[1:]) / 2
-        y_centers = (y_bins[:-1] + y_bins[1:]) / 2
+        x_centers = (
+                            x_bins[:-1] + x_bins[1:]
+                    ) / 2
+
+        y_centers = (
+                            y_bins[:-1] + y_bins[1:]
+                    ) / 2
 
         # ==============================
-        # 6. Plot
+        # 7. Plot
         # ==============================
-        fig, ax = plt.subplots(figsize=(7, 6))
+        fig, ax = plt.subplots(
+            figsize=(7, 6)
+        )
 
+        # ==============================
+        # Color range
         # 让 0 两边颜色对称
+        # ==============================
         vmax = np.nanpercentile(
             np.abs(heatmap.values),
             95
         )
 
+        # ==============================
+        # Heatmap
+        # ==============================
         im = ax.imshow(
             heatmap.values,
             origin='lower',
@@ -1787,6 +1824,7 @@ class PLOT_heatmap:
             cmap='RdBu',
             vmin=-vmax,
             vmax=vmax,
+
             extent=[
                 x_bins[0],
                 x_bins[-1],
@@ -1796,13 +1834,16 @@ class PLOT_heatmap:
         )
 
         # ==============================
-        # 添加圆圈
+        # 8. Circle
         # circle size = pixel count
         # ==============================
-        max_count = np.nanmax(count_map.values)
+        max_count = np.nanmax(
+            count_map.values
+        )
 
-        for i in range(n_bins):
-            for j in range(n_bins):
+        for i in range(n_y_bins):
+
+            for j in range(n_x_bins):
 
                 count = count_map.iloc[i, j]
 
@@ -1810,41 +1851,410 @@ class PLOT_heatmap:
                     continue
 
                 # 根据 pixel number 调整圆圈大小
-                size = 300 * count / max_count
+                size = (
+                        300
+                        * count
+                        / max_count
+                )
 
                 ax.scatter(
                     x_centers[j],
                     y_centers[i],
+
                     s=size,
+
                     facecolors='none',
                     edgecolors='black',
-                    linewidth=0.7
+
+                    linewidth=0.7,
+
+                    zorder=3
                 )
 
         # ==============================
-        # Reference lines
+        # 9. Reference lines
         # ==============================
-        # ax.axvline(
-        #     0,
-        #     color='black',
-        #     linestyle='--',
-        #     linewidth=1
-        # )
-        #
-        # ax.axhline(
-        #     0,
-        #     color='black',
-        #     linestyle='--',
-        #     linewidth=1
-        # )
 
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('Growing season LAI trend')
+        # x = 0
+        ax.axvline(
+            0,
+            color='black',
+            linestyle='--',
+            linewidth=1,
+            zorder=4
+        )
 
-        ax.set_xlabel('SPEI trend')
-        ax.set_ylabel('Rainfall frequency trend')
+        # y = 0
+        ax.axhline(
+            0,
+            color='black',
+            linestyle='--',
+            linewidth=1,
+            zorder=4
+        )
 
+        # ==============================
+        # 10. Ticks
+        # ticks 放在 bin edges
+        # ==============================
+        ax.set_xticks(
+            x_bins
+        )
+
+        ax.set_yticks(
+            y_bins
+        )
+
+        # x 保留两位
+        ax.set_xticklabels(
+            [
+                f'{x:.2f}'
+                for x in x_bins
+            ]
+        )
+
+        # y 保留两位
+        ax.set_yticklabels(
+            [
+                f'{y:.2f}'
+                for y in y_bins
+            ]
+        )
+
+        # ==============================
+        # 11. Axis limits
+        # ==============================
+        ax.set_xlim(
+            x_bins[0],
+            x_bins[-1]
+        )
+
+        ax.set_ylim(
+            y_bins[0],
+            y_bins[-1]
+        )
+
+        # ==============================
+        # 12. Colorbar
+        # ==============================
+        cbar = plt.colorbar(
+            im,
+            ax=ax
+        )
+
+        cbar.set_label(
+            'Summer LAI trend'
+        )
+
+        # ==============================
+        # 13. Labels
+        # ==============================
+        ax.set_xlabel(
+            'Summer SPEI trend'
+        )
+
+        ax.set_ylabel(
+            'Spring large rainfall >5 mm frequency trend'
+        )
+
+        # ==============================
+        # 14. Final
+        # ==============================
         plt.tight_layout()
+
+        plt.show()
+
+
+    def heatmap_SWE(self):
+        dff=result_root+rf'\Dataframe\Trend_analysis\\Trend_analysis.df'
+        df=T.load_df(dff)
+        df=self.df_clean(df)
+        for col in df.columns:
+            print(col)
+
+
+        x_var = 'summer_SPEI06_trend'
+        y_var = 'SWE_winter_anomaly_trend'
+        z_var = 'summer_LAI_anomaly_trend'
+
+        # ==============================
+        # 1. 提取数据
+        # ==============================
+        df_i = df[[x_var, y_var, z_var]].copy()
+        df_i = df_i.replace([np.inf, -np.inf], np.nan).dropna()
+
+        # 可选：去掉极端值，避免少数 outliers 拉伸坐标轴
+        # for var in [x_var, y_var]:
+        #     q_low = df_i[var].quantile(0.01)
+        #     q_high = df_i[var].quantile(0.99)
+        #     df_i = df_i[
+        #         (df_i[var] >= q_low) &
+        #         (df_i[var] <= q_high)
+        #         ]
+        SPEI=df_i[x_var].tolist()
+        plt.hist(SPEI)
+        plt.show()
+        winter_ppt=df_i[y_var].tolist()
+        plt.hist(winter_ppt)
+        plt.show()
+
+        # ==============================
+        # x bins
+        x_bins = np.arange(
+            -0.06,
+            0.0301,
+            0.01
+        )
+
+        # y bins
+        # 保证 0 是一个 bin edge
+        y_bins = np.arange(
+            -1.5,
+            1.5,
+            0.3
+        )
+
+        # 分别计算 x/y bin 数量
+        n_x_bins = len(x_bins) - 1
+        n_y_bins = len(y_bins) - 1
+
+        print('x bins:', x_bins)
+        print('y bins:', y_bins)
+
+        print('n_x_bins:', n_x_bins)
+        print('n_y_bins:', n_y_bins)
+
+        # ==============================
+        # 3. 分箱
+        # ==============================
+        df_i = df_i.copy()
+
+        df_i['x_bin'] = pd.cut(
+            df_i[x_var],
+            bins=x_bins,
+            labels=False,
+            include_lowest=True
+        )
+
+        df_i['y_bin'] = pd.cut(
+            df_i[y_var],
+            bins=y_bins,
+            labels=False,
+            include_lowest=True
+        )
+
+        # ==============================
+        # 4. 每个 bin 计算 mean LAI trend
+        # ==============================
+        heatmap = (
+            df_i
+            .groupby(
+                ['y_bin', 'x_bin'],
+                observed=False
+            )[z_var]
+            .mean()
+            .unstack()
+        )
+
+        # 保证所有 bins 都存在
+        heatmap = heatmap.reindex(
+            index=range(n_y_bins),
+            columns=range(n_x_bins)
+        )
+
+        # ==============================
+        # 5. 每个 bin 的 pixel 数量
+        # ==============================
+        count_map = (
+            df_i
+            .groupby(
+                ['y_bin', 'x_bin'],
+                observed=False
+            )[z_var]
+            .count()
+            .unstack()
+        )
+
+        count_map = count_map.reindex(
+            index=range(n_y_bins),
+            columns=range(n_x_bins)
+        ).fillna(0)
+
+        # ==============================
+        # 6. bin centers
+        # ==============================
+        x_centers = (
+                            x_bins[:-1] + x_bins[1:]
+                    ) / 2
+
+        y_centers = (
+                            y_bins[:-1] + y_bins[1:]
+                    ) / 2
+
+        # ==============================
+        # 7. Plot
+        # ==============================
+        fig, ax = plt.subplots(
+            figsize=(7, 6)
+        )
+
+        # ==============================
+        # Color range
+        # 让 0 两边颜色对称
+        # ==============================
+        vmax = np.nanpercentile(
+            np.abs(heatmap.values),
+            95
+        )
+
+        # ==============================
+        # Heatmap
+        # ==============================
+        im = ax.imshow(
+            heatmap.values,
+            origin='lower',
+            aspect='auto',
+            cmap='RdBu',
+            vmin=-vmax,
+            vmax=vmax,
+
+            extent=[
+                x_bins[0],
+                x_bins[-1],
+                y_bins[0],
+                y_bins[-1]
+            ]
+        )
+
+        # ==============================
+        # 8. Circle
+        # circle size = pixel count
+        # ==============================
+        max_count = np.nanmax(
+            count_map.values
+        )
+
+        for i in range(n_y_bins):
+
+            for j in range(n_x_bins):
+
+                count = count_map.iloc[i, j]
+
+                if count == 0:
+                    continue
+
+                # 根据 pixel number 调整圆圈大小
+                size = (
+                        300
+                        * count
+                        / max_count
+                )
+
+                ax.scatter(
+                    x_centers[j],
+                    y_centers[i],
+
+                    s=size,
+
+                    facecolors='none',
+                    edgecolors='black',
+
+                    linewidth=0.7,
+
+                    zorder=3
+                )
+
+        # ==============================
+        # 9. Reference lines
+        # ==============================
+
+        # x = 0
+        ax.axvline(
+            0,
+            color='black',
+            linestyle='--',
+            linewidth=1,
+            zorder=4
+        )
+
+        # y = 0
+        ax.axhline(
+            0,
+            color='black',
+            linestyle='--',
+            linewidth=1,
+            zorder=4
+        )
+
+        # ==============================
+        # 10. Ticks
+        # ticks 放在 bin edges
+        # ==============================
+        ax.set_xticks(
+            x_bins
+        )
+
+        ax.set_yticks(
+            y_bins
+        )
+
+        # x 保留两位
+        ax.set_xticklabels(
+            [
+                f'{x:.2f}'
+                for x in x_bins
+            ]
+        )
+
+        # y 保留两位
+        ax.set_yticklabels(
+            [
+                f'{y:.2f}'
+                for y in y_bins
+            ]
+        )
+
+        # ==============================
+        # 11. Axis limits
+        # ==============================
+        ax.set_xlim(
+            x_bins[0],
+            x_bins[-1]
+        )
+
+        ax.set_ylim(
+            y_bins[0],
+            y_bins[-1]
+        )
+
+        # ==============================
+        # 12. Colorbar
+        # ==============================
+        cbar = plt.colorbar(
+            im,
+            ax=ax
+        )
+
+        cbar.set_label(
+            'Summer LAI trend'
+        )
+
+        # ==============================
+        # 13. Labels
+        # ==============================
+        ax.set_xlabel(
+            'Summer SPEI trend'
+        )
+
+        ax.set_ylabel(
+            'SWE trend'
+        )
+
+        # ==============================
+        # 14. Final
+        # ==============================
+        plt.tight_layout()
+
         plt.show()
 
     def count_map(self):
@@ -2334,9 +2744,9 @@ def main():
     # PLOT_SPEI().run()
     # PLOT_WUE().run()
     # PLOT_GPP().run()
-    # PLOT_heatmap().run()
+    PLOT_heatmap().run()
     # PLOT_SNU_LAI().run()
-    PLOT_zscore().run()
+    # PLOT_zscore().run()
 
     pass
 

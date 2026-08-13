@@ -1701,12 +1701,12 @@ class Trend_analysis:
         import matplotlib.pyplot as plt
         ##each window average trend
 
-        fdir = result_root + r'\Terraclimate\SPEI\\'
-        outdir = result_root + r'\\Terraclimate\\SPEI\\trend_analysis\\'
+        fdir = result_root + r'\Daymet\\'
+        outdir = result_root + r'\\Daymet\\trend_analysis\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
-            if not 'spring_SPEI03' in f:
+            if not '10mm' in f:
                 continue
 
 
@@ -1765,8 +1765,8 @@ class Trend_analysis:
             im = ax.imshow(
                 arr_trend,
                 cmap='RdBu',
-                vmin=-.05,
-                vmax=.05,
+                vmin=-.2,
+                vmax=.2,
                 extent=[-124.55, -102.04, 25.59, 49],
                 transform=ccrs.PlateCarree()
             )
@@ -1827,10 +1827,10 @@ class Data_processing_Daymet:
         # self.extract_spring_summer_rainfall_metrics() ## not use
         # self.extract_spring_summer_rainfall_intensity()
         # self.extract_spring_summer_rainfall_amount()
-        # self.extract_spring_summer_rainfall_fq()
+        self.extract_spring_summer_rainfall_fq()
         # self.extract_spring_summer_rainfall_dry_spell()
         # self.extract_spring_summer_rainfall_wet_spell()
-        self.zscore()
+        # self.zscore()
 
         # self.trend_analysis()
 
@@ -2343,14 +2343,14 @@ class Data_processing_Daymet:
 
 
                     # 雨日 (>5 mm)
-                    spring_wet = spring_vals[spring_vals > 10]
+                    spring_wet = spring_vals[spring_vals > 5]
                     spring_frequency = len(spring_wet)
                     spring_frequency_list.append(spring_frequency)
 
                     ## growing season
 
                     growing_season_vals = vals[i, 59:304]
-                    growing_season_wet = growing_season_vals[growing_season_vals > 10]
+                    growing_season_wet = growing_season_vals[growing_season_vals > 5]
                     growing_season_frequency = len(growing_season_wet)
                     growing_season_frequency_list.append(growing_season_frequency)
 
@@ -2358,7 +2358,7 @@ class Data_processing_Daymet:
 ############################  summer
                     summer_vals = vals[i, 181:304]
 
-                    summer_wet = summer_vals[summer_vals > 10]
+                    summer_wet = summer_vals[summer_vals > 5]
                     summer_frequency = len(summer_wet)
 
                     summer_frequency_list.append(summer_frequency)
@@ -2370,11 +2370,11 @@ class Data_processing_Daymet:
                 growing_result[pix]=growing_season_frequency_list
         outdir = result_root + rf'\Daymet\\'
         T.mkdir(outdir,force=True)
-        outf_spring=outdir+rf'spring_rainfall_fq_10mm.npy'
+        outf_spring=outdir+rf'spring_rainfall_fq_5mm.npy'
         np.save(outf_spring,spring_result)
-        outf_summer=outdir+rf'summer_rainfall_fq_10mm.npy'
+        outf_summer=outdir+rf'summer_rainfall_fq_5mm.npy'
         np.save(outf_summer,summer_result)
-        outf_growing_season=outdir+rf'growing_season_rainfall_fq_10mm.npy'
+        outf_growing_season=outdir+rf'growing_season_rainfall_fq_5mm.npy'
         np.save(outf_growing_season,growing_result)
 
     def extract_spring_summer_rainfall_amount(self):
@@ -3493,10 +3493,10 @@ def main():
     # Data_processing_MODIS_LAI().run()
     # Data_processing_Terraclimate().run()
     # calculating_mean_CV().run()
-    Data_processing_Daymet().run()
+    # Data_processing_Daymet().run()
     # Data_processing_ERA5land().run()
     # Data_processing_carbonscope().run()
-    # Trend_analysis().run()
+    Trend_analysis().run()
     # general_anaysis().run()
 
 
