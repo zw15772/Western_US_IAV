@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'\\Dataframe\\zscore\\')
+                result_root +  rf'\\Dataframe\\SPEI\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'\\zscore.df'
+        self.dff = self.this_class_arr + rf'\\SPEI.df'
 
 
         pass
@@ -35,7 +35,9 @@ class build_dataframe():
         # df=self.append_cluster(df)  ## 加属性
         # df=self.append_value(df)   ## insert or append value
 
-        df = self.add_detrend_zscore_to_df(df)
+        # df = self.add_SPEI_to_df(df)  ## start from 1958
+        # df=self.add_SNU_LAI_to_df(df)
+        df=self.add_MODIS_LAI_to_df(df)
 
         # df=self.add_trend_to_df(df)
         # df=self.add_mean_to_df(df)
@@ -47,7 +49,7 @@ class build_dataframe():
         #
         # df=self.add_row(df)  ## use this
         # df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
-        # # # # # # # # # # # # # # # # # #
+        # # # # # # # # # # # # # # # # # # #
         # df=self.add_lat_lon_to_df(df)  ## use this
         # df=self.add_continent_to_df(df)
         # df=self.add_residual_to_df(df)
@@ -56,7 +58,7 @@ class build_dataframe():
         # # df=self.add_rooting_depth_to_df(df)
         #
         # # #
-        df=self.add_area_weighted_to_df(df)
+        # df=self.add_area_weighted_to_df(df)
 
 
         # df=self.rename_columns(df)
@@ -229,11 +231,11 @@ class build_dataframe():
 
 
     def foo1(self, df):
-        fdir=result_root+rf'\zscore\\'
+        fdir=result_root+rf'\Terraclimate\SPEI\\'
         for f in os.listdir(fdir):
             if not f.endswith('.npy'):
                 continue
-            if not 'ppt_spring_zscore' in f:
+            if not 'spring_SPEI01' in f:
                 continue
 
 
@@ -247,7 +249,7 @@ class build_dataframe():
             for pix in tqdm(dic):
                 time_series = dic[pix]
 
-                y = 2003
+                y = 1958
                 for val in time_series:
                     pix_list.append(pix)
                     change_rate_list.append(val)
@@ -308,19 +310,153 @@ class build_dataframe():
             for var in variable_list:
                 vals=val_dic[var]
 
+    def add_MODIS_LAI_to_df(self, df):
 
-
-    def add_detrend_zscore_to_df(self, df):
-
-        fdir=result_root+rf'\zscore\\'
+        fdir=result_root+rf'\MODIS_LAI\relative_change\\'
 
         for f in os.listdir(fdir):
 
 
 
             variable= f.split('.')[0]
-            if not 'winter' in f:
+            # if not 'winter' in f:
+            #     continue
+
+            print(variable)
+
+
+
+
+            if not f.endswith('.npy'):
                 continue
+            val_dic = T.load_npy(fdir + f)
+
+            NDVI_list = []
+            for i, row in tqdm(df.iterrows(), total=len(df)):
+
+                year = row.year
+                # pix = row.pix
+                pix = row['pix']
+                r, c = pix
+
+                if not pix in val_dic:
+                    NDVI_list.append(np.nan)
+                    continue
+
+
+                vals = val_dic[pix]
+                # print(year)
+                # print(year - 1982)
+                # print(len(vals))
+
+
+
+                ##### if len vals is 38, the end of list add np.nan
+
+                if len(vals) == 22:
+                    ##creast 19 nan
+                    nan_list = np.array([np.nan] * 45)
+                    vals=np.append(nan_list,vals)
+                # if len(vals)==33 :
+                #     nan_list=np.array([np.nan]*5)
+                #     vals=np.append(vals,nan_list)
+                # if len(vals) !=22:
+                #     nan_list = np.array([np.nan] * 4)
+                #     vals=np.append(vals,nan_list)
+
+
+                v1= vals[year - 1958]
+                # print(v1,year,len(vals))
+
+                NDVI_list.append(v1)
+
+
+            df[f'{variable}'] = NDVI_list
+
+
+        # exit()
+        return df
+
+
+    def add_SNU_LAI_to_df(self, df):
+
+        fdir=result_root+rf'\SNU_LAI\relative_change\\'
+
+        for f in os.listdir(fdir):
+
+
+
+            variable= f.split('.')[0]
+            # if not 'winter' in f:
+            #     continue
+
+            print(variable)
+
+
+
+
+            if not f.endswith('.npy'):
+                continue
+            val_dic = T.load_npy(fdir + f)
+
+            NDVI_list = []
+            for i, row in tqdm(df.iterrows(), total=len(df)):
+
+                year = row.year
+                # pix = row.pix
+                pix = row['pix']
+                r, c = pix
+
+                if not pix in val_dic:
+                    NDVI_list.append(np.nan)
+                    continue
+
+
+                vals = val_dic[pix]
+                # print(year)
+                # print(year - 1982)
+                # print(len(vals))
+
+
+
+                ##### if len vals is 38, the end of list add np.nan
+
+                if len(vals) == 43:
+                    ##creast 19 nan
+                    nan_list = np.array([np.nan] * 24)
+                    vals=np.append(nan_list,vals)
+                # if len(vals)==33 :
+                #     nan_list=np.array([np.nan]*5)
+                #     vals=np.append(vals,nan_list)
+                # if len(vals) !=22:
+                #     nan_list = np.array([np.nan] * 4)
+                #     vals=np.append(vals,nan_list)
+
+
+                v1= vals[year - 1958]
+                # print(v1,year,len(vals))
+
+                NDVI_list.append(v1)
+
+
+            df[f'{variable}'] = NDVI_list
+
+
+        # exit()
+        return df
+
+
+    def add_SPEI_to_df(self, df):
+
+        fdir=result_root+rf'\SNU_LAI\spring_summer_season_LAI_mean\\'
+
+        for f in os.listdir(fdir):
+
+
+
+            variable= f.split('.')[0]
+            # if not 'winter' in f:
+            #     continue
 
             print(variable)
 
@@ -365,7 +501,7 @@ class build_dataframe():
                 #     vals=np.append(vals,nan_list)
 
 
-                v1= vals[year - 2003]
+                v1= vals[year - 1958]
                 # print(v1,year,len(vals))
 
                 NDVI_list.append(v1)
@@ -647,7 +783,7 @@ class build_dataframe():
 
 
     def rename_columns(self, df):
-        df = df.rename(columns={rf'spring_March_May_2003_2024_SNU': 'spring_March_May_SNU',
+        df = df.rename(columns={rf'spring': 'spring_LAI',
                                 'summer_July_Sept_2003_2024_SNU': 'summer_July_Sept_SNU',}
 
 
@@ -661,13 +797,18 @@ class build_dataframe():
         for col in df.columns:
             print(col)
         # exit()
-        for scale in [3,6,9,12,24,36,48]:
-            df = df.drop(columns=[f'10year_ summer_SPEI{scale}_p_value',
-                                  f'10year_ summer_SPEI{scale}_trend',
+        # for scale in [3,6,9,12,24,36,48]:
+        #     df = df.drop(columns=[f'10year_ summer_SPEI{scale}_p_value',
+        #                           f'10year_ summer_SPEI{scale}_trend',
+        #
+        #
+        #
+        #                           ])
+        df=df.drop(columns=['spring',
+                            'summer',
 
 
-
-                                  ])
+                            ])
 
         return df
 

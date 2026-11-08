@@ -568,8 +568,8 @@ class PLOT_vegetation_change():
         self.map_height = 8.2 * centimeter_factor
         pass
     def run(self):
-        self.plot_time_series_MODIS_record()
-        # self.plot_time_series_SNU_record()
+        # self.plot_time_series_MODIS_record()
+
         pass
 
     def plot_time_series_MODIS_record(self):
@@ -1223,13 +1223,13 @@ class PLOT_GPP:
         pass
 
     def plot_time_series_GPP(self):
-        dff=result_root + rf'\SPEI_Greening\Dataframe\Dataframe.df'
+        dff=result_root + rf'\\\Dataframe\SPEI\SPEI.df'
         df=T.load_df(dff)
 
         df=self.df_clean(df)
 
 
-        year_list=list(range(2003, 2024))
+        year_list=list(range(1982, 2024))
         result_dic = {}
         eco_region_list = df['Ecoregion_level_II'].dropna().unique().tolist()
         eco_region_list.append('Western US')
@@ -1266,7 +1266,7 @@ class PLOT_GPP:
             for year in year_list:
                 df_ii = df_i[df_i['year'] == year]
                 ## scheme1
-                vals = np.array(df_ii['summer_NEE'].tolist(), dtype=float)
+                vals = np.array(df_ii['spring_SNU_LAI_relative_change'].tolist(), dtype=float)
                 # vals=np.array(df_ii['summer_GPP_CFE-Hybrid'].tolist(), dtype=float)
 
                 weight = np.array(df_ii['area_weight'].tolist(), dtype=float)
@@ -2743,8 +2743,8 @@ def main():
     # PLOT_Daymet().run()
     # PLOT_SPEI().run()
     # PLOT_WUE().run()
-    # PLOT_GPP().run()
-    PLOT_heatmap().run()
+    PLOT_GPP().run()
+    # PLOT_heatmap().run()
     # PLOT_SNU_LAI().run()
     # PLOT_zscore().run()
 

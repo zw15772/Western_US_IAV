@@ -321,10 +321,10 @@ class SPEI_calculation:
         # self.compute_spei_NOAA()
         # self.calculating_annual_mean()
         self.spring_season_mean()
-        self.growing_season()
+        # self.growing_season()
 
 
-        # self.trend_analysis()
+        self.trend_analysis()
         # self.crop_dic_spatiotemporal()
         pass
 
@@ -423,12 +423,12 @@ class SPEI_calculation:
         # 假设你的 T 和 data_root 已经定义
         from climate_indices import indices, compute
 
-        fdir_PET = data_root + r'Terraclimate\PET\dic\\'
-        fdir_Precip = data_root + r'Terraclimate\Precip\dic\\'
+        fdir_PET = data_root + r'Terraclimate\pet\dic\\'
+        fdir_Precip = data_root + r'Terraclimate\ppt\dic\\'
 
         scale_list=np.arange(3,49,3)
 
-        for time_scale in scales:
+        for time_scale in scale_list:
             time_scale = int(time_scale)
 
             outdir = data_root + rf'Terraclimate\SPEI\SPEI_{time_scale}_NOAA\dic\\'
@@ -475,7 +475,7 @@ class SPEI_calculation:
                             data_start_year=1958,
 
                             calibration_year_initial=1958,
-                            calibration_year_final=2024,
+                            calibration_year_final=1999,
                         )
 
                         SPEI_dic[pix] = np.ma.filled(spei, np.nan)
@@ -597,7 +597,7 @@ class SPEI_calculation:
         T.save_npy(new_dic, outf)
 
     def spring_season_mean(self):
-        scale_list = [1] + list(range(3, 13, 3))
+        scale_list = [1] + list(range(3, 49, 3))
         for scale in scale_list:
             scale=int(scale)
             fdir=data_root + f'\Terraclimate\SPEI\\SPEI_{scale}_NOAA\\dic\\'
@@ -615,7 +615,8 @@ class SPEI_calculation:
                     continue
                 vals=np.array(vals)
                 vals=np.reshape(vals,(-1,12))
-                vals=vals[45:]
+                # vals=vals[45:]
+                vals = vals
                 # plt.imshow(vals)
                 # plt.show()
                 spring_list=[]
@@ -695,14 +696,14 @@ class SPEI_calculation:
         ##each window average trend
 
 
-        fdir = data_root + r'\Terraclimate\SPEI\SPEI_3_NOAA\spring_summer_season_SPEI_mean\\'
-        outdir = result_root + r'Terraclimate\\SPEI\SPEI_3_NOAA\spring_summer_season_SPEI_mean_trend\\'
+        fdir = result_root + r'\Terraclimate\SPEI\\'
+        outdir = result_root + r'Terraclimate\\SPEI\trend_analysis\\'
         Tools().mk_dir(outdir, force=True)
 
         for f in os.listdir(fdir):
 
 
-            outf = outdir + '\spring'
+            outf = outdir+f.split('.')[0]
             # if os.path.isfile(outf + '_trend.tif'):
             #     continue
             print(outf)
@@ -719,7 +720,7 @@ class SPEI_calculation:
 
 
 
-                time_series = dic[pix]['spring']
+                time_series = dic[pix]
                 print(len(time_series))
                 # plt.plot(time_series)
                 # plt.show()
@@ -802,8 +803,8 @@ class SPEI_calculation:
             cbar = plt.colorbar(im, ax=ax, shrink=0.8)
             cbar.set_label('Trend')
 
-            plt.title(f)
-            plt.show()
+            # plt.title(f)
+            # plt.show()
 
             D.arr_to_tif(arr_trend, outf + '_trend.tif')
             D.arr_to_tif(p_value_arr, outf + '_p_value.tif')

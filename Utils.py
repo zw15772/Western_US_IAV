@@ -13,8 +13,8 @@ T = Tools()
 from __Global__ import *
 
 
-tif_template= rf'D:\Western_US_IAV\Data\basedata\200902.tif'
-D=DIC_and_TIF(tif_template=tif_template)
+# tif_template= rf'D:\Western_US_IAV\Data\basedata\200902.tif'
+# D=DIC_and_TIF(tif_template=tif_template)
 
 class My_functions:
     def __init__(self):

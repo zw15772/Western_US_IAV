@@ -26,7 +26,8 @@ class Data_processing_vegetation:
         # self.nc_to_tif_time_series_fast2_VOD()
         # self.extract_tif_from_shp()
         # self.tif_to_dic()
-        self.spring_season_LAI_mean()
+        # self.spring_season_LAI_mean()
+        self.relative_change()
         ## 4 extract phenology based 4GST using GST_phenology_Wen.py
         ## 5 现在用SOS EOS extract growing season and return monthly data during growing season
         # self.extract_growing_season_monthly()
@@ -212,10 +213,11 @@ class Data_processing_vegetation:
 
     def spring_season_LAI_mean(self):
         fdir=data_root +rf'\SNU_LAI\dic\\'
-        outdir=data_root +rf'\SNU_LAI\spring_summer_season_LAI_mean\\'
+        outdir=result_root +rf'\SNU_LAI\spring_summer_season_LAI_mean\\'
         T.mk_dir(outdir,force=True)
         spatial_dic=T.load_npy_dir(fdir)
-        result_dic={}
+        spring_dic={}
+        summer_dic={}
         for pix in tqdm(spatial_dic):
             r,c=pix
             vals=spatial_dic[pix]
@@ -233,18 +235,87 @@ class Data_processing_vegetation:
             for i in range(len(vals)):
                 # print(vals[i][2:5])
                 ## march to may
-                spring_val=np.nanmean(vals[i][2:5])
-                ## july to sept
-                summer_val=np.nanmean(vals[i][6:9])
+                spring_val = np.nansum(vals[i][2:5])
+                ## july to oct
+                summer_val = np.nansum(vals[i][6:10])
 
                 spring_list.append(spring_val)
                 summer_list.append(summer_val)
-            result_dic[pix]={
-                'spring':spring_list,
-                'summer':summer_list,
-            }
-        outf=outdir+'spring_summer_season_LAI_mean.npy'
-        np.save(outf,result_dic)
+            print(len(spring_list))
+            spring_dic[pix] = spring_list
+            summer_dic[pix] = summer_list
+        T.save_npy(spring_dic, outdir + 'spring.npy')
+        T.save_npy(summer_dic, outdir + 'summer.npy')
+
+    def relative_change(self):
+
+        fdir = result_root + rf'\SNU_LAI\\spring_summer_season_LAI_mean\\'
+        outdir = result_root + rf'\\SNU_LAI\\relative_change\\'
+        Tools().mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+            if not f.endswith('.npy'):
+                continue
+
+
+            outf = outdir + f.split('.')[0]+'_relative_change.npy'
+            # if isfile(outf):
+            #     continue
+            print(outf)
+
+            dic = T.load_npy(fdir + f)
+
+            zscore_dic = {}
+
+            for pix in tqdm(dic):
+
+
+
+                time_series = dic[pix]
+                print(time_series)
+
+                # # 检查 time_series 是否为 list 或 array（防止是 float/NaN）
+
+                if not isinstance(time_series, (list, np.ndarray)):
+                    print(f"{pix}: invalid time_series (not iterable): {time_series}")
+                    continue
+
+                time_series = np.array(time_series, dtype=float)
+                # time_series = time_series[3:37]
+
+                print(len(time_series))
+                ## exclude nan
+
+
+
+
+                if np.isnan(np.nanmean(time_series)):
+                    continue
+                # if np.nanmean(time_series) >999:
+                #     continue
+                if np.nanmean(time_series) <-999:
+                    continue
+                time_series = time_series
+                mean = np.nanmean(time_series)
+                zscore = (time_series - mean)/mean*100
+
+
+
+
+                zscore_dic[pix] = zscore
+
+
+                plt.plot(time_series)
+                #
+                #
+                # plt.plot(zscore)
+                #
+                # plt.legend(['raw','zscore'])
+                # plt.show()
+
+                ## save
+            np.save(outf, zscore_dic)
+
 
     def extract_growing_season_monthly(self):
         fdir = data_root+rf'\MODIS_LAI\dic\\'
@@ -512,8 +583,9 @@ class Data_processing_MODIS_LAI:
         # self.MVC()
         # self.raster_align()
         # self.tif_to_dic()
-        self.spring_season_LAI_mean()
-        self.growing_season()
+        # self.spring_season_LAI_mean()
+        self.relative_change()
+        # self.growing_season()
         # self.trend_analysis()
         pass
 
@@ -777,6 +849,76 @@ class Data_processing_MODIS_LAI:
         np.save(outspring,spring_result_dic)
         outsummer=outdir+'summer_LAI.npy'
         np.save(outsummer,summer_result_dic)
+
+    def relative_change(self):
+
+        fdir = result_root + rf'\MODIS_LAI\\'
+        outdir = result_root + rf'\\MODIS_LAI\\relative_change\\'
+        Tools().mk_dir(outdir, force=True)
+
+        for f in os.listdir(fdir):
+            if not f.endswith('.npy'):
+                continue
+
+
+            outf = outdir + f.split('.')[0]+'_relative_change.npy'
+            # if isfile(outf):
+            #     continue
+            print(outf)
+
+            dic = T.load_npy(fdir + f)
+
+            zscore_dic = {}
+
+            for pix in tqdm(dic):
+
+
+
+                time_series = dic[pix]
+                print(time_series)
+
+                # # 检查 time_series 是否为 list 或 array（防止是 float/NaN）
+
+                if not isinstance(time_series, (list, np.ndarray)):
+                    print(f"{pix}: invalid time_series (not iterable): {time_series}")
+                    continue
+
+                time_series = np.array(time_series, dtype=float)
+                # time_series = time_series[3:37]
+
+                print(len(time_series))
+                ## exclude nan
+
+
+
+
+                if np.isnan(np.nanmean(time_series)):
+                    continue
+                # if np.nanmean(time_series) >999:
+                #     continue
+                if np.nanmean(time_series) <-999:
+                    continue
+                time_series = time_series
+                mean = np.nanmean(time_series)
+                zscore = (time_series - mean)/mean*100
+
+
+
+
+                zscore_dic[pix] = zscore
+
+
+                plt.plot(time_series)
+                #
+                #
+                # plt.plot(zscore)
+                #
+                # plt.legend(['raw','zscore'])
+                # plt.show()
+
+                ## save
+            np.save(outf, zscore_dic)
+
 
     def growing_season(self):
         fdir=data_root + '\MODIS_LAI_0706\dic\\'
@@ -1095,15 +1237,16 @@ class Data_processing_MODIS_LAI:
 class Data_processing_Terraclimate:
     def run(self):
         # self.download_all()
+
         # self.nc_to_tif_time_series_fast()
-        # self.resample()
+        self.resample()
         # self.extract_tif_from_shp()
         # self.tif_to_dic()
         # self.spring_season_LAI_mean()
         # self.growing_season()
-        # self.winter_precip()
+        self.winter_precip()
         # self.anomaly()
-        self.detrend()
+        # self.detrend()
 
         pass
     pass
@@ -1112,8 +1255,8 @@ class Data_processing_Terraclimate:
         params_list = []
         # product_list = ['ppt','vpd','tmax','tmin','soil','srad']
 
-        product_list = ['ppt']
-        year_list = list(range(2002, 2023))
+        product_list = ['ppt','pet',]
+        year_list = list(range(1958, 2025))
         # year_list = list(range(1982, 1982))
         for product in product_list:
             for y in year_list:
@@ -1146,8 +1289,11 @@ class Data_processing_Terraclimate:
 
         T.mkdir(outdir,True)
 
-
-        url = 'https://climate.northwestknowledge.net/TERRACLIMATE-DATA/TerraClimate_{}_{}.nc'.format(product, y)
+        url = (
+            "https://tds-proxy.nkn.uidaho.edu"
+            "/thredds/fileServer/TERRACLIMATE_ALL/data/"
+            f"TerraClimate_{product}_{y}.nc"
+        )
         # print(url)
         # exit()
         while 1:
@@ -1156,17 +1302,26 @@ class Data_processing_Terraclimate:
                 if os.path.isfile(outf):
                     return None
                 req = requests.request('GET', url)
+                response = requests.Response()
+                response.status_code = req.status_code
+                response._content = req.content
+                response.raise_for_status()
                 content = req.content
                 fw = open(outf, 'wb')
                 fw.write(content)
                 return None
             except Exception as e:
-                print(url, 'error sleep 5s')
-                time.sleep(5)
+
+                print(f"URL: {url}")
+                print(f"错误类型: {type(e).__name__}")
+                print(f"详细原因: {e}")
+
+
+
     def nc_to_tif_time_series_fast(self):
         '/data/home/wenzhang/Wen_Projects/Hotdrought_recovery/Data/TerraClimate/PPT'
 
-        var='ppt'
+        var='pet'
         fdir = join(data_root, 'TerraClimate',f'{var}', 'nc')
         outdir = join(data_root, 'TerraClimate',f'{var}' ,'tiff')
 
@@ -1203,8 +1358,8 @@ class Data_processing_Terraclimate:
 
 
     def resample(self):
-        fdir=join(data_root, 'TerraClimate','ppt', 'tiff')
-        outdir=join(data_root, 'TerraClimate','ppt', 'resample')
+        fdir=join(data_root, 'TerraClimate','pet', 'tiff')
+        outdir=join(data_root, 'TerraClimate','pet', 'resample')
         T.mk_dir(outdir)
         for f in tqdm(T.listdir(fdir)):
             if not f.endswith('.tif'):
@@ -1223,8 +1378,8 @@ class Data_processing_Terraclimate:
 
     def extract_tif_from_shp(self):
         shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
-        fdir=join(data_root, 'TerraClimate','ppt', 'resample')
-        outdir=join(data_root, 'TerraClimate','ppt', 'extract_tif')
+        fdir=join(data_root, 'TerraClimate','pet', 'resample')
+        outdir=join(data_root, 'TerraClimate','pet', 'extract_tif')
         T.mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
 
@@ -1243,11 +1398,11 @@ class Data_processing_Terraclimate:
 
     def tif_to_dic(self):
 
-        fdir_all = join(data_root, 'TerraClimate', 'ppt', 'extract_tif')
-        outdir = join(data_root, 'TerraClimate', 'ppt', 'dic')
+        fdir_all = join(data_root, 'TerraClimate', 'pet', 'extract_tif')
+        outdir = join(data_root, 'TerraClimate', 'pet', 'dic')
         T.mk_dir(outdir, force=True)
 
-        year_list = list(range(2002, 2025)) ##
+        year_list = list(range(1958, 2025)) ##
         # 一般是2003 开始只有ppt是2002 因为要考虑冬天
         # 作为筛选条件
 
@@ -1324,7 +1479,7 @@ class Data_processing_Terraclimate:
         np.save(outdir + rf'/per_pix_dic_%03d' % 0, temp_dic)
 
     def spring_season_LAI_mean(self):
-        fdir=data_root + rf'\Terraclimate\srad\dic\\'
+        fdir=data_root + rf'\Terraclimate\pet\dic\\'
         outdir=result_root + rf'Terraclimate\\'
         T.mk_dir(outdir,force=True)
         var=fdir.split('\\')[-4]
@@ -1431,7 +1586,7 @@ class Data_processing_Terraclimate:
 
                 winter = np.concatenate([prev_oct_dec, curr_jan_feb])
 
-                winter_mean = np.nansum(winter)  # 如果是降雨建议用sum
+                winter_mean = np.nanmean(winter)  # 如果是降雨建议用sum
                 winter_list.append(winter_mean)
             # print(len(winter_list))
 
@@ -1818,7 +1973,7 @@ class Data_processing_Daymet:
         pass
     def run(self):
         # self.download()
-        # self.daymet_nc_to_tif()
+        self.daymet_nc_to_tif()
         # self.resample()
         # self.extract_tif_from_shp()
         # self.transform_to_blocks()
@@ -1827,7 +1982,7 @@ class Data_processing_Daymet:
         # self.extract_spring_summer_rainfall_metrics() ## not use
         # self.extract_spring_summer_rainfall_intensity()
         # self.extract_spring_summer_rainfall_amount()
-        self.extract_spring_summer_rainfall_fq()
+        # self.extract_spring_summer_rainfall_fq()
         # self.extract_spring_summer_rainfall_dry_spell()
         # self.extract_spring_summer_rainfall_wet_spell()
         # self.zscore()
@@ -1846,12 +2001,12 @@ class Data_processing_Daymet:
         username = "leeyang1991"
         password = "Asdfasdf911007"
 
-        outdir = r"D:\Daymet\prcp"
+        outdir = r"D:\Western_US_IAV\Data\Daymet\prcp\nc"
         os.makedirs(outdir, exist_ok=True)
 
         base = "https://data.ornldaac.earthdata.nasa.gov/protected/daymet/Daymet_Daily_V4R1/data"
 
-        for year in range(2003, 2025):
+        for year in range(1982, 2003):
 
             fname = f"daymet_v4_daily_na_prcp_{year}.nc"
             url = f"{base}/{fname}"
@@ -3490,13 +3645,13 @@ def main():
 
      # Data_processing_vegetation().run()
     # area_weighted_average().run()
-    # Data_processing_MODIS_LAI().run()
+    Data_processing_MODIS_LAI().run()
     # Data_processing_Terraclimate().run()
     # calculating_mean_CV().run()
     # Data_processing_Daymet().run()
     # Data_processing_ERA5land().run()
     # Data_processing_carbonscope().run()
-    Trend_analysis().run()
+    # Trend_analysis().run()
     # general_anaysis().run()
 
 
