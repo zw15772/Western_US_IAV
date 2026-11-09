@@ -20,20 +20,20 @@ class SPEI_SNU_LAI_correlation():
         self.LAI_threshold = 0.3   ## drop pixels whose multi-year mean LAI < 0.3
         self.crop_threshold = 50   ## drop pixels whose mean cropland cover (IGBP 12 + 14) > 50%
         self.landcover_col = 'landcover_type'
-        self.landcover_list = ['Forest', 'Shrub', 'Grass','Savanna', ]
-        self.landcover_color_dic = {'Forest': '#1b7837', 'Shrub': '#d6a64f', 'Grass': '#7fbc41', 'Savanna': 'magenta', }
+        self.landcover_list = ['Forest', 'Shrub', 'Grass', 'Savanna']
+        self.landcover_color_dic = {'Forest': '#1b7837', 'Shrub': '#d6a64f', 'Grass': '#7fbc41', 'Savanna': 'magenta'}
         pass
 
     def run(self):
-        df = T.load_df(self.dff)
-        df = self.df_clean(df)
-        df_corr = self.cal_correlation(df)
-        T.save_df(df_corr, self.outdir + 'correlation.df')
-        T.df_to_excel(df_corr, self.outdir + 'correlation')
-        # df_corr = T.load_df(self.outdir + 'correlation.df')
+        # df = T.load_df(self.dff)   ## only needed when recomputing the correlation
+        # df = self.df_clean(df)
+        # df_corr = self.cal_correlation(df)
+        # T.save_df(df_corr, self.outdir + 'correlation.df')
+        # T.df_to_excel(df_corr, self.outdir + 'correlation')
+        df_corr = T.load_df(self.outdir + 'correlation.df')
         self.plot_r_vs_scale(df_corr)
         self.plot_r_vs_scale_by_landcover(df_corr)
-        self.max_scale_map(df_corr) ## max value and max scale of r for each pixel, one map per season
+        self.max_scale_map(df_corr)  ## max value and max scale of r for each pixel, one map per season
         pass
 
     def df_clean(self, df):
@@ -141,7 +141,7 @@ class SPEI_SNU_LAI_correlation():
                     mean_r_list.append(mean_r)
                     summary_list.append([season, lc, scale, mean_r, len(df_i)])
                 n_pix = df_lc['pix'].nunique()
-                ax.plot(x, mean_r_list, marker='o', ms=3, color=self.landcover_color_dic[lc],lw=1.5,
+                ax.plot(x, mean_r_list, marker='o', ms=3, color=self.landcover_color_dic[lc], lw=1.5,
                         label=f'{lc} (n={n_pix})')
             ax.set_title(season.capitalize())
             ax.set_xlabel('SPEI time scale (months)')
@@ -169,17 +169,23 @@ class SPEI_SNU_LAI_correlation():
             arr_scale = D.pix_dic_to_spatial_arr(T.df_to_spatial_dic(df_max, 'scale_num'))
             arr_r = D.pix_dic_to_spatial_arr(T.df_to_spatial_dic(df_max, 'r'))
             w = df_max['area_weight'].values
+            ## scale map: only pixels with max r > 0 (if r < 0 at all scales, the "max" scale is meaningless); r <= 0 in grey
+            df_pos = df_max[df_max['r'] > 0]
+            arr_scale = D.pix_dic_to_spatial_arr(T.df_to_spatial_dic(df_pos, 'scale_num'))
+            arr_grey = arr_r.copy()
+            arr_grey[arr_r > 0] = np.nan
             self.plot_map(arr_scale, f'{season}_max_scale', 'Spectral', 1, 48,
-                          'SPEI scale with max r (months)', df_max['scale_num'].values, w,
-                          discrete_levels=[int(s) for s in self.scale_list])
-            self.plot_map(arr_r, f'{season}_max_r', 'RdBu', -0.6, 0.6, 'Max r', df_max['r'].values, w)
+                          'SPEI scale with max r (months)', df_pos['scale_num'].values, df_pos['area_weight'].values,
+                          discrete_levels=[int(s) for s in self.scale_list], arr_grey=arr_grey)
+            self.plot_map(arr_r, f'{season}_max_r', 'RdBu', -1, 1, 'Max r', df_max['r'].values, w)
 
-    def plot_map(self, arr, fname, cmap, vmin, vmax, cbar_label, hist_vals, hist_w, discrete_levels=None):
+    def plot_map(self, arr, fname, cmap, vmin, vmax, cbar_label, hist_vals, hist_w, discrete_levels=None, arr_grey=None):
         ## same map style as SPEI_processing.trend_analysis, plus an area-weighted histogram inset
         import cartopy.crs as ccrs
         import cartopy.feature as cfeature
         import matplotlib.patches as mpatches
-        from matplotlib.colors import BoundaryNorm, Normalize
+        from matplotlib.colors import BoundaryNorm, Normalize, ListedColormap
+        import matplotlib.ticker as mticker
 
         if discrete_levels is not None:
             ## one color per SPEI scale
@@ -193,6 +199,12 @@ class SPEI_SNU_LAI_correlation():
 
         plt.figure()
         ax = plt.axes(projection=ccrs.PlateCarree())
+        if arr_grey is not None:
+            ## masked pixels (max r <= 0) in grey
+            grey = np.where(np.isfinite(arr_grey), 1., np.nan)
+            ax.imshow(grey, cmap=ListedColormap(['lightgrey']), vmin=0, vmax=1,
+                      extent=[-124.529, -102.079, 25.579, 48.979], transform=ccrs.PlateCarree(),
+                      interpolation='nearest')
         im = ax.imshow(
             arr,
             cmap=cmap_obj,
@@ -213,6 +225,8 @@ class SPEI_SNU_LAI_correlation():
         gl = ax.gridlines(draw_labels=True, linewidth=0)
         gl.top_labels = False
         gl.right_labels = False
+        gl.xlocator = mticker.FixedLocator(range(-125, -100, 5))   ## 5 deg spacing
+        gl.ylocator = mticker.FixedLocator(range(25, 50, 5))
 
         if discrete_levels is not None:
             cbar = plt.colorbar(im, ax=ax, shrink=0.8, ticks=levels, spacing='uniform')
@@ -222,7 +236,7 @@ class SPEI_SNU_LAI_correlation():
         cbar.set_label(cbar_label)
 
         ## histogram inset (area-weighted %), lower-left over the Pacific
-        ax_in = ax.inset_axes([0.03, 0.05, 0.33, 0.25])
+        ax_in = ax.inset_axes([0.10, 0.05, 0.30, 0.25])   ## shifted right, clear of the 30N label
         ok = np.isfinite(hist_vals) & np.isfinite(hist_w)
         vals, w = hist_vals[ok], hist_w[ok] / np.sum(hist_w[ok]) * 100
         if discrete_levels is not None:
@@ -231,14 +245,16 @@ class SPEI_SNU_LAI_correlation():
             ax_in.set_xticks([0, len(levels) // 2, len(levels) - 1])
             ax_in.set_xticklabels([levels[0], levels[len(levels) // 2], levels[-1]])
         else:
-            bins = np.linspace(vmin, vmax, 25)
-            area, edges = np.histogram(np.clip(vals, vmin, vmax), bins=bins, weights=w)
+            bins = np.linspace(-1, 1, 41)   ## full r range, no clipping
+            area, edges = np.histogram(vals, bins=bins, weights=w)
             centers = (edges[:-1] + edges[1:]) / 2
             ax_in.bar(centers, area, width=edges[1] - edges[0], color=cmap_obj(norm(centers)))
             ax_in.axvline(0, color='grey', lw=0.5)
-        ax_in.set_ylabel('Area (%)', fontsize=6)
+        ax_in.set_title('Area (%)', fontsize=6, pad=2)
         ax_in.tick_params(labelsize=6)
-        ax_in.patch.set_alpha(0.8)
+        ax_in.set_zorder(20)   ## above the study-region box line
+        ax_in.patch.set_facecolor('white')
+        ax_in.patch.set_alpha(1)
         plt.title(fname)
         plt.savefig(self.outdir + f'{fname}_map.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'{fname}_map.pdf', bbox_inches='tight')
