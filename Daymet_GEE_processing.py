@@ -40,6 +40,9 @@ class Daymet_GEE:
         with rasterio.open(fpath) as src:
             arr = src.read().astype(np.float32)
             nodata = src.nodata
+            ## GEE may export one extra row on top; cut rows to match the template (origin 48.979, 468 rows)
+            row0 = int(round((src.transform.f - 48.97916666666667) / 0.05))
+        arr = arr[:, row0:row0 + 468, :]
         if nodata is not None:
             arr[arr == nodata] = np.nan
         return arr

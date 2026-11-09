@@ -14,6 +14,7 @@ class Time_series_base():
         self.color_dic = {'spring': '#EA6E88', 'summer': '#48526F'}
         self.split_year = 2000
         self.end_year = 2024
+        self.crop_threshold = 50   ## % cropland cover above which a pixel is excluded
         ## trend periods: (start, end, linestyle)
         self.trend_period_list = [(1982, 2024, ':'), (2000, 2024, '-')]
         self.ylabel_dic = {}   ## y-axis label per variable; default = variable name
@@ -29,6 +30,8 @@ class Time_series_base():
         df = df[df['lon'] < -105]
         df = df[df['lat'] > 30]
         df = df[df['lat'] < 45]
+        ## exclude cropland: mean MCD12C1 cropland cover (IGBP 12 + 14) > 50%
+        df = df[~(df['cropland_pct'] > self.crop_threshold)]
         return df
 
     def plot_time_series(self, df, var_list, start_year, outdir, fname):
@@ -165,8 +168,8 @@ class MODIS_LAI_time_series(Time_series_base):
 
 
 def main():
-    # SPEI_time_series().run()
-    # SNU_LAI_time_series().run()
+    SPEI_time_series().run()
+    SNU_LAI_time_series().run()
     MODIS_LAI_time_series().run()
 
 

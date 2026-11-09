@@ -37,7 +37,7 @@ class build_dataframe():
 
         # df = self.add_SPEI_to_df(df)  ## start from 1958
         # df=self.add_SNU_LAI_to_df(df)
-        df=self.add_MODIS_LAI_to_df(df)
+        # df=self.add_MODIS_LAI_to_df(df)
 
         # df=self.add_trend_to_df(df)
         # df=self.add_mean_to_df(df)
@@ -52,6 +52,8 @@ class build_dataframe():
         # # # # # # # # # # # # # # # # # # #
         # df=self.add_lat_lon_to_df(df)  ## use this
         # df=self.add_continent_to_df(df)
+        # df=self.add_MODIS_LUCC_to_df(df)
+        df=self.add_landcover_type_to_df(df)
         # df=self.add_residual_to_df(df)
         #
         # # # # #
@@ -597,6 +599,69 @@ class build_dataframe():
 
     pass
 
+    def add_MODIS_LUCC_to_df(self, df):
+        ## MCD12C1 multi-year mean % cover of 17 IGBP classes (pct_00 ... pct_16)
+        ## cropland_pct = class 12 (Croplands) + class 14 (Cropland/Natural Vegetation Mosaic), 0-100
+        from osgeo import gdal
+        tiff = data_root + rf'\basedata\MCD12\MCD12C1_IGBP_percent_mean_tmpl.tif'
+        ds = gdal.Open(tiff)
+        array = ds.ReadAsArray().astype(float)   ## (17, rows, cols), all bands
+        ## GEE exported one extra row on top (origin 49.029); cut rows to match the template (origin 48.979)
+        row0 = int(round((ds.GetGeoTransform()[3] - 48.97916666666667) / 0.05))
+        array = array[:, row0:row0 + 468, :]
+        crop_arr = array[12] + array[14]
+        val_dic = DIC_and_TIF().spatial_arr_to_dic(crop_arr)
+        f_name = 'cropland_pct'
+
+        val_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            pix = row['pix']
+            if not pix in val_dic:
+                val_list.append(np.nan)
+                continue
+            val = val_dic[pix]
+            if val < 0 or val > 100:
+                val_list.append(np.nan)
+                continue
+            val_list.append(val)
+        df[f_name] = val_list
+        return df
+
+
+    def add_landcover_type_to_df(self, df):
+        ## MCD12C1 IGBP majority class (most frequent over all years) -> broad vegetation type
+        ## Forest: 1-5 (ENF, EBF, DNF, DBF, mixed); Shrub: 6-7 (closed / open shrublands);
+        ## Savanna: 8-9 (woody savannas, savannas); Grass: 10; Cropland: 12, 14; others -> Other
+        from osgeo import gdal
+        tiff = data_root + rf'\basedata\MCD12\MCD12C1_IGBP_majority_mode_tmpl.tif'
+        ds = gdal.Open(tiff)
+        array = ds.ReadAsArray().astype(float)
+        ## GEE exported one extra row on top (origin 49.029); cut rows to match the template (origin 48.979)
+        row0 = int(round((ds.GetGeoTransform()[3] - 48.97916666666667) / 0.05))
+        array = array[row0:row0 + 468, :]
+        val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
+
+        type_dic = {1: 'Forest', 2: 'Forest', 3: 'Forest', 4: 'Forest', 5: 'Forest',
+                    6: 'Shrub', 7: 'Shrub',
+                    8: 'Savanna', 9: 'Savanna',
+                    10: 'Grass',
+                    12: 'Cropland', 14: 'Cropland'}
+
+        igbp_list = []
+        type_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            pix = row['pix']
+            if not pix in val_dic or not np.isfinite(val_dic[pix]):
+                igbp_list.append(np.nan)
+                type_list.append(np.nan)
+                continue
+            val = int(val_dic[pix])
+            igbp_list.append(val)
+            type_list.append(type_dic.get(val, 'Other'))
+        df['IGBP_majority'] = igbp_list
+        df['landcover_type'] = type_list
+        return df
+
     def add_continent_to_df(self, df):
         tiff =data_root+rf'\basedata\Ecoregion\\Ecoregion_level_II_raster.tif'
         array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(tiff)
@@ -836,24 +901,6 @@ class build_dataframe():
                 continue
             val_list.append(vals)
         df[f_name] = val_list
-        return df
-    def add_MODIS_LUCC_to_df(self, df):
-        f = data_root + rf'\Base_data\MODIS_LUCC\\MODIS_LUCC_resample_05.tif'
-        array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
-        array = np.array(array, dtype=float)
-        val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
-        f_name = f.split('.')[0]
-        print(f_name)
-        val_list = []
-
-        for i, row in tqdm(df.iterrows(), total=len(df)):
-            pix = row['pix']
-            if not pix in val_dic:
-                val_list.append(np.nan)
-                continue
-            vals = val_dic[pix]
-            val_list.append(vals)
-        df['MODIS_LUCC'] = val_list
         return df
 
 
