@@ -245,7 +245,7 @@ class SPEI_SNU_LAI_correlation():
             ax_in.set_xticks([0, len(levels) // 2, len(levels) - 1])
             ax_in.set_xticklabels([levels[0], levels[len(levels) // 2], levels[-1]])
         else:
-            bins = np.linspace(-1, 1, 41)   ## full r range, no clipping
+            bins = np.linspace(vmin, vmax, 41)   ## colorbar range
             area, edges = np.histogram(vals, bins=bins, weights=w)
             centers = (edges[:-1] + edges[1:]) / 2
             ax_in.bar(centers, area, width=edges[1] - edges[0], color=cmap_obj(norm(centers)))
@@ -255,14 +255,17 @@ class SPEI_SNU_LAI_correlation():
         ax_in.set_zorder(20)   ## above the study-region box line
         ax_in.patch.set_facecolor('white')
         ax_in.patch.set_alpha(1)
-        plt.title(fname)
+        plt.title(fname.split('\\')[-1])   ## drop a sub-folder prefix
         plt.savefig(self.outdir + f'{fname}_map.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'{fname}_map.pdf', bbox_inches='tight')
         plt.show()
         plt.close()
 
+
+
 def main():
     SPEI_SNU_LAI_correlation().run()
+
 
 
 if __name__ == '__main__':

@@ -583,7 +583,7 @@ class Data_processing_MODIS_LAI:
         # self.MVC()
         # self.raster_align()
         # self.tif_to_dic()
-        # self.spring_season_LAI_mean()
+        self.spring_season_LAI_mean()
         self.relative_change()
         # self.growing_season()
         # self.trend_analysis()
