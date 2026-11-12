@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'\\Dataframe\\SPEI\\')
+                result_root +  rf'Dataframe\\\Daymet\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'\\SPEI.df'
+        self.dff = self.this_class_arr + rf'\\Daymet_seasonal.df'
 
 
         pass
@@ -47,12 +47,12 @@ class build_dataframe():
         #
         # # # #
         #
-        # df=self.add_row(df)  ## use this
-        # df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
+        df=self.add_row(df)  ## use this
+        df=self.add_Ecoregion_level_II_raster_to_df(df) ## use this
         # # # # # # # # # # # # # # # # # # #
         # df=self.add_lat_lon_to_df(df)  ## use this
         # df=self.add_continent_to_df(df)
-        # df=self.add_MODIS_LUCC_to_df(df)
+        df=self.add_MODIS_LUCC_to_df(df)
         df=self.add_landcover_type_to_df(df)
         # df=self.add_residual_to_df(df)
         #

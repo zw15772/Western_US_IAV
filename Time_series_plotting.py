@@ -164,13 +164,95 @@ class MODIS_LAI_time_series(Time_series_base):
         return df
 
 
+class Daymet_time_series(Time_series_base):
+    ## seasonal Daymet precipitation indices (Daymet_GEE_processing.py -> Daymet_seasonal.df)
+    ## summer = JASO (Jul-Oct), spring = MAM (Mar-May), winter = NDJF (Nov of previous year - Feb)
+    def __init__(self):
+        super().__init__()
+        self.dff = result_root + rf'\Dataframe\Daymet\Daymet_seasonal.df'
+        self.outdir = self.result2 + rf'01_drought\Daymet_timeseries\\'
+        self.start_year = 1982
+        self.color_dic = {'spring': '#EA6E88', 'summer': '#48526F', 'winter': '#4A90C2'}
+        self.main_list = ['PRCPTOT', 'WETDAYS', 'R5mm', 'SDII', 'R95pTOT', 'CDD']
+        self.other_list = ['LIGHT', 'Rx1day', 'R95p']
+        self.winter_list = ['PRCPTOT', 'SWE_max']
+        self.ylabel_dic = {'PRCPTOT': 'PRCPTOT (mm)', 'WETDAYS': 'WETDAYS (days)', 'R5mm': 'R5mm (days)',
+                           'LIGHT': 'LIGHT (days)', 'Rx1day': 'Rx1day (mm)', 'SDII': 'SDII (mm/day)',
+                           'R95p': 'R95p (mm)', 'R95pTOT': 'R95pTOT (%)', 'CDD': 'CDD (days)',
+                           'SWE_max': 'SWE_max (mm)'}
+        pass
+
+    def run(self):
+        df = self.load_df()
+        df=self.df_clean(df)  ## same region and cropland exclusion as the SPEI / LAI time series
+        ## spring and summer in the same panel
+        self.season_list = ['spring', 'summer']
+        self.plot_time_series(df, self.main_list, self.start_year, self.outdir, 'Fig_Daymet_main')
+        self.plot_time_series(df, self.other_list, self.start_year, self.outdir, 'FigS_Daymet_other')
+        self.compare_periods(df, self.main_list + self.other_list, 'Daymet_spring_summer')
+        ## winter
+        self.season_list = ['winter']
+        self.plot_time_series(df, self.winter_list, self.start_year, self.outdir, 'FigS_Daymet_winter')
+        self.compare_periods(df, self.winter_list, 'Daymet_winter')
+        pass
+
+    def load_df(self):
+        df = T.load_df(self.dff)
+        df['area_weight'] = np.cos(np.deg2rad(df['lat']))
+        df['cropland_pct'] = df['pix'].map(self.cropland_dic())
+        df = self.df_clean(df)   ## same region and cropland exclusion as the SPEI / LAI time series
+        return df
+
+    def cropland_dic(self):
+        ## MCD12C1 multi-year mean cropland % (IGBP 12 + 14), same as Build_framework.add_MODIS_LUCC_to_df
+        from osgeo import gdal
+        tiff = data_root + rf'\basedata\MCD12\MCD12C1_IGBP_percent_mean_tmpl.tif'
+        ds = gdal.Open(tiff)
+        array = ds.ReadAsArray().astype(float)
+        row0 = int(round((ds.GetGeoTransform()[3] - 48.97916666666667) / 0.05))   ## 469-row GEE export -> 468
+        array = array[:, row0:row0 + 468, :]
+        crop_arr = array[12] + array[14]
+        crop_arr[(crop_arr < 0) | (crop_arr > 100)] = np.nan
+        return DIC_and_TIF().spatial_arr_to_dic(crop_arr)
+
+    def compare_periods(self, df, var_list, fname):
+        ## regional area-weighted mean per year; 1982-1999 vs 2000-2024 (mean difference, Mann-Whitney p)
+        T.mk_dir(self.outdir, force=True)
+        years = np.arange(self.start_year, self.end_year + 1)
+        result_list = []
+        for var in var_list:
+            for season in self.season_list:
+                col = f'{season}_{var}'
+                if not col in df.columns:
+                    continue
+                mean_list = []
+                for year in years:
+                    df_i = df[df['year'] == year]
+                    vals = df_i[col].values.astype(float)
+                    w = df_i['area_weight'].values.astype(float)
+                    ok = np.isfinite(vals)
+                    mean_list.append(np.sum(vals[ok] * w[ok]) / np.sum(w[ok]))
+                mean_list = np.array(mean_list)
+                before = mean_list[years < self.split_year]
+                after = mean_list[years >= self.split_year]
+                stat, p = stats.mannwhitneyu(after, before)
+                result_list.append([var, season, before.mean(), after.mean(), after.mean() - before.mean(),
+                                    (after.mean() / before.mean() - 1) * 100, p])
+        df_out = pd.DataFrame(result_list, columns=['variable', 'season', 'mean_1982_1999', 'mean_2000_2024',
+                                                    'difference', 'change_pct', 'p_mannwhitney'])
+        df_out.to_csv(self.outdir + f'{fname}_period_comparison.csv', index=False)
+        print(df_out.round(3))
+        pass
+
+
 ## add a new variable: copy SNU_LAI_time_series, change outdir / start_year / var_list
 
 
 def main():
-    SPEI_time_series().run()
-    SNU_LAI_time_series().run()
-    MODIS_LAI_time_series().run()
+    # SPEI_time_series().run()
+    # SNU_LAI_time_series().run()
+    Daymet_time_series().run()
+    # MODIS_LAI_time_series().run()
 
 
 if __name__ == '__main__':
