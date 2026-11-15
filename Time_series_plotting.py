@@ -1,4 +1,6 @@
 from __Global__ import *
+import os
+import warnings
 from scipy import stats
 from matplotlib.ticker import MaxNLocator
 
@@ -112,7 +114,7 @@ class Time_series_base():
         print(df_trend)
 
 
-class SPEI_time_series(Time_series_base):
+class SPEI_time_series_MODIS(Time_series_base):
     def __init__(self):
         super().__init__()
         self.outdir = self.result2 + rf'01_drought\SPEI_timeseries\\'
@@ -268,19 +270,213 @@ class Daymet_time_series(Time_series_base):
         pass
 
 
+class SPEI_long_term_plot(Time_series_base):
+    ## growing-season SPEI 1958-2024 (2026-11-15)
+    ## per pixel: SPEI averaged over the pixel's main growing season (growing_season.df, same window every year),
+    ##   SPEI03 ... SPEI48 and SPEIbest (the pixel's best scale from bivariate.py: highest r between detrended
+    ##   GS LAI and detrended GS SPEI, 2003-2024). Long-term series and trends are NOT detrended.
+    ## pixels: same growing-season pixels as GS.df (n_season > 0, window within one calendar year, GS mean LAI >= 0.1)
+    ## time series: area-weighted mean +- std, trends 1958-2024 (dotted) and 2000-2024 (solid), per vegetation type
+    ##   main figure SPEI03, 06, 12, 24, 48; SPEIbest in its own figure (one panel per vegetation type)
+    ## maps: trend 1958-2024, trend 2000-2024 (+ p < 0.05 only) and step change (mean 2000-2024 - mean 1958-1999)
+    ## tables: period comparison and area-weighted trends per scale x vegetation type
+    ## output: Result2\01_drought\SPEI_long_term\
+    def __init__(self):
+        super().__init__()
+        self.outdir = self.result2 + rf'01_drought\SPEI_long_term\\'
+        T.mk_dir(self.outdir, force=True)
+        self.start_year = 1958
+        self.year_list = list(range(1958, 2025))
+        self.scale_list = list(range(3, 49, 3))
+        self.map_scale_list = [3, 6, 9, 12, 24, 36, 48]
+        self.main_list = ['SPEI03', 'SPEI06', 'SPEI12', 'SPEI24', 'SPEI48']   ## main figure, same as SPEI_time_series
+        self.class_list = ['All', 'Forest', 'Shrub', 'Grass', 'Savanna']
+        self.season_list = ['growing']
+        self.color_dic = {'growing': '#D9480F'}   ## orange-red
+        self.trend_period_list = [(1958, 2024, ':'), (2000, 2024, '-')]
+        self.ylabel_dic = {'SPEIbest': 'SPEI (best scale)'}
+        self.gs_dff = result_root + rf'\Dataframe\growing_season\growing_season.df'
+        self.biv_dff = this_root + rf'Result2\03_response\LAI_SPEI_bivariate\LAI_SPEI_bivariate_2003_2024.df'
+        self.dff_out = result_root + rf'\Dataframe\SPEI_GS_1958_2024.df'  ## pixel x year growing-season SPEI
+        pass
+
+    def run(self):
+        if not os.path.isfile(self.dff_out):
+            self.build_df()
+        df = T.load_df(self.dff_out)
+        self.time_series(df)
+        self.period_table(df)
+        self.trend_maps(df)
+        pass
+
+    def build_df(self):
+        ## pixel x year growing-season SPEI 1958-2024 for every scale, plus SPEIbest
+        gs = T.load_df(self.gs_dff)
+        gs = gs[(gs['n_season'] > 0) & (gs['gs_start'] <= gs['gs_end']) & (gs['GS_mean_LAI'] >= 0.1)]
+        pix_list = list(gs.index)
+        n_pix, n_year = len(pix_list), len(self.year_list)
+        mon = np.arange(12)[None, :]
+        in_win = (mon >= gs['gs_start'].values[:, None] - 1) & (mon <= gs['gs_end'].values[:, None] - 1)
+        out = {}
+        for scale in self.scale_list:
+            spatial_dic = T.load_npy_dir(data_root + rf'TerraClimate\SPEI\SPEI_{scale}_NOAA\dic\\')
+            n = max(len(v) for v in list(spatial_dic.values())[:1000])
+            first_year = 2025 - n // 12
+            arr = np.full((n_pix, n), np.nan)
+            for i, pix in enumerate(pix_list):
+                if pix in spatial_dic and len(spatial_dic[pix]) == n:
+                    arr[i] = np.array(spatial_dic[pix], dtype=float)
+            del spatial_dic
+            k0 = (self.year_list[0] - first_year) * 12
+            arr = arr[:, k0:k0 + n_year * 12].reshape(n_pix, n_year, 12)
+            v = np.where(in_win[:, None, :], arr, np.nan)
+            complete = np.all(np.isfinite(v) | ~in_win[:, None, :], axis=2)
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', category=RuntimeWarning)
+                out[f'growing_SPEI{scale:02d}'] = np.where(complete, np.nanmean(v, axis=2), np.nan)
+            print(f'SPEI{scale:02d} | first year {first_year} | months {n}')
+        ## best scale per pixel (bivariate.py)
+        best = T.load_df(self.biv_dff)['best_scale'].reindex(pix_list).values
+        sb = np.full((n_pix, n_year), np.nan)
+        for scale in self.scale_list:
+            m = best == scale
+            sb[m] = out[f'growing_SPEI{scale:02d}'][m]
+        out['growing_SPEIbest'] = sb
+        df = pd.DataFrame({'pix': [p for p in pix_list for _ in range(n_year)], 'year': self.year_list * n_pix})
+        for col, arr in out.items():
+            df[col] = arr.ravel()
+        for col in ['lon', 'lat', 'area_weight', 'landcover_type', 'gs_start', 'gs_end']:
+            df[col] = np.repeat(gs[col].values, n_year)
+        df['best_scale'] = np.repeat(best, n_year)
+        T.save_df(df, self.dff_out)
+        print('pixels:', n_pix, '| with best scale:', np.isfinite(best).sum())
+
+    def class_df(self, df, lc):
+        return df if lc == 'All' else df[df['landcover_type'] == lc]
+
+    def time_series(self, df):
+        ## main figure (SPEI03, 06, 12, 24, 48) per vegetation type; other scales for All only;
+        ## best-scale SPEI: one figure, one panel per vegetation type
+        outdir = self.outdir + rf'time_series\\'
+        for lc in self.class_list:
+            self.plot_time_series(self.class_df(df, lc), self.main_list, self.start_year, outdir,
+                                  f'Fig_SPEI_long_term_{lc}')
+        other_list = [f'SPEI{s:02d}' for s in self.scale_list if f'SPEI{s:02d}' not in self.main_list]
+        self.plot_time_series(df, other_list, self.start_year, outdir, 'FigS_SPEI_long_term_other_All')
+        df = df.copy()
+        best_list = []
+        for lc in self.class_list:
+            m = np.ones(len(df), dtype=bool) if lc == 'All' else (df['landcover_type'] == lc).values
+            df[f'growing_SPEIbest_{lc}'] = np.where(m, df['growing_SPEIbest'], np.nan)
+            best_list.append(f'SPEIbest_{lc}')
+            self.ylabel_dic[f'SPEIbest_{lc}'] = f'SPEI best scale\n{lc}'
+        self.plot_time_series(df, best_list, self.start_year, outdir, 'Fig_SPEIbest_long_term')
+
+    def wmean_series(self, d, col):
+        ## area-weighted mean per year
+        g = d.assign(wv=d[col] * d['area_weight'], w=d['area_weight'].where(d[col].notna()))
+        g = g.groupby('year')[['wv', 'w']].sum()
+        return (g['wv'] / g['w']).reindex(self.year_list).values
+
+    def period_table(self, df):
+        ## regional mean 1958-1999 vs 2000-2024 (difference, Mann-Whitney p), per scale x vegetation type
+        years = np.array(self.year_list)
+        result = []
+        for lc in self.class_list:
+            d = self.class_df(df, lc)
+            for var in [f'SPEI{s:02d}' for s in self.scale_list] + ['SPEIbest']:
+                y = self.wmean_series(d, f'growing_{var}')
+                before, after = y[years < self.split_year], y[years >= self.split_year]
+                p = stats.mannwhitneyu(after[np.isfinite(after)], before[np.isfinite(before)])[1]
+                result.append([lc, var, np.nanmean(before), np.nanmean(after), np.nanmean(after) - np.nanmean(before), p])
+        df_t = pd.DataFrame(result, columns=['class', 'variable', 'mean_1958_1999', 'mean_2000_2024', 'difference',
+                                             'p_mannwhitney'])
+        df_t.to_csv(self.outdir + 'SPEI_long_term_period_comparison.csv', index=False)
+        print(df_t.round(3).to_string())
+
+    def trend(self, arr, years):
+        ## OLS slope per decade and two-sided p, per row (rows with NaN -> NaN)
+        x = np.array(years, dtype=float)
+        xm = x - x.mean()
+        ym = arr - arr.mean(axis=1, keepdims=True)
+        slope = ym @ xm / np.sum(xm ** 2)
+        resid = ym - slope[:, None] * xm[None, :]
+        se = np.sqrt(np.sum(resid ** 2, axis=1) / (len(x) - 2) / np.sum(xm ** 2))
+        with np.errstate(divide='ignore', invalid='ignore'):
+            p = 2 * stats.t.sf(np.abs(slope / se), len(x) - 2)
+        return slope * 10, p
+
+    def trend_maps(self, df):
+        ## per scale: trend 1958-2024, trend 2000-2024 (+ p < 0.05) and step change maps; table of mean trends
+        from growing_season_extraction import Map_plotter, D
+        outdir = self.outdir + rf'trend_map\\'
+        T.mk_dir(outdir, force=True)
+        mapper = Map_plotter(outdir)
+        info = df.groupby('pix')[['area_weight', 'landcover_type']].first()
+        w_all = info['area_weight'].values
+        var_list = [f'SPEI{s:02d}' for s in self.scale_list] + ['SPEIbest']
+        map_var_list = [f'SPEI{s:02d}' for s in self.map_scale_list] + ['SPEIbest']
+        res = {}
+        for var in var_list:
+            mat = df.pivot(index='pix', columns='year', values=f'growing_{var}').reindex(index=info.index,
+                                                                                        columns=self.year_list)
+            years = np.array(self.year_list)
+            for t0, t1 in [(1958, 2024), (2000, 2024)]:
+                m = (years >= t0) & (years <= t1)
+                res[(var, f'{t0}_{t1}')] = self.trend(mat.values[:, m], years[m])
+            res[(var, 'step')] = (np.nanmean(mat.values[:, years >= self.split_year], axis=1) -
+                                  np.nanmean(mat.values[:, years < self.split_year], axis=1), None)
+        ## maps: one colour range per map type, shared by all scales
+        for key, label in [('1958_2024', 'trend 1958-2024 (per decade)'), ('2000_2024', 'trend 2000-2024 (per decade)'),
+                           ('step', 'mean 2000-2024 minus mean 1958-1999')]:
+            vlim = np.nanpercentile(np.abs(np.concatenate([res[(v, key)][0] for v in map_var_list])), 90)
+            for var in map_var_list:
+                vals, p = res[(var, key)]
+                maps = [(vals, f'GS_{var}_{key}')]
+                if p is not None:
+                    maps.append((np.where(p < 0.05, vals, np.nan), f'GS_{var}_{key}_sig'))
+                for v, fname in maps:
+                    arr = D.pix_dic_to_spatial_arr(dict(zip(info.index, v)))
+                    arr[arr <= -9999] = np.nan
+                    D.arr_to_tif(arr.copy(), outdir + f'{fname}.tif')
+                    ok = np.isfinite(v)
+                    mapper.plot_map(arr, fname, 'RdBu', -vlim, vlim, f'Growing-season {var} {label}', v[ok], w_all[ok])
+        ## table: area-weighted mean and area with significant decrease / increase
+        result = []
+        for lc in self.class_list:
+            mlc = (info['landcover_type'] == lc).values if lc != 'All' else np.ones(len(info), dtype=bool)
+            for var in var_list:
+                for key in ['1958_2024', '2000_2024', 'step']:
+                    vals, p = res[(var, key)]
+                    m = mlc & np.isfinite(vals)
+                    w = w_all[m]
+                    row = [lc, var, key, m.sum(), np.sum(vals[m] * w) / np.sum(w)]
+                    if p is None:
+                        row += [np.nan, np.nan]
+                    else:
+                        row += [np.sum(w * ((vals[m] < 0) & (p[m] < 0.05))) / np.sum(w) * 100,
+                                np.sum(w * ((vals[m] > 0) & (p[m] < 0.05))) / np.sum(w) * 100]
+                    result.append(row)
+        df_t = pd.DataFrame(result, columns=['class', 'variable', 'period', 'n_pix', 'mean_value',
+                                             'sig_decrease_area_%', 'sig_increase_area_%'])
+        df_t.to_csv(self.outdir + 'SPEI_long_term_trend_summary.csv', index=False)
+        print(df_t[df_t['class'] == 'All'].round(3).to_string())
+
+
 ## add a new variable: copy SNU_LAI_time_series, change outdir / start_year / var_list
 
 
 
 
 def main():
-    # SPEI_time_series().run()
+
     # SNU_LAI_time_series().run()
     # Daymet_time_series().run()
     # MODIS_LAI_time_series().run()
-    # GS_LAI_time_series().run()   ## main growing-season LAI: time series + spatial trend per vegetation class
-    SPEI_time_series().run()       ## growing-season SPEI (GS.df)
-    MODIS_LAI_time_series().run()   ## growing-season MODIS LAI (GS.df)
+
+    # SPEI_time_series_MODIS().run()     ## modis record
+    # MODIS_LAI_time_series().run()   ## growing-season MODIS LAI (GS.df)
+    SPEI_long_term_plot().run()     ## growing-season SPEI 1958-2024: time series and trend maps
 
 
 if __name__ == '__main__':
