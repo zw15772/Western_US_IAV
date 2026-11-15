@@ -14,10 +14,10 @@ class build_dataframe():
     def __init__(self):
 
         self.this_class_arr = (
-                result_root +  rf'Dataframe\\\Daymet\\')
+                result_root +  rf'\Dataframe\RAP\\')
 
         Tools().mk_dir(self.this_class_arr, force=True)
-        self.dff = self.this_class_arr + rf'\\Daymet_seasonal.df'
+        self.dff = self.this_class_arr + rf'\\RAP_cover.df'
 
 
         pass

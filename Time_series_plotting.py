@@ -34,6 +34,21 @@ class Time_series_base():
         df = df[~(df['cropland_pct'] > self.crop_threshold)]
         return df
 
+    def load_GS_df(self):
+        ## growing_season_extraction.py -> GS.df: each pixel's main growing season, 2003-2024
+        ## pixels: complete GS LAI 2003-2024 and growing-season mean LAI >= 0.1 (same as Growing_season_trend)
+        ## columns GS_X are renamed growing_X so that plot_time_series finds them with season 'growing'
+        df = T.load_df(result_root + rf'\Dataframe\growing_season\GS.df')
+        df = df[(df['year'] >= 2003) & (df['year'] <= 2024)]
+        n_ok = df['GS_LAI'].notna().groupby(df['pix']).transform('sum')
+        df = df[(n_ok == 22) & (df['GS_mean_LAI'] >= 0.1)]
+        df = df.rename(columns={c: 'growing_' + c[3:] for c in df.columns if c.startswith('GS_')})
+        self.season_list = ['growing']
+        self.color_dic = {'growing': '#2E7D32'}
+        self.trend_period_list = [(2003, 2024, '-')]
+        print('growing-season pixels:', df['pix'].nunique())
+        return df
+
     def plot_time_series(self, df, var_list, start_year, outdir, fname):
         T.mk_dir(outdir, force=True)
         years = np.arange(start_year, self.end_year + 1)
@@ -107,10 +122,15 @@ class SPEI_time_series(Time_series_base):
                            'SPEI30', 'SPEI33', 'SPEI36', 'SPEI39', 'SPEI42', 'SPEI45']
         pass
 
+
+
     def run(self):
-        df = self.load_df()
-        self.plot_time_series(df, self.main_list, self.start_year, self.outdir, 'Fig_SPEI_main')
-        self.plot_time_series(df, self.other_list, self.start_year, self.outdir, 'FigS_SPEI_other')
+        ## SPEI averaged over each pixel's main growing season (GS.df), 2003-2024
+        df = self.load_GS_df()
+        outdir = self.outdir + rf'growing_season\\'
+        other_list = [v for v in self.other_list if v != 'SPEI01']   ## GS.df has SPEI03 ... SPEI48
+        self.plot_time_series(df, self.main_list, 2003, outdir, 'Fig_SPEI_main_GS')
+        self.plot_time_series(df, other_list, 2003, outdir, 'FigS_SPEI_other_GS')
         pass
 
 
@@ -148,10 +168,13 @@ class MODIS_LAI_time_series(Time_series_base):
         self.LAI_threshold = 0.3   ## drop pixels whose multi-year mean LAI < 0.3
         pass
 
+
+
     def run(self):
-        df = self.load_df()
-        df = self.mask_low_LAI(df)
-        self.plot_time_series(df, self.var_list, self.start_year, self.outdir, 'Fig_MODIS_LAI')
+        ## MODIS LAI of each pixel's main growing season (GS.df), % difference from the pixel's 2003-2024 mean
+        df = self.load_GS_df()
+        self.ylabel_dic = {'LAI_rel': 'Relative Change (%)'}
+        self.plot_time_series(df, ['LAI_rel'], 2003, self.outdir + rf'growing_season\\', 'Fig_MODIS_LAI_GS')
         pass
 
     def mask_low_LAI(self, df):
@@ -248,11 +271,16 @@ class Daymet_time_series(Time_series_base):
 ## add a new variable: copy SNU_LAI_time_series, change outdir / start_year / var_list
 
 
+
+
 def main():
     # SPEI_time_series().run()
     # SNU_LAI_time_series().run()
-    Daymet_time_series().run()
+    # Daymet_time_series().run()
     # MODIS_LAI_time_series().run()
+    # GS_LAI_time_series().run()   ## main growing-season LAI: time series + spatial trend per vegetation class
+    # SPEI_time_series().run()       ## growing-season SPEI (GS.df)
+    MODIS_LAI_time_series().run()   ## growing-season MODIS LAI (GS.df)
 
 
 if __name__ == '__main__':

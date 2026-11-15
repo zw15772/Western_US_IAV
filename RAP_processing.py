@@ -256,9 +256,150 @@ class RAP_GEE_download():
         pass
 
 
+class RAP_dict_map():
+    ## RAP cover (Data\RAP\tmpl\RAP_cover_{year}_tmpl.tif, 6 bands, 1986-2024) -> dicts, dataframe, spatial change maps
+    ## dicts: Result2\00_aligned\RAP\{band}.npy   {pix: 39 values}
+    ## dataframe: Result\Dataframe\RAP\RAP_cover.df   (pix, year, lon, lat, RAP_AFG ... RAP_BGR), study region only
+    ## maps (Result2\00_aligned\RAP\map\), from RAP_cover.df, cropland_pct > 50% (MCD12C1) left blank:
+    ##   period mean difference (2000-2024) - (1986-1999), percentage points
+    ##   linear trend per decade, 1986-2024 and 2000-2024
+    def __init__(self):
+        self.datadir = data_root + rf'RAP\tmpl\\'
+        self.outdir = this_root + rf'Result2\00_aligned\RAP\\'
+        self.df_dir = result_root + rf'\Dataframe\RAP\\'
+        T.mk_dir(self.outdir, force=True)
+        T.mk_dir(self.df_dir, force=True)
+        self.band_list = ['AFG', 'PFG', 'SHR', 'TRE', 'LTR', 'BGR']
+        self.name_dic = {'AFG': 'Annual forbs and grasses', 'PFG': 'Perennial forbs and grasses', 'SHR': 'Shrubs',
+                         'TRE': 'Trees', 'LTR': 'Litter', 'BGR': 'Bare ground'}
+        self.year_list = list(range(1986, 2025))
+        self.pre, self.post = (1986, 1999), (2000, 2024)
+        self.trend_period_list = [(1986, 2024), (2000, 2024)]
+        self.crop_threshold = 50
+        self.x0 = -124.52916666666665
+        self.y0 = 48.97916666666667
+        self.res = 0.05
+        pass
+
+    def run(self):
+        # self.tif_to_dict()   ## done 2026-11-14
+        # df = self.dict_to_df()   ## done; do not rerun: Build_framework added cropland_pct and landcover_type to this df
+        # T.save_df(df, self.df_dir + 'RAP_cover.df')
+        # T.df_to_excel(df.head(2000), self.df_dir + 'RAP_cover_head')
+        self.change_map()
+        pass
+
+    def tif_to_dict(self):
+        stack = []
+        for year in self.year_list:
+            ds = gdal.Open(self.datadir + f'RAP_cover_{year}_tmpl.tif')
+            stack.append(ds.ReadAsArray().astype(np.float32))   ## band x row x col
+        stack = np.array(stack)   ## year x band x row x col
+        for i, b in enumerate(self.band_list):
+            arr = stack[:, i]
+            spatial_dic = {}
+            for r in range(arr.shape[1]):
+                for c in range(arr.shape[2]):
+                    vals = arr[:, r, c]
+                    if np.all(np.isnan(vals)):
+                        continue
+                    spatial_dic[(r, c)] = vals
+            np.save(self.outdir + f'{b}.npy', spatial_dic)
+            print(b, len(spatial_dic), 'pixels')
+        pass
+
+    def dict_to_df(self):
+        dic_all = {b: T.load_npy(self.outdir + f'{b}.npy') for b in self.band_list}
+        pix_region = []
+        for pix in dic_all['SHR']:
+            r, c = pix
+            lon = self.x0 + self.res * (c + 0.5)
+            lat = self.y0 - self.res * (r + 0.5)
+            if -125 < lon < -105 and 30 < lat < 45:
+                pix_region.append((pix, lon, lat))
+        n_year = len(self.year_list)
+        df = pd.DataFrame({
+            'pix': [p for p, _, _ in pix_region for _ in range(n_year)],
+            'year': self.year_list * len(pix_region),
+            'lon': np.repeat([lon for _, lon, _ in pix_region], n_year),
+            'lat': np.repeat([lat for _, _, lat in pix_region], n_year),
+        })
+        for b in self.band_list:
+            df[f'RAP_{b}'] = np.concatenate([dic_all[b][p] for p, _, _ in pix_region]).astype(np.float32)
+        print('df', df.shape, 'pixels', len(pix_region))
+        return df
+
+    def ols_rows(self, x, y):
+        from scipy import stats
+        n = len(x)
+        xm = x - x.mean()
+        ym = y - y.mean(axis=1, keepdims=True)
+        slope = ym @ xm / np.sum(xm ** 2)
+        resid = ym - slope[:, None] * xm[None, :]
+        se = np.sqrt(np.sum(resid ** 2, axis=1) / (n - 2) / np.sum(xm ** 2))
+        with np.errstate(divide='ignore', invalid='ignore'):
+            t = slope / se
+        p = 2 * stats.t.sf(np.abs(t), n - 2)
+        return slope, p
+
+    def change_map(self):
+        from SPEI_LAI_correlation import SPEI_SNU_LAI_correlation, D
+        mapdir = self.outdir + rf'map\\'
+        T.mk_dir(mapdir, force=True)
+        mapper = SPEI_SNU_LAI_correlation()
+        mapper.outdir = mapdir   ## plot_map saves into mapper.outdir
+        years = np.array(self.year_list)
+        ## RAP_cover.df with cropland_pct from Build_framework.add_MODIS_LUCC_to_df; remove cropland > 50%
+        df = T.load_df(self.df_dir + 'RAP_cover.df')
+        n_pix_all = df['pix'].nunique()
+        df = df[df['cropland_pct'] <= self.crop_threshold]   ## NaN cropland_pct (no MODIS land cover) also removed
+        print('pixels:', n_pix_all, '-> after removing cropland >', self.crop_threshold, '%:', df['pix'].nunique())
+        for b in self.band_list:
+            mat = df.pivot(index='pix', columns='year', values=f'RAP_{b}').reindex(columns=self.year_list)
+            mat = mat[mat.notna().all(axis=1)]
+            pix_list = list(mat.index)
+            arr = mat.values.astype(float)   ## pixels x 39 years
+            lat = np.array([self.y0 - self.res * (pix[0] + 0.5) for pix in pix_list])
+            lon = np.array([self.x0 + self.res * (pix[1] + 0.5) for pix in pix_list])
+            area_w = np.cos(np.deg2rad(lat))
+            in_box = (lon > -125) & (lon < -105) & (lat > 30) & (lat < 45)
+            ## 1) period mean difference
+            m_pre = (years >= self.pre[0]) & (years <= self.pre[1])
+            m_post = (years >= self.post[0]) & (years <= self.post[1])
+            diff = arr[:, m_post].mean(axis=1) - arr[:, m_pre].mean(axis=1)
+            fname = f'{b}_diff_{self.post[0]}_{self.post[1]}_minus_{self.pre[0]}_{self.pre[1]}'
+            self.save_and_plot(mapper, D, pix_list, diff, None, fname, in_box, area_w,
+                               f'{b} cover change (percentage points)')
+            ## 2) linear trends
+            for start, end in self.trend_period_list:
+                m = (years >= start) & (years <= end)
+                slope, p = self.ols_rows(years[m].astype(float), arr[:, m])
+                fname = f'{b}_trend_{start}_{end}'
+                self.save_and_plot(mapper, D, pix_list, slope * 10, p, fname, in_box, area_w,
+                                   f'{b} cover trend (percentage points per decade)')
+        pass
+
+    def save_and_plot(self, mapper, D, pix_list, vals, p, fname, in_box, area_w, cbar_label):
+        arr = D.pix_dic_to_spatial_arr(dict(zip(pix_list, vals)))
+        arr[arr <= -9999] = np.nan   ## pixels not in the dict are filled with -9999
+        D.arr_to_tif(arr.copy(), self.outdir + rf'map\\' + f'{fname}.tif')   ## copy: arr_to_tif changes NaN in place
+        vlim = np.nanpercentile(np.abs(vals[in_box]), 90)
+        mapper.plot_map(arr, fname, 'RdBu', -vlim, vlim, cbar_label, vals[in_box], area_w[in_box])
+        w = area_w[in_box]
+        v = vals[in_box]
+        line = f'{fname}: area-weighted mean {np.sum(w * v) / np.sum(w):+.2f}, area > +5: {np.sum(w * (v > 5)) / np.sum(w) * 100:.1f}%, ' \
+               f'area < -5: {np.sum(w * (v < -5)) / np.sum(w) * 100:.1f}%'
+        if p is not None:
+            pin = p[in_box]
+            line += f', significant increase {np.sum(w * ((v > 0) & (pin < 0.05))) / np.sum(w) * 100:.1f}%, ' \
+                    f'significant decrease {np.sum(w * ((v < 0) & (pin < 0.05))) / np.sum(w) * 100:.1f}%'
+        print(line)
+
+
 def main():
     # RAP_processing().run()   ## alternative without GEE: read the RAP server files with GDAL
-    RAP_GEE_download().run()
+    # RAP_GEE_download().run()   ## done 2026-11-13: 1986-2024 in Data\RAP\tmpl
+    RAP_dict_map().run()
 
 
 if __name__ == '__main__':
