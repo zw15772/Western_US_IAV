@@ -94,6 +94,7 @@ class Growing_season_extraction():
     ##   GS_VPD, GS_Tmax   mean in the window (kPa, deg C)  (TerraClimate monthly)
     ## per pixel: gs_start, gs_end, gs_peak, gs_length, n_season, s1_*/s2_* (months 1-12), GS_mean_LAI,
     ##   monsoon_share (Jul-Sep P / annual P, TerraClimate, 2003-2024)
+    ## pixels: study box, cropland <= threshold, US only (cell centre inside the US, Natural Earth 50 m states)
     ## per pixel also: lon, lat (cell centre), area_weight = cos(lat), cropland_pct, IGBP_majority, landcover_type
     ##   (Forest 1-5, Shrub 6-7, Savanna 8-9, Grass 10, Cropland 12/14, Other), from the MCD12C1 template tifs
     ## per year also: RAP_AFG / PFG / SHR / TRE from Result\Dataframe\RAP\RAP_cover.df (if the file exists)
@@ -198,6 +199,9 @@ class Growing_season_extraction():
         lat = self.y0 - (rows + 0.5) * self.res
         box = (lon > -125) & (lon < -105) & (lat > 30) & (lat < 45) & ~(crop > self.crop_threshold)
         r, c = np.where(box)
+        us = self.us_mask(lon[r, c], lat[r, c])   ## US only: RAP and the paper cover the US, not Mexico
+        print('study-box pixels outside the US removed:', (~us).sum())
+        r, c = r[us], c[us]
         igbp = major[r, c]
         info = pd.DataFrame({'lon': lon[r, c], 'lat': lat[r, c], 'area_weight': np.cos(np.deg2rad(lat[r, c])),
                              'cropland_pct': crop[r, c], 'IGBP_majority': igbp,
@@ -206,6 +210,22 @@ class Growing_season_extraction():
                             index=pd.Index(list(zip(r.tolist(), c.tolist())), name='pix', tupleize_cols=False))   ## tuples, not a MultiIndex
         print('study-box pixels with cropland <=', self.crop_threshold, '%:', len(info))
         return info
+
+    def us_mask(self, lon, lat):
+        ## True if the cell centre is in the US (Natural Earth 50 m states, the same data as the map state lines)
+        import cartopy.io.shapereader as shpreader
+        import shapely
+        from shapely.ops import unary_union
+        shp = shpreader.natural_earth(resolution='50m', category='cultural', name='admin_1_states_provinces_lakes')
+        geoms = [rec.geometry for rec in shpreader.Reader(shp).records()
+                 if rec.attributes.get('adm0_a3') == 'USA' or rec.attributes.get('admin') == 'United States of America']
+        us = unary_union(geoms)
+        if hasattr(shapely, 'contains_xy'):   ## shapely >= 2.0
+            return shapely.contains_xy(us, lon, lat)
+        from shapely.prepared import prep
+        from shapely.geometry import Point
+        us = prep(us)
+        return np.array([us.contains(Point(x, y)) for x, y in zip(lon, lat)])
 
     def monthly_values(self, pix_list, fdir, first_year):
         ## pixel x month, Jan 2002 ... Dec 2024 (2002 for the antecedent months); first_year None = series ends Dec 2024
@@ -599,7 +619,7 @@ class GS_climate_trend(Growing_season_trend):
     ##   GS_VPD: per decade, in the unit of the VPD dict (RdBu_r);  GS_Tmax: deg C per decade (RdBu_r)
     ## output: Result2\01_drought\growing_season\trend\ (same folder as the SPEI trend)
     def __init__(self):
-        super().__init__(this_root + rf'Result2\01_drought\growing_season\trend\\')
+        super().__init__(this_root + rf'Result2\01_drought\trend\\')
         ## variable, unit, relative to the mean, colour map
         self.var_list = [('GS_P', '%', True, 'BrBG'),
                          ('GS_P_antecedent', '%', True, 'BrBG'),
@@ -619,11 +639,12 @@ class GS_climate_trend(Growing_season_trend):
 
 
 def main():
-    # Growing_season_extraction().run()   ## done 2026-11-15: GS.df, growing_season.df
-    # Growing_season_definition().run()   ## one / two seasons, months: maps and tables in 02_vegetation\phenology
-    # GS_LAI_trend().run()               ## GS LAI trend maps and table (02_vegetation)
+    ## 2026-11-15: US only -> rerun everything in this order
+    Growing_season_extraction().run()   ## GS.df, growing_season.df
+    Growing_season_definition().run()   ## one / two seasons, months: maps and tables in 02_vegetation\phenology
+    GS_LAI_trend().run()                ## GS LAI trend maps and table (02_vegetation)
     GS_SPEI_trend().run()               ## GS SPEI trend maps and table (01_drought)
-    # GS_climate_trend().run()            ## GS P, VPD, Tmax trend maps and table (01_drought)
+    GS_climate_trend().run()            ## GS P, VPD, Tmax trend maps and table (01_drought)
 
 
 if __name__ == '__main__':

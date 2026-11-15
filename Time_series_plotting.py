@@ -127,7 +127,7 @@ class SPEI_time_series(Time_series_base):
     def run(self):
         ## SPEI averaged over each pixel's main growing season (GS.df), 2003-2024
         df = self.load_GS_df()
-        outdir = self.outdir + rf'growing_season\\'
+        outdir = self.outdir
         other_list = [v for v in self.other_list if v != 'SPEI01']   ## GS.df has SPEI03 ... SPEI48
         self.plot_time_series(df, self.main_list, 2003, outdir, 'Fig_SPEI_main_GS')
         self.plot_time_series(df, other_list, 2003, outdir, 'FigS_SPEI_other_GS')
@@ -174,7 +174,7 @@ class MODIS_LAI_time_series(Time_series_base):
         ## MODIS LAI of each pixel's main growing season (GS.df), % difference from the pixel's 2003-2024 mean
         df = self.load_GS_df()
         self.ylabel_dic = {'LAI_rel': 'Relative Change (%)'}
-        self.plot_time_series(df, ['LAI_rel'], 2003, self.outdir + rf'growing_season\\', 'Fig_MODIS_LAI_GS')
+        self.plot_time_series(df, ['LAI_rel'], 2003, self.outdir + rf'\\', 'Fig_MODIS_LAI_GS')
         pass
 
     def mask_low_LAI(self, df):
@@ -279,7 +279,7 @@ def main():
     # Daymet_time_series().run()
     # MODIS_LAI_time_series().run()
     # GS_LAI_time_series().run()   ## main growing-season LAI: time series + spatial trend per vegetation class
-    # SPEI_time_series().run()       ## growing-season SPEI (GS.df)
+    SPEI_time_series().run()       ## growing-season SPEI (GS.df)
     MODIS_LAI_time_series().run()   ## growing-season MODIS LAI (GS.df)
 
 
