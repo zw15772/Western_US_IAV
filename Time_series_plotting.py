@@ -303,10 +303,10 @@ class SPEI_long_term_plot(Time_series_base):
     def run(self):
         if not os.path.isfile(self.dff_out):
             self.build_df()
-        df = T.load_df(self.dff_out)
-        self.time_series(df)
-        self.period_table(df)
-        self.trend_maps(df)
+        # df = T.load_df(self.dff_out)
+        # self.time_series(df)
+        # self.period_table(df)
+        # self.trend_maps(df)
         pass
 
     def build_df(self):
@@ -349,6 +349,7 @@ class SPEI_long_term_plot(Time_series_base):
             df[col] = np.repeat(gs[col].values, n_year)
         df['best_scale'] = np.repeat(best, n_year)
         T.save_df(df, self.dff_out)
+        T.df_to_excel(df, self.dff_out.replace('.df', '.xlsx'))
         print('pixels:', n_pix, '| with best scale:', np.isfinite(best).sum())
 
     def class_df(self, df, lc):
