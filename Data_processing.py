@@ -2702,7 +2702,9 @@ class Data_processing_Daymet:
         pass
     def run(self):
         # self.download()
-        self.daymet_nc_to_tif()
+        # self.daymet_nc_to_tif()      ## ~250 MB per day (whole continent); replaced by daymet_nc_to_005
+        self.daymet_nc_to_005()       ## 2026-11-15: daily prcp averaged to the 0.05 deg grid, one npy per year
+        self.daymet_gs_metrics()      ## 2026-11-15: rainfall structure in the growing season and the 8 months before
         # self.resample()
         # self.extract_tif_from_shp()
         # self.transform_to_blocks()
@@ -2769,18 +2771,19 @@ class Data_processing_Daymet:
 
     def daymet_nc_to_tif(self):
 
-        fdir = join(data_root, 'Daymet', 'prcp','nc')
+        # fdir = join(data_root, 'Daymet', 'prcp','nc')
+        fdir=rf'C:\Users\wenzhang1.BLUECAT\Desktop\Daymet\nc\\'
         # outdir=rf'C:\\\Daymet\\prcp\\tiff'
         # print(outdir);exit()
-
-        outdir = join(data_root, 'Daymet', 'prcp','tiff')
+        # outdir = join(data_root, 'Daymet', 'prcp','tiff')
+        outdir = rf'C:\Users\wenzhang1.BLUECAT\Desktop\Daymet\\tiff\\'
         T.mkdir(outdir, force=True)
         for f in os.listdir(fdir):
 
             year=f.split('.')[0].split('_')[-1]
             # print(year);exit()
             year=int(year)
-            if year<2017:
+            if year<2003:
                 continue
 
 
@@ -3746,6 +3749,339 @@ class Data_processing_Daymet:
     #
     #         np.save(outf + '_trend', arr_trend)
     #         np.save(outf + '_p_value', arr_p)
+    ## ===== new (2026-11-15): Daymet daily precipitation -> 0.05 deg grid -> rainfall-structure metrics =====
+    ## daymet_nc_to_005  : yearly nc (1 km Lambert) -> daily average on the 0.05 deg template grid, one npy per year
+    ##                     (replaces daymet_nc_to_tif: no ~250 MB/day full-continent tiffs)
+    ## daymet_gs_metrics : per pixel and year 2003-2024, rainfall structure in the growing season (GS, gs_start-gs_end
+    ##                     of growing_season.df) and in the 8 months before it (Pant), same windows as GS.df
+    daymet_years = (2002, 2024)   ## 2002 is needed for the antecedent window of 2003
+    daymet_lcc = "+proj=lcc +lat_1=25.0 +lat_2=60.0 +lat_0=42.5 +lon_0=-100.0 +x_0=0.0 +y_0=0.0 +ellps=GRS80 +units=m +no_defs"
+
+    def daymet_nc_to_005(self):
+        ## output: Data\Daymet\prcp_005\{year}.npy (day x row x col, float32, mm/day) and {year}_dates.npy
+        import rasterio
+        from rasterio.transform import from_origin
+        fdir = rf'C:\Users\wenzhang1.BLUECAT\Desktop\Daymet\nc\\'
+        outdir = join(data_root, 'Daymet', 'prcp_005') + '\\'
+        T.mkdir(outdir, force=True)
+        lcc_crs = pyproj.CRS.from_string(self.daymet_lcc)
+        wgs84_crs = DIC_and_TIF().wkt_84()   ## WKT, as in daymet_nc_to_tif ('EPSG:4326' fails: no PROJ database context)
+        with rasterio.open(tif_template) as tmpl:
+            dst_transform, dst_crs = tmpl.transform, wgs84_crs
+            dst_shape = (tmpl.height, tmpl.width)
+            b = tmpl.bounds
+        ## study area in Lambert metres (+ 20 km margin), to read only that part of the continent
+        lon = np.concatenate([np.linspace(b.left, b.right, 200), np.full(200, b.right), np.linspace(b.left, b.right, 200),
+                              np.full(200, b.left)])
+        lat = np.concatenate([np.full(200, b.top), np.linspace(b.bottom, b.top, 200), np.full(200, b.bottom),
+                              np.linspace(b.bottom, b.top, 200)])
+        X, Y = pyproj.Transformer.from_crs(wgs84_crs, lcc_crs, always_xy=True).transform(lon, lat)
+        x0, x1, y0, y1 = X.min() - 2e4, X.max() + 2e4, Y.min() - 2e4, Y.max() + 2e4
+        for year in range(self.daymet_years[0], self.daymet_years[1] + 1):
+            outf = outdir + f'{year}.npy'
+            if isfile(outf):
+                continue
+            ds = xr.open_dataset(fdir + f'daymet_v4_daily_na_prcp_{year}.nc')
+            x, y = ds['x'].values, ds['y'].values   ## cell centres (m)
+            xs = np.where((x >= x0) & (x <= x1))[0]
+            ys = np.where((y >= y0) & (y <= y1))[0]
+            xs, ys = slice(xs.min(), xs.max() + 1), slice(ys.min(), ys.max() + 1)
+            xx, yy = x[xs], y[ys]
+            dx = abs(xx[1] - xx[0])
+            flip = yy[1] > yy[0]   ## rows must go north -> south
+            ytop = yy.max()
+            src_transform = from_origin(xx.min() - dx / 2, ytop + dx / 2, dx, dx)
+            dates = pd.to_datetime(ds['time'].values)
+            out = np.full((len(dates),) + dst_shape, np.nan, dtype=np.float32)
+            for i in tqdm(range(len(dates)), desc=str(year)):
+                v = ds['prcp'][i, ys, xs].values.astype(np.float32)
+                if flip:
+                    v = v[::-1]
+                reproject(source=v, destination=out[i], src_transform=src_transform, src_crs=lcc_crs,
+                          src_nodata=np.nan, dst_transform=dst_transform, dst_crs=dst_crs, dst_nodata=np.nan,
+                          resampling=Resampling.average)
+            ds.close()
+            np.save(outf, out)
+            np.save(outdir + f'{year}_dates.npy', dates.strftime('%Y%m%d').values)
+            print(year, out.shape, 'mean prcp (mm/day):', np.nanmean(out).round(3))
+
+    def daymet_rain_metrics(self, P):
+        ## P: pixel x day (mm). Returns dict of metrics per pixel (NaN if any day is missing)
+        ok = np.isfinite(P).all(axis=1)
+        P = np.where(np.isfinite(P), P, 0.)
+        wet = P >= 1
+        n_wet = wet.sum(axis=1)
+        tot = P.sum(axis=1)
+        with np.errstate(invalid='ignore', divide='ignore'):
+            sdii = np.where(n_wet > 0, np.sum(P * wet, axis=1) / n_wet, 0.)
+            heavy = np.where(tot > 0, np.sum(P * (P >= 10), axis=1) / tot * 100, np.nan)
+        ## longest run of dry days (P < 1 mm)
+        run = np.zeros(len(P))
+        cdd = np.zeros(len(P))
+        for d in range(P.shape[1]):
+            run = np.where(wet[:, d], 0, run + 1)
+            cdd = np.maximum(cdd, run)
+        out = {'Ptot': tot, 'wetdays': n_wet, 'R5': (P >= 5).sum(axis=1), 'R10': (P >= 10).sum(axis=1),
+               'R20': (P >= 20).sum(axis=1), 'SDII': sdii, 'heavy_frac': heavy, 'CDD': cdd}
+        return {k: np.where(ok, v, np.nan).astype(float) for k, v in out.items()}
+
+    def daymet_gs_metrics(self):
+        ## per pixel x year (2003-2024): rainfall structure in the growing season (GS_*) and the 8 months before (Pant_*)
+        ##   Ptot (mm), wetdays (>= 1 mm), R5 / R10 / R20 (days >= 5 / 10 / 20 mm), SDII (mm per wet day),
+        ##   heavy_frac (% of the total from days >= 10 mm), CDD (longest dry spell, days)
+        ##   GS_early_share: % of the GS total that falls in the first half of the window (first ceil(L/2) months)
+        ## pixels: growing-season pixels (n_season > 0, window within one calendar year, GS mean LAI >= 0.1)
+        ## output: Result\Dataframe\Daymet\Daymet_GS_metrics.df
+        fdir = join(data_root, 'Daymet', 'prcp_005') + '\\'
+        outdir = result_root + rf'\Dataframe\Daymet\\'
+        T.mkdir(outdir, force=True)
+        gs = T.load_df(result_root + rf'\Dataframe\growing_season\growing_season.df')
+        gs = gs[(gs['n_season'] > 0) & (gs['gs_start'] <= gs['gs_end']) & (gs['GS_mean_LAI'] >= 0.1)]
+        pix_list = list(gs.index)
+        r = np.array([p[0] for p in pix_list])
+        c = np.array([p[1] for p in pix_list])
+        start = gs['gs_start'].values.astype(int)
+        end = gs['gs_end'].values.astype(int)
+        combo = start * 100 + end
+        result = []
+        prev = None
+        for year in range(self.daymet_years[0], self.daymet_years[1] + 1):
+            cur_P = np.load(fdir + f'{year}.npy')[:, r, c].T   ## pixel x day
+            cur_m = np.array([int(d[4:6]) for d in np.load(fdir + f'{year}_dates.npy', allow_pickle=True)])
+            if prev is None:
+                prev = (cur_P, cur_m)
+                continue
+            P = np.concatenate([prev[0], cur_P], axis=1)
+            m_abs = np.concatenate([prev[1] - 1, cur_m - 1 + 12])   ## 0-11 previous year, 12-23 this year
+            rows = {}
+            for cb in np.unique(combo):
+                g = np.where(combo == cb)[0]
+                s, e = cb // 100, cb % 100
+                gs_mask = (m_abs >= 12 + s - 1) & (m_abs <= 12 + e - 1)
+                ant_mask = (m_abs >= 12 + s - 1 - 8) & (m_abs < 12 + s - 1)
+                n_early = int(np.ceil((e - s + 1) / 2))
+                early_mask = (m_abs >= 12 + s - 1) & (m_abs <= 12 + s - 1 + n_early - 1)
+                m_gs = self.daymet_rain_metrics(P[g][:, gs_mask])
+                m_ant = self.daymet_rain_metrics(P[g][:, ant_mask])
+                early = np.nansum(P[g][:, early_mask], axis=1)
+                with np.errstate(invalid='ignore', divide='ignore'):
+                    m_gs['early_share'] = np.where(m_gs['Ptot'] > 0, early / m_gs['Ptot'] * 100, np.nan)
+                for k, v in m_gs.items():
+                    rows.setdefault(f'GS_{k}', np.full(len(pix_list), np.nan))[g] = v
+                for k, v in m_ant.items():
+                    rows.setdefault(f'Pant_{k}', np.full(len(pix_list), np.nan))[g] = v
+            d = pd.DataFrame({'pix': pix_list, 'year': year, **rows})
+            result.append(d)
+            prev = (cur_P, cur_m)
+            print(year, '| GS wet days (median):', np.nanmedian(rows['GS_wetdays']),
+                  '| GS CDD (median):', np.nanmedian(rows['GS_CDD']))
+        df = pd.concat(result, ignore_index=True)
+        T.save_df(df, outdir + 'Daymet_GS_metrics.df')
+        T.df_to_excel(df.head(2000), outdir + 'Daymet_GS_metrics_head.xlsx')
+
+
+class Data_processing_Annual_NLCD:
+    ## Annual NLCD (USGS / MRLC, Collection 1, 30 m, CONUS, Albers) -> land-cover change on the 0.05 deg study grid (2026-11-20)
+    ## purpose: remove pixels whose LAI trend (C) may come from land-use change before the NAIP check of greening hotspots
+    ## input  : Data\NLCD\Annual_NLCD\Annual_NLCD_LndCov_{year}_CU_C1V*.tif   (only the two years in self.year_pair)
+    ## method : 1) per 30 m pixel compare year0 vs year1 -> 0/1 indicator bands (nodata 255), written to one multiband tif
+    ##          2) gdal.Warp with 'average' onto the template grid -> share of the 0.05 deg pixel (0-1) for each indicator
+    ## output : Result\Dataframe\NLCD\NLCD_change_{y0}_{y1}.df  (+ one tif per indicator for QGIS, + quick-look png)
+    ## NLCD classes: 11 water, 12 ice, 21-24 developed, 31 barren, 41-43 forest, 52 shrub, 71 grassland,
+    ##               81 pasture/hay, 82 cultivated crops, 90/95 wetland, 250 nodata
+    def __init__(self):
+        self.fdir = join(data_root, 'NLCD', 'Annual_NLCD') + '\\'
+        self.outdir = join(result_root, 'Dataframe', 'NLCD') + '\\'
+        T.mkdir(self.fdir, force=True)
+        T.mkdir(self.outdir, force=True)
+        self.year_pair = (2003, 2024)   ## Collection 1.1 covers 1985-2024; if 2024 is not there, 2023 is used
+        self.human = [21, 22, 23, 24, 81, 82]   ## developed + pasture/hay + crops
+        self.forest = [41, 42, 43]
+        self.nodata = 250
+        self.block = 2048
+        self.human_thr = 0.05   ## >= 5% of the 0.05 deg pixel with human land-use change -> exclude
+        ## indicator bands (name, description)
+        self.band_list = [
+            ('changed', 'any class change'),
+            ('human_change', 'change to or from developed / hay / crops'),
+            ('to_human', 'natural -> developed / hay / crops'),
+            ('from_human', 'developed / hay / crops -> natural'),
+            ('human_y0', 'developed / hay / crops in year0'),
+            ('human_y1', 'developed / hay / crops in year1'),
+            ('natural_change', 'change between natural classes'),
+            ('shrub_to_grass', '52 -> 71'),
+            ('grass_to_shrub', '71 -> 52'),
+            ('forest_loss', '41-43 -> other class'),
+            ('grass_y0', '71 in year0'),
+            ('shrub_y0', '52 in year0'),
+        ]
+        pass
+
+    def run(self):
+        self.download()
+        y0, y1 = self.years()
+        self.change_30m(y0, y1)
+        self.aggregate_005(y0, y1)
+        self.to_df(y0, y1)
+        self.plot(y0, y1)
+        pass
+
+    def download(self):
+        ## manual download (MRLC has no stable per-file URL for scripts):
+        ## https://www.mrlc.gov/data -> Annual NLCD -> Land Cover (CONUS), unzip and keep only
+        ## Annual_NLCD_LndCov_2003_CU_C1V*.tif and Annual_NLCD_LndCov_2024_CU_C1V*.tif (or 2023) in self.fdir
+        for year in self.year_pair:
+            f = self.find(year)
+            print(year, '->', f if f else 'MISSING, put it in ' + self.fdir)
+        pass
+
+    def find(self, year):
+        import glob
+        fl = sorted(glob.glob(self.fdir + f'Annual_NLCD_LndCov_{year}_CU_C1V*.tif'))
+        return fl[-1] if fl else None   ## newest version if several
+
+    def years(self):
+        y0, y1 = self.year_pair
+        if self.find(y1) is None and self.find(y1 - 1) is not None:
+            print(f'{y1} not found, using {y1 - 1}')
+            y1 = y1 - 1
+        if self.find(y0) is None or self.find(y1) is None:
+            raise FileNotFoundError(f'Annual NLCD LndCov {y0} / {y1} not found in {self.fdir}')
+        return y0, y1
+
+    def study_window(self, src):
+        ## window of the 30 m raster that covers the template extent (+ margin)
+        import rasterio
+        from rasterio.windows import from_bounds as window_from_bounds
+        from rasterio.warp import transform_bounds
+        with rasterio.open(tif_template) as tmpl:
+            b = tmpl.bounds
+        l, bt, r, t = transform_bounds(DIC_and_TIF().wkt_84(), src.crs, b.left, b.bottom, b.right, b.top, densify_pts=100)
+        m = 5000   ## 5 km margin
+        win = window_from_bounds(l - m, bt - m, r + m, t + m, transform=src.transform)
+        win = win.round_offsets().round_lengths()
+        full = rasterio.windows.Window(0, 0, src.width, src.height)
+        return win.intersection(full)
+
+    def indicators(self, a, b):
+        ## a, b: uint8 land cover (year0, year1). Returns band x row x col uint8 (0/1, 255 nodata)
+        ok = (a != self.nodata) & (b != self.nodata) & (a > 0) & (b > 0)
+        ha, hb = np.isin(a, self.human), np.isin(b, self.human)
+        ch = a != b
+        fa, fb = np.isin(a, self.forest), np.isin(b, self.forest)
+        d = {
+            'changed': ch,
+            'human_change': ch & (ha | hb),
+            'to_human': hb & ~ha,
+            'from_human': ha & ~hb,
+            'human_y0': ha,
+            'human_y1': hb,
+            'natural_change': ch & ~ha & ~hb,
+            'shrub_to_grass': (a == 52) & (b == 71),
+            'grass_to_shrub': (a == 71) & (b == 52),
+            'forest_loss': fa & ~fb,
+            'grass_y0': a == 71,
+            'shrub_y0': a == 52,
+        }
+        out = np.full((len(self.band_list),) + a.shape, 255, dtype=np.uint8)
+        for i, (name, _) in enumerate(self.band_list):
+            out[i][ok] = d[name][ok]
+        return out
+
+    def change_30m(self, y0, y1):
+        import rasterio
+        from rasterio.windows import Window
+        outf = self.outdir + f'NLCD_indicator_30m_{y0}_{y1}.tif'
+        if isfile(outf):
+            print('exists:', outf)
+            return
+        f0, f1 = self.find(y0), self.find(y1)
+        with rasterio.open(f0) as s0, rasterio.open(f1) as s1:
+            assert s0.transform == s1.transform and s0.shape == s1.shape, 'the two years are not on the same grid'
+            win = self.study_window(s0)
+            print('study window (30 m pixels):', win)
+            profile = dict(driver='GTiff', width=int(win.width), height=int(win.height), count=len(self.band_list),
+                           dtype='uint8', nodata=255, crs=s0.crs, transform=s0.window_transform(win),
+                           tiled=True, blockxsize=512, blockysize=512, compress='deflate', BIGTIFF='YES')
+            bs = self.block
+            n_r = int(np.ceil(win.height / bs))
+            n_c = int(np.ceil(win.width / bs))
+            with rasterio.open(outf, 'w', **profile) as dst:
+                for ir in tqdm(range(n_r), desc='NLCD 30 m change'):
+                    for ic in range(n_c):
+                        h = int(min(bs, win.height - ir * bs))
+                        w = int(min(bs, win.width - ic * bs))
+                        src_win = Window(win.col_off + ic * bs, win.row_off + ir * bs, w, h)
+                        a = s0.read(1, window=src_win)
+                        b = s1.read(1, window=src_win)
+                        dst.write(self.indicators(a, b), window=Window(ic * bs, ir * bs, w, h))
+        print('saved', outf)
+        pass
+
+    def aggregate_005(self, y0, y1):
+        ## 'average' of a 0/1 band = share of the 0.05 deg pixel (nodata 255, e.g. outside CONUS, is skipped)
+        from osgeo import gdal
+        import rasterio
+        inf = self.outdir + f'NLCD_indicator_30m_{y0}_{y1}.tif'
+        outf = self.outdir + f'NLCD_indicator_005_{y0}_{y1}.tif'
+        if isfile(outf):
+            print('exists:', outf)
+            return
+        with rasterio.open(tif_template) as tmpl:
+            b = tmpl.bounds
+            ny, nx = tmpl.height, tmpl.width
+        gdal.Warp(outf, inf, format='GTiff', dstSRS=DIC_and_TIF().wkt_84(),
+                  outputBounds=(b.left, b.bottom, b.right, b.top), width=nx, height=ny,
+                  resampleAlg='average', srcNodata=255, dstNodata=np.nan, outputType=gdal.GDT_Float32,
+                  multithread=True, warpMemoryLimit=2048, creationOptions=['COMPRESS=DEFLATE'])
+        print('saved', outf)
+        pass
+
+    def to_df(self, y0, y1):
+        import rasterio
+        D_ = DIC_and_TIF(tif_template=tif_template)
+        with rasterio.open(self.outdir + f'NLCD_indicator_005_{y0}_{y1}.tif') as src:
+            arr = src.read().astype(np.float32)   ## band x row x col
+        ny, nx = arr.shape[1:]
+        r, c = np.meshgrid(np.arange(ny), np.arange(nx), indexing='ij')
+        r, c = r.ravel(), c.ravel()
+        df = pd.DataFrame({'pix': list(zip(r.tolist(), c.tolist()))})
+        for i, (name, _) in enumerate(self.band_list):
+            df[f'nlcd_{name}'] = arr[i][r, c]
+        df = df.dropna(subset=['nlcd_changed'])
+        df['nlcd_human_change_flag'] = df['nlcd_human_change'] >= self.human_thr
+        df['nlcd_years'] = f'{y0}_{y1}'
+        df = df.set_index(pd.Index(df['pix'], name='pix', tupleize_cols=False)).drop(columns='pix')
+        T.save_df(df, self.outdir + f'NLCD_change_{y0}_{y1}.df')
+        T.df_to_excel(df.head(1000), self.outdir + f'NLCD_change_{y0}_{y1}_head')
+        for i, (name, _) in enumerate(self.band_list):
+            D_.arr_to_tif(arr[i], self.outdir + f'nlcd_{name}_{y0}_{y1}.tif')
+        print('pixels:', len(df))
+        print('human land-use change >= 5%:', int(df['nlcd_human_change_flag'].sum()),
+              f"({df['nlcd_human_change_flag'].mean() * 100:.1f}%)")
+        print(df[[f'nlcd_{n}' for n, _ in self.band_list]].describe().T[['mean', '50%', 'max']].round(4))
+        pass
+
+    def plot(self, y0, y1):
+        import rasterio
+        with rasterio.open(self.outdir + f'NLCD_indicator_005_{y0}_{y1}.tif') as src:
+            arr = src.read().astype(np.float32)
+        show = ['human_change', 'natural_change', 'shrub_to_grass', 'grass_to_shrub', 'forest_loss', 'changed']
+        names = [n for n, _ in self.band_list]
+        fig, axs = plt.subplots(2, 3, figsize=(15, 9))
+        for ax, name in zip(axs.ravel(), show):
+            v = arr[names.index(name)] * 100
+            im = ax.imshow(v, cmap='magma_r', vmin=0, vmax=np.nanpercentile(v[v > 0], 98) if np.any(v > 0) else 1,
+                           interpolation='nearest')
+            ax.set_title(f'{name} {y0}-{y1} (% of pixel)')
+            ax.axis('off')
+            plt.colorbar(im, ax=ax, shrink=0.7)
+        plt.tight_layout()
+        plt.savefig(self.outdir + f'NLCD_change_{y0}_{y1}.png', dpi=200)
+        plt.close()
+        pass
+
+
 class Data_processing_ERA5land:
 
     def __init__(self):
@@ -4374,11 +4710,12 @@ def main():
 
      # Data_processing_vegetation().run()
     # area_weighted_average().run()
-    Data_processing_MODIS_LAI().run()
+    # Data_processing_MODIS_LAI().run()
     # Data_processing_GIMMS4g().run()
     # Data_processing_Terraclimate().run()
     # calculating_mean_CV().run()
     # Data_processing_Daymet().run()
+    Data_processing_Annual_NLCD().run()
     # Data_processing_ERA5land().run()
     # Data_processing_carbonscope().run()
     # Trend_analysis().run()
