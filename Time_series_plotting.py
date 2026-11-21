@@ -606,7 +606,7 @@ def main():
 
     # SPEI_time_series_MODIS().run()     ## modis record
     MODIS_LAI_time_series().run()   ## growing-season MODIS LAI (GS.df); 2026-11-20: + trend bar per vegetation type
-    # SPEI_long_term_plot().run()     ## growing-season SPEI 1958-2024: time series and trend maps
+    SPEI_long_term_plot().run()     ## growing-season SPEI 1958-2024: time series and trend maps
 
 
 if __name__ == '__main__':

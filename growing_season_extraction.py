@@ -95,6 +95,9 @@ class Growing_season_extraction():
     ## per pixel: gs_start, gs_end, gs_peak, gs_length, n_season, s1_*/s2_* (months 1-12), GS_mean_LAI,
     ##   monsoon_share (Jul-Sep P / annual P, TerraClimate, 2003-2024)
     ## pixels: study box, cropland <= threshold, US only (cell centre inside the US, Natural Earth 50 m states)
+    ## 2026-11-21: + Annual NLCD cropland mask: pixels with >= 5% cropland (81 pasture/hay + 82 crops, max of 2003,
+    ##   2004, 2024; Data_processing_NLCD_cropland) are removed. MCD12C1 <= 50% alone kept pixels with centre-pivot
+    ##   fields (NAIP site G08). Pixels without NLCD are kept.
     ## per pixel also: lon, lat (cell centre), area_weight = cos(lat), cropland_pct, IGBP_majority, landcover_type
     ##   (Forest 1-5, Shrub 6-7, Savanna 8-9, Grass 10, Cropland 12/14, Other), from the MCD12C1 template tifs
     ## per year also: RAP_AFG / PFG / SHR / TRE from Result\Dataframe\RAP\RAP_cover.df (if the file exists)
@@ -104,6 +107,8 @@ class Growing_season_extraction():
         self.rap_dff = result_root + rf'\Dataframe\RAP\RAP_cover.df'
         self.mcd12_dir = data_root + rf'\basedata\MCD12\\'
         self.crop_threshold = 50
+        self.nlcd_crop_dff = result_root + rf'\Dataframe\NLCD\NLCD_cropland.df'
+        self.nlcd_crop_threshold = 0.05   ## remove pixels with NLCD cropland share >= 5% (2026-11-21)
         self.x0, self.y0, self.res, self.nrow, self.ncol = -124.52916666666665, 48.97916666666667, 0.05, 468, 449
         self.df_dir = result_root + rf'\Dataframe\growing_season\\'
         self.dff = self.df_dir + 'GS.df'
@@ -209,6 +214,14 @@ class Growing_season_extraction():
                                                 for v in igbp]},
                             index=pd.Index(list(zip(r.tolist(), c.tolist())), name='pix', tupleize_cols=False))   ## tuples, not a MultiIndex
         print('study-box pixels with cropland <=', self.crop_threshold, '%:', len(info))
+        ## NLCD cropland mask (2026-11-21)
+        nlcd = T.load_df(self.nlcd_crop_dff)['nlcd_cropland_max'].reindex(info.index)
+        info['nlcd_cropland'] = nlcd.values
+        drop = (nlcd >= self.nlcd_crop_threshold).values
+        print('NLCD cropland >=', self.nlcd_crop_threshold * 100, '% removed:', int(drop.sum()),
+              '| no NLCD (kept):', int(nlcd.isna().sum()))
+        info = info[~drop]
+        print('pixels after the NLCD cropland mask:', len(info))
         return info
 
     def us_mask(self, lon, lat):

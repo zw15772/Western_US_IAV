@@ -499,205 +499,8 @@ class Phenology_C(Growing_season_trend):
         plt.close()
 
 
-class C_aridity(Growing_season_trend):
-    ## is C (Model 2 remainder) larger in drier places? test of the CO2 hypothesis (2026-11-15)
-    ## CO2 raises water-use efficiency; the gain in LAI is expected to be larger where water limits growth more
-    ## aridity index AI = mean annual P / mean annual PET, 2003-2024 (TerraClimate ppt, pet); lower = drier
-    ## C in % of the pixel's GS mean LAI per decade, and C_abs = C x GS mean LAI / 100 (m2/m2 per decade), so a
-    ##   pattern is not only from the small denominator of dry pixels
-    ## bins (fixed, UNEP-like): <0.1, 0.1-0.15, 0.15-0.2, 0.2-0.3, 0.3-0.4, 0.4-0.5, 0.5-0.65, >0.65
-    ## per vegetation type: area-weighted mean C per bin (95% CI, 1 x 1 deg block bootstrap) and area-weighted
-    ##   regression C ~ log10(AI) (slope CI by block bootstrap); CO2 hypothesis -> negative slope
-    ## output: Result2\03_response\C_aridity\
-    def __init__(self):
-        super().__init__(this_root + rf'Result2\03_response\C_aridity\\')
-        self.gs_dff = result_root + rf'\Dataframe\growing_season\growing_season.df'
-        self.m2_dff = this_root + rf'Result2\03_response\attribution_model2\attribution_model2_{self.tag}.df'
-        self.bin_edges = [0, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.65, 10]
-
-    def run(self):
-        m2 = T.load_df(self.m2_dff)
-        gs = T.load_df(self.gs_dff).reindex(m2.index)
-        info = m2[['area_weight', 'landcover_type', 'lon', 'lat']].copy()
-        pix_list = list(m2.index)
-        gse = Growing_season_extraction()
-        ppt = gse.monthly_values(pix_list, data_root + rf'TerraClimate\ppt\dic\\', None)[:, 12:]   ## 2003-2024
-        pet = gse.monthly_values(pix_list, data_root + rf'TerraClimate\pet\dic\\', None)[:, 12:]
-        ai = np.nanmean(ppt, axis=1) / np.nanmean(pet, axis=1)
-        print('AI median', np.nanmedian(ai).round(3), '| 5-95%', np.nanpercentile(ai, [5, 95]).round(3),
-              '(expect about 0.1-0.6 for the western US; if 10x off, check the PET scale factor)')
-        res = pd.DataFrame({'AI': ai, 'C': m2['C'].values,
-                            'C_abs': m2['C'].values * gs['GS_mean_LAI'].values / 100,
-                            'observed': m2['observed'].values, 'A': m2['A'].values, 'B': m2['B'].values},
-                           index=m2.index)
-        T.save_df(info.join(res), self.outdir + f'C_aridity_{self.tag}.df')
-        self.save_map(info, np.log10(ai), f'aridity_index_log10_{self.tag}', 'log10(P / PET), 2003-2024',
-                      1, 'BrBG')
-        df_bin = self.bin_table(info, res)
-        df_reg = self.regression(info, res)
-        self.plot(df_bin)
-        pass
-
-    def bin_table(self, info, res):
-        w_all = info['area_weight'].values
-        b = np.digitize(res['AI'].values, self.bin_edges) - 1
-        result = []
-        for lc in self.class_list:
-            mlc = (info['landcover_type'] == lc).values if lc != 'All' else np.ones(len(info), dtype=bool)
-            for k in range(len(self.bin_edges) - 1):
-                m = mlc & (b == k) & np.isfinite(res['C'].values)
-                if m.sum() < 30:
-                    continue
-                w = w_all[m]
-                row = [lc, k, self.bin_edges[k], self.bin_edges[k + 1], m.sum(),
-                       np.sum(res['AI'].values[m] * w) / np.sum(w)]
-                for name in ['C', 'C_abs', 'observed', 'A', 'B']:
-                    v = res[name].values[m]
-                    lo, hi = self.block_ci(info[m], v, w)
-                    row += [np.sum(v * w) / np.sum(w), lo, hi]
-                result.append(row)
-        cols = ['class', 'bin', 'AI_low', 'AI_high', 'n_pix', 'AI_mean']
-        for name in ['C', 'C_abs', 'observed', 'A', 'B']:
-            cols += [name, f'{name}_ci_low', f'{name}_ci_high']
-        df_t = pd.DataFrame(result, columns=cols)
-        df_t.to_csv(self.outdir + f'C_aridity_bins_{self.tag}.csv', index=False)
-        print(df_t[['class', 'AI_low', 'AI_high', 'n_pix', 'C', 'C_ci_low', 'C_ci_high', 'C_abs']].round(3).to_string())
-        return df_t
-
-    def regression(self, info, res):
-        ## area-weighted OLS of C (and C_abs) on log10(AI) per vegetation type; slope CI by block bootstrap
-        rng = np.random.default_rng(0)
-        result = []
-        for lc in self.class_list:
-            m = (info['landcover_type'] == lc).values if lc != 'All' else np.ones(len(info), dtype=bool)
-            m = m & np.isfinite(res['C'].values) & (res['AI'].values > 0)
-            x = np.log10(res['AI'].values[m])
-            w = info['area_weight'].values[m]
-            block = (np.floor(info['lon'].values[m]) * 1000 + np.floor(info['lat'].values[m])).astype(int)
-            ids = np.unique(block)
-            idx = {bk: np.where(block == bk)[0] for bk in ids}
-            for name in ['C', 'C_abs']:
-                y = res[name].values[m]
-                g = self.wls(x[:, None], y, w)
-                boot = []
-                for _ in range(200):
-                    pick = np.concatenate([idx[bk] for bk in rng.choice(ids, size=len(ids))])
-                    boot.append(self.wls(x[pick][:, None], y[pick], w[pick])[1])
-                r = self.wcorr(x, y, w)
-                result.append([lc, name, m.sum(), g[1], np.percentile(boot, 2.5), np.percentile(boot, 97.5), r])
-        df_r = pd.DataFrame(result, columns=['class', 'variable', 'n_pix', 'slope_per_log10_AI', 'ci_low', 'ci_high',
-                                             'r'])
-        df_r.to_csv(self.outdir + f'C_aridity_regression_{self.tag}.csv', index=False)
-        print(df_r.round(3).to_string())
-        return df_r
-
-    def wls(self, Z, y, w):
-        Z1 = np.column_stack([np.ones(len(y)), Z])
-        sw = np.sqrt(w)
-        g, *_ = np.linalg.lstsq(Z1 * sw[:, None], y * sw, rcond=None)
-        return g
-
-    def wcorr(self, x, y, w):
-        xm, ym = np.sum(w * x) / np.sum(w), np.sum(w * y) / np.sum(w)
-        return np.sum(w * (x - xm) * (y - ym)) / np.sqrt(np.sum(w * (x - xm) ** 2) * np.sum(w * (y - ym) ** 2))
-
-    def plot(self, df_t):
-        ## C and C_abs per aridity bin, one line per vegetation type, 95% CI
-        fig, axs = plt.subplots(1, 2, figsize=(9, 3.4))
-        for ax, name, label in [(axs[0], 'C', 'C (% of GS mean per decade)'),
-                                (axs[1], 'C_abs', 'C_abs (m2/m2 per decade)')]:
-            for lc in self.class_list:
-                d = df_t[df_t['class'] == lc]
-                err = np.array([d[name] - d[f'{name}_ci_low'], d[f'{name}_ci_high'] - d[name]])
-                ax.errorbar(d['AI_mean'], d[name], yerr=err, marker='o', ms=3, capsize=2, lw=1.5 if lc == 'All' else 1,
-                            label=lc, color='k' if lc == 'All' else None)
-            ax.axhline(0, color='grey', lw=0.5)
-            ax.set_xscale('log')
-            ax.set_xlabel('Aridity index P / PET (drier <-)', fontsize=8)
-            ax.set_ylabel(label, fontsize=8)
-        axs[0].legend(fontsize=7, frameon=False)
-        plt.tight_layout()
-        plt.savefig(self.outdir + f'C_aridity_{self.tag}.png', dpi=300, bbox_inches='tight')
-        plt.savefig(self.outdir + f'C_aridity_{self.tag}.pdf', bbox_inches='tight')
-        plt.close()
 
 
-class C_aridity_AFG(C_aridity):
-    ## cheatgrass or CO2? C vs aridity within grass, split by the RAP annual forb & grass (AFG) cover trend (2026-11-15)
-    ## groups (fixed thresholds, % cover per decade, Model 2 RAP_AFG_trend):
-    ##   AFG stable : |dAFG| < self.afg_threshold      AFG increase : dAFG >= threshold      AFG decrease : <= -threshold
-    ## if the hump (C largest at AI 0.15-0.3) is also there in the AFG-stable pixels, annual-grass expansion does not
-    ##   explain it, which supports CO2
-    ## inputs : C_aridity_2003_2024.df (C_aridity), attribution_model2_2003_2024.df (RAP_AFG_trend)
-    ## output : Result2\03_response\C_aridity\AFG\
-    def __init__(self):
-        super().__init__()
-        self.outdir = this_root + rf'Result2\03_response\C_aridity\AFG\\'
-        T.mk_dir(self.outdir, force=True)
-        self.ca_dff = this_root + rf'Result2\03_response\C_aridity\C_aridity_{self.tag}.df'
-        self.lc = 'Grass'
-        self.afg_threshold = 1.0   ## % cover per decade
-        self.group_color = {'AFG stable': '#2E7D32', 'AFG increase': '#D9480F', 'AFG decrease': '#1F618D'}
-
-    def run(self):
-        ca = T.load_df(self.ca_dff)
-        m2 = T.load_df(self.m2_dff).reindex(ca.index)
-        df = ca.join(m2[['RAP_AFG_trend']])
-        df = df[df['landcover_type'] == self.lc]
-        d_afg = df['RAP_AFG_trend'].values
-        df['AFG_group'] = np.where(np.abs(d_afg) < self.afg_threshold, 'AFG stable',
-                                   np.where(d_afg >= self.afg_threshold, 'AFG increase', 'AFG decrease'))
-        w = df['area_weight'].values
-        for g in self.group_color:
-            m = (df['AFG_group'] == g).values
-            print(f'{self.lc} | {g}: {m.sum()} pixels, {np.sum(w[m]) / np.sum(w) * 100:.1f}% of area, '
-                  f'mean dAFG {np.sum(d_afg[m] * w[m]) / np.sum(w[m]):.2f}')
-        ## per group: C, C_abs per aridity bin
-        b = np.digitize(df['AI'].values, self.bin_edges) - 1
-        result = []
-        for g in self.group_color:
-            for k in range(len(self.bin_edges) - 1):
-                m = (df['AFG_group'] == g).values & (b == k) & np.isfinite(df['C'].values)
-                if m.sum() < 30:
-                    continue
-                row = [self.lc, g, self.bin_edges[k], self.bin_edges[k + 1], m.sum(),
-                       np.sum(df['AI'].values[m] * w[m]) / np.sum(w[m])]
-                for name in ['C', 'C_abs', 'observed', 'A', 'B', 'RAP_AFG_trend']:
-                    v = df[name].values[m]
-                    lo, hi = self.block_ci(df[m], v, w[m])
-                    row += [np.sum(v * w[m]) / np.sum(w[m]), lo, hi]
-                result.append(row)
-        cols = ['class', 'AFG_group', 'AI_low', 'AI_high', 'n_pix', 'AI_mean']
-        for name in ['C', 'C_abs', 'observed', 'A', 'B', 'RAP_AFG_trend']:
-            cols += [name, f'{name}_ci_low', f'{name}_ci_high']
-        df_t = pd.DataFrame(result, columns=cols)
-        df_t.to_csv(self.outdir + f'C_aridity_AFG_{self.lc}_{self.tag}.csv', index=False)
-        print(df_t[['AFG_group', 'AI_low', 'AI_high', 'n_pix', 'C', 'C_ci_low', 'C_ci_high', 'C_abs',
-                    'RAP_AFG_trend']].round(3).to_string())
-        self.plot_group(df_t)
-        pass
-
-    def plot_group(self, df_t):
-        fig, axs = plt.subplots(1, 2, figsize=(9, 3.4))
-        for ax, name, label in [(axs[0], 'C', 'C (% of GS mean per decade)'),
-                                (axs[1], 'C_abs', 'C_abs (m2/m2 per decade)')]:
-            for g, color in self.group_color.items():
-                d = df_t[df_t['AFG_group'] == g]
-                if len(d) == 0:
-                    continue
-                err = np.array([d[name] - d[f'{name}_ci_low'], d[f'{name}_ci_high'] - d[name]])
-                ax.errorbar(d['AI_mean'], d[name], yerr=err, marker='o', ms=3, capsize=2, color=color,
-                            label=f'{g} (n={d["n_pix"].sum()})')
-            ax.axhline(0, color='grey', lw=0.5)
-            ax.set_xscale('log')
-            ax.set_xlabel('Aridity index P / PET (drier <-)', fontsize=8)
-            ax.set_ylabel(label, fontsize=8)
-            ax.set_title(f'{self.lc}, |dAFG| threshold = {self.afg_threshold} % cover per decade', fontsize=8)
-        axs[0].legend(fontsize=7, frameon=False)
-        plt.tight_layout()
-        plt.savefig(self.outdir + f'C_aridity_AFG_{self.lc}_{self.tag}.png', dpi=300, bbox_inches='tight')
-        plt.savefig(self.outdir + f'C_aridity_AFG_{self.lc}_{self.tag}.pdf', bbox_inches='tight')
-        plt.close()
 
 
 class Dry_wet_trend(Growing_season_trend):
@@ -1503,9 +1306,9 @@ class Attribution_figures():
         self.palette = 'blue_magenta_green'
 
     def run(self):
-        # self.decouple_SPEI_LAI()
+        self.decouple_SPEI_LAI()
         self.attribute_LAI_trend_bar()
-        # self.attribute_LAI_trend_maps()
+        self.attribute_LAI_trend_maps()
         # self.attribute_LAI_trend_ternary_map()   ## dropped 2026-11-20: pixel-level C is mostly trend noise
         # self.robustness_grass_unexplained()
         pass
@@ -1563,7 +1366,7 @@ class Attribution_figures():
         ax.set_xticklabels([f'{c}\n(n={int(n)})' for c, n in zip(d.index, d['n_pix'])], fontsize=7)
         ax.set_ylabel('Contribution to LAI trend (% per decade)', fontsize=8)
         ax.tick_params(axis='y', labelsize=7)
-        ax.legend(fontsize=6.5, frameon=False, ncol=3, loc='lower left')
+        ax.legend(fontsize=6.5, frameon=False, ncol=6, loc='upper center', bbox_to_anchor=(0.5, -0.17))   ## below the axis
         ax.spines[['top', 'right']].set_visible(False)
         ax.set_title('Attribution of the LAI trend, 2003-2024 (Model 2)', fontsize=8)
         plt.tight_layout()
@@ -1767,11 +1570,11 @@ class Attribution_figures():
 
 
 def main():
-    # Attribution_model1().run()   ## needs bivariate.py first (best SPEI scale)
-    # Attribution_model2().run()
+    Attribution_model1().run()   ## needs bivariate.py first (best SPEI scale)
+    Attribution_model2().run()
     # Phenology_C().run()            ## needs Model 2 output
-    # C_aridity().run()              ## needs Model 2 output
-    # C_aridity_AFG().run()          ## needs C_aridity output
+
+
     # Dry_wet_trend().run()          ## needs bivariate.py output (best SPEI scale)
     # Water_threshold().run()        ## needs bivariate.py and SPEI_long_term_plot outputs
     # Fire_check().run()             ## needs MTBS_processing.py, Model 2 and C_aridity outputs

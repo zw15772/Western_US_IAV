@@ -372,7 +372,7 @@ class LAI_SPEI_scale_heatmap(GS_LAI_SPEI_bivariate):
 
 def main():
     GS_LAI_SPEI_bivariate().run()
-    # LAI_SPEI_scale_heatmap().run()   ## detrended LAI vs SPEI r by scale and vegetation type
+    LAI_SPEI_scale_heatmap().run()   ## detrended LAI vs SPEI r by scale and vegetation type
 
 
 if __name__ == '__main__':

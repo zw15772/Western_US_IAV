@@ -4082,6 +4082,108 @@ class Data_processing_Annual_NLCD:
         pass
 
 
+class Data_processing_NLCD_cropland(Data_processing_Annual_NLCD):
+    ## share of each 0.05 deg pixel that is cropland in Annual NLCD (2026-11-21)
+    ## purpose: the current mask removes pixels with > 50% cropland only; pivots and fields in the remaining pixels
+    ##   (e.g. NAIP site G08) can produce a large LAI trend that ends up in the unexplained term C
+    ## classes: crop = 82 cultivated crops, hay = 81 pasture/hay, dev = 21-24 developed (roads, towns; for information)
+    ## years  : every Annual_NLCD_LndCov_{year} tif found in Data\NLCD\Annual_NLCD (now 2003, 2004, 2024)
+    ## method : per 30 m pixel 0/1 for crop, hay, dev -> gdal.Warp 'average' onto the template grid (share 0-1)
+    ## output : Result\Dataframe\NLCD\NLCD_cropland.df
+    ##          columns nlcd_crop_{year}, nlcd_hay_{year}, nlcd_dev_{year},
+    ##          nlcd_cropland_max = max over years of (crop + hay)  -> "ever cropland" share used for the mask
+    def __init__(self):
+        super().__init__()
+        self.class_bands = [('crop', [82]), ('hay', [81]), ('dev', [21, 22, 23, 24])]
+        pass
+
+    def run(self):
+        year_list = self.year_list()
+        for year in year_list:
+            self.share_30m(year)
+            self.aggregate(year)
+        self.to_df_cropland(year_list)
+        pass
+
+    def year_list(self):
+        import glob, re
+        years = sorted({int(re.search(r'LndCov_(\d{4})_', f).group(1))
+                        for f in glob.glob(self.fdir + 'Annual_NLCD_LndCov_*_CU_C1V*.tif')})
+        print('Annual NLCD years found:', years)
+        return years
+
+    def share_30m(self, year):
+        import rasterio
+        from rasterio.windows import Window
+        outf = self.outdir + f'NLCD_cropland_30m_{year}.tif'
+        if isfile(outf):
+            print('exists:', outf)
+            return
+        with rasterio.open(self.find(year)) as src:
+            win = self.study_window(src)
+            profile = dict(driver='GTiff', width=int(win.width), height=int(win.height), count=len(self.class_bands),
+                           dtype='uint8', nodata=255, crs=src.crs, transform=src.window_transform(win),
+                           tiled=True, blockxsize=512, blockysize=512, compress='deflate', BIGTIFF='YES')
+            bs = self.block
+            with rasterio.open(outf, 'w', **profile) as dst:
+                for ir in tqdm(range(int(np.ceil(win.height / bs))), desc=f'NLCD cropland {year}'):
+                    for ic in range(int(np.ceil(win.width / bs))):
+                        h = int(min(bs, win.height - ir * bs))
+                        w = int(min(bs, win.width - ic * bs))
+                        a = src.read(1, window=Window(win.col_off + ic * bs, win.row_off + ir * bs, w, h))
+                        ok = (a != self.nodata) & (a > 0)
+                        out = np.full((len(self.class_bands), h, w), 255, dtype=np.uint8)
+                        for i, (_, cls) in enumerate(self.class_bands):
+                            out[i][ok] = np.isin(a[ok], cls)
+                        dst.write(out, window=Window(ic * bs, ir * bs, w, h))
+        print('saved', outf)
+        pass
+
+    def aggregate(self, year):
+        from osgeo import gdal
+        import rasterio
+        inf = self.outdir + f'NLCD_cropland_30m_{year}.tif'
+        outf = self.outdir + f'NLCD_cropland_005_{year}.tif'
+        if isfile(outf):
+            print('exists:', outf)
+            return
+        with rasterio.open(tif_template) as tmpl:
+            b = tmpl.bounds
+            ny, nx = tmpl.height, tmpl.width
+        gdal.Warp(outf, inf, format='GTiff', dstSRS=DIC_and_TIF().wkt_84(),
+                  outputBounds=(b.left, b.bottom, b.right, b.top), width=nx, height=ny,
+                  resampleAlg='average', srcNodata=255, dstNodata=np.nan, outputType=gdal.GDT_Float32,
+                  multithread=True, warpMemoryLimit=2048, creationOptions=['COMPRESS=DEFLATE'])
+        print('saved', outf)
+        pass
+
+    def to_df_cropland(self, year_list):
+        import rasterio
+        D_ = DIC_and_TIF(tif_template=tif_template)
+        cols = {}
+        for year in year_list:
+            with rasterio.open(self.outdir + f'NLCD_cropland_005_{year}.tif') as src:
+                arr = src.read().astype(np.float32)
+            for i, (name, _) in enumerate(self.class_bands):
+                cols[f'nlcd_{name}_{year}'] = arr[i]
+        ny, nx = arr.shape[1:]
+        r, c = np.meshgrid(np.arange(ny), np.arange(nx), indexing='ij')
+        r, c = r.ravel(), c.ravel()
+        df = pd.DataFrame({k: v[r, c] for k, v in cols.items()})
+        df.index = pd.Index(list(zip(r.tolist(), c.tolist())), name='pix', tupleize_cols=False)
+        crop_hay = np.stack([df[f'nlcd_crop_{y}'].values + df[f'nlcd_hay_{y}'].values for y in year_list])
+        df['nlcd_cropland_max'] = np.nanmax(crop_hay, axis=0)
+        df = df.dropna(subset=['nlcd_cropland_max'])
+        T.save_df(df, self.outdir + 'NLCD_cropland.df')
+        D_.arr_to_tif(np.nanmax(np.stack([cols[f'nlcd_crop_{y}'] + cols[f'nlcd_hay_{y}'] for y in year_list]), axis=0),
+                      self.outdir + 'nlcd_cropland_max.tif')
+        print('pixels:', len(df))
+        v = df['nlcd_cropland_max'].values
+        for thr in [0, 0.01, 0.05, 0.1, 0.5]:
+            print(f'cropland_max > {thr * 100:.0f}%: {np.mean(v > thr) * 100:.1f}% of pixels')
+        pass
+
+
 class Data_processing_ERA5land:
 
     def __init__(self):
@@ -4715,7 +4817,8 @@ def main():
     # Data_processing_Terraclimate().run()
     # calculating_mean_CV().run()
     # Data_processing_Daymet().run()
-    Data_processing_Annual_NLCD().run()
+    # Data_processing_Annual_NLCD().run()
+    Data_processing_NLCD_cropland().run()   ## cropland share per 0.05 deg pixel (2026-11-21)
     # Data_processing_ERA5land().run()
     # Data_processing_carbonscope().run()
     # Trend_analysis().run()
