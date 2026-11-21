@@ -1234,73 +1234,75 @@ class Model2_robustness(Attribution_model2):
         plt.close()
 
 
-class Attribution_model2_SWE(Attribution_model2):
-    ## Model 2 with snow: layer 1 = P_rel, Pant_rel, VPD + GS_SWE (2026-11-15)
-    ## GS_SWE: peak monthly SWE (mm, ERA5, Data\SWE\dic, 2002-2024) from 8 months before the growing-season start to
-    ##   the start month (same window as GS_P_antecedent); absolute mm, not % (no-snow pixels have 0)
-    ## everything else as Model 2 (layer 2 RAP, B, C, tables, maps)
-    ## output: Result2\03_response\attribution_model2_SWE\
-    def __init__(self):
-        super().__init__()
-        self.outdir = this_root + rf'Result2\03_response\attribution_model2_SWE\\'
-        T.mk_dir(self.outdir, force=True)
-        self.mapper = Map_plotter(self.outdir)   ## maps into this folder, not the Model 2 folder
-        self.clim_list = self.clim_list + [('GS_SWE', 'SWE', False)]
-        self.comp_list = ['observed', 'A_P', 'A_Pant', 'A_VPD', 'A_SWE', 'A', 'B', 'C']
-        self.color_dic['A_SWE'] = '#85C1E9'
-        self.swe_dir = data_root + rf'SWE\dic\\'
-        self.gs_dff = result_root + rf'\Dataframe\growing_season\growing_season.df'
+## Attribution_model2_SWE: not used any more (2026-11-20), kept commented out
+# class Attribution_model2_SWE(Attribution_model2):
+#     ## Model 2 with snow: layer 1 = P_rel, Pant_rel, VPD + GS_SWE (2026-11-15)
+#     ## GS_SWE: peak monthly SWE (mm, ERA5, Data\SWE\dic, 2002-2024) from 8 months before the growing-season start to
+#     ##   the start month (same window as GS_P_antecedent); absolute mm, not % (no-snow pixels have 0)
+#     ## everything else as Model 2 (layer 2 RAP, B, C, tables, maps)
+#     ## output: Result2\03_response\attribution_model2_SWE\
+#     def __init__(self):
+#         super().__init__()
+#         self.outdir = this_root + rf'Result2\03_response\attribution_model2_SWE\\'
+#         T.mk_dir(self.outdir, force=True)
+#         self.mapper = Map_plotter(self.outdir)   ## maps into this folder, not the Model 2 folder
+#         self.clim_list = self.clim_list + [('GS_SWE', 'SWE', False)]
+#         self.comp_list = ['observed', 'A_P', 'A_Pant', 'A_VPD', 'A_SWE', 'A', 'B', 'C']
+#         self.color_dic['A_SWE'] = '#85C1E9'
+#         self.swe_dir = data_root + rf'SWE\dic\\'
+#         self.gs_dff = result_root + rf'\Dataframe\growing_season\growing_season.df'
 
-    def load(self):
-        df, info = super().load()
-        gs = T.load_df(self.gs_dff).reindex(info.index)
-        pix_list = list(info.index)
-        swe = Growing_season_extraction().monthly_values(pix_list, self.swe_dir, 2002)   ## Jan 2002 ... Dec 2024
-        swe[swe < -9000] = np.nan
-        swe = np.clip(swe, 0, None)
-        start = gs['gs_start'].values.astype(int) - 1
-        out = np.full((len(pix_list), len(self.year_list)), np.nan)
-        for j, year in enumerate(self.year_list):
-            k_start = (year - 2002) * 12 + start   ## index of the growing-season start month
-            idx = k_start[:, None] + np.arange(-8, 1)[None, :]
-            v = np.take_along_axis(swe, idx, axis=1)
-            out[:, j] = np.where(np.isfinite(v).all(axis=1), np.nanmax(v, axis=1), np.nan)
-        long = pd.DataFrame({'pix': [p for p in pix_list for _ in self.year_list],
-                             'year': self.year_list * len(pix_list), 'GS_SWE': out.ravel()})
-        df = df.drop(columns=['GS_SWE'], errors='ignore').merge(long, on=['pix', 'year'], how='left')
-        w = info['area_weight'].values
-        snow = np.nanmean(out, axis=1) > 1
-        print(f'GS_SWE: pixels with mean peak SWE > 1 mm: {np.sum(w[snow]) / np.sum(w) * 100:.1f}% of area')
-        return df, info
+#     def load(self):
+#         df, info = super().load()
+#         gs = T.load_df(self.gs_dff).reindex(info.index)
+#         pix_list = list(info.index)
+#         swe = Growing_season_extraction().monthly_values(pix_list, self.swe_dir, 2002)   ## Jan 2002 ... Dec 2024
+#         swe[swe < -9000] = np.nan
+#         swe = np.clip(swe, 0, None)
+#         start = gs['gs_start'].values.astype(int) - 1
+#         out = np.full((len(pix_list), len(self.year_list)), np.nan)
+#         for j, year in enumerate(self.year_list):
+#             k_start = (year - 2002) * 12 + start   ## index of the growing-season start month
+#             idx = k_start[:, None] + np.arange(-8, 1)[None, :]
+#             v = np.take_along_axis(swe, idx, axis=1)
+#             out[:, j] = np.where(np.isfinite(v).all(axis=1), np.nanmax(v, axis=1), np.nan)
+#         long = pd.DataFrame({'pix': [p for p in pix_list for _ in self.year_list],
+#                              'year': self.year_list * len(pix_list), 'GS_SWE': out.ravel()})
+#         df = df.drop(columns=['GS_SWE'], errors='ignore').merge(long, on=['pix', 'year'], how='left')
+#         w = info['area_weight'].values
+#         snow = np.nanmean(out, axis=1) > 1
+#         print(f'GS_SWE: pixels with mean peak SWE > 1 mm: {np.sum(w[snow]) / np.sum(w) * 100:.1f}% of area')
+#         return df, info
 
 
-class Attribution_model3(Attribution_model2):
-    ## Model 3 = Model 2 + rainfall structure (Daymet daily precipitation, growing-season window) (2026-11-15)
-    ## layer 1: LAI_rel' = b1 P_rel' + b2 Pant_rel' + b3 VPD' + b4 wetdays' + b5 SDII' + b6 CDD' + e   (' = detrended)
-    ##   GS_wetdays (days >= 1 mm), GS_SDII (mm per wet day), GS_CDD (longest dry spell, days): absolute units
-    ##   P (TerraClimate total) stays in, so b4-b6 are the effect of how the rain falls at a given total
-    ##   check VIF (wetdays and P are related)
-    ## layer 2, B, C, tables and maps as Model 2
-    ## input : Result\Dataframe\Daymet\Daymet_GS_metrics.df (Data_processing.py, Data_processing_Daymet)
-    ## output: Result2\03_response\attribution_model3\
-    def __init__(self):
-        super().__init__()
-        self.outdir = this_root + rf'Result2\03_response\attribution_model3\\'
-        T.mk_dir(self.outdir, force=True)
-        self.mapper = Map_plotter(self.outdir)   ## maps into this folder, not the Model 2 folder
-        self.daymet_dff = result_root + rf'\Dataframe\Daymet\Daymet_GS_metrics.df'
-        self.rain_list = [('GS_wetdays', 'wet', False), ('GS_SDII', 'SDII', False), ('GS_CDD', 'CDD', False)]
-        self.clim_list = self.clim_list + self.rain_list
-        self.comp_list = ['observed', 'A_P', 'A_Pant', 'A_VPD', 'A_wet', 'A_SDII', 'A_CDD', 'A', 'B', 'C']
-        self.color_dic.update({'A_wet': '#76D7C4', 'A_SDII': '#F7DC6F', 'A_CDD': '#E59866'})
+## Attribution_model3: not used any more (2026-11-20), kept commented out
+# class Attribution_model3(Attribution_model2):
+#     ## Model 3 = Model 2 + rainfall structure (Daymet daily precipitation, growing-season window) (2026-11-15)
+#     ## layer 1: LAI_rel' = b1 P_rel' + b2 Pant_rel' + b3 VPD' + b4 wetdays' + b5 SDII' + b6 CDD' + e   (' = detrended)
+#     ##   GS_wetdays (days >= 1 mm), GS_SDII (mm per wet day), GS_CDD (longest dry spell, days): absolute units
+#     ##   P (TerraClimate total) stays in, so b4-b6 are the effect of how the rain falls at a given total
+#     ##   check VIF (wetdays and P are related)
+#     ## layer 2, B, C, tables and maps as Model 2
+#     ## input : Result\Dataframe\Daymet\Daymet_GS_metrics.df (Data_processing.py, Data_processing_Daymet)
+#     ## output: Result2\03_response\attribution_model3\
+#     def __init__(self):
+#         super().__init__()
+#         self.outdir = this_root + rf'Result2\03_response\attribution_model3\\'
+#         T.mk_dir(self.outdir, force=True)
+#         self.mapper = Map_plotter(self.outdir)   ## maps into this folder, not the Model 2 folder
+#         self.daymet_dff = result_root + rf'\Dataframe\Daymet\Daymet_GS_metrics.df'
+#         self.rain_list = [('GS_wetdays', 'wet', False), ('GS_SDII', 'SDII', False), ('GS_CDD', 'CDD', False)]
+#         self.clim_list = self.clim_list + self.rain_list
+#         self.comp_list = ['observed', 'A_P', 'A_Pant', 'A_VPD', 'A_wet', 'A_SDII', 'A_CDD', 'A', 'B', 'C']
+#         self.color_dic.update({'A_wet': '#76D7C4', 'A_SDII': '#F7DC6F', 'A_CDD': '#E59866'})
 
-    def load(self):
-        df, info = super().load()
-        dm = T.load_df(self.daymet_dff)[['pix', 'year'] + [v for v, _, _ in self.rain_list]]
-        df = df.drop(columns=[v for v, _, _ in self.rain_list], errors='ignore').merge(dm, on=['pix', 'year'],
-                                                                                      how='left')
-        print('Daymet rainfall structure merged:', dm['pix'].nunique(), 'pixels')
-        return df, info
+#     def load(self):
+#         df, info = super().load()
+#         dm = T.load_df(self.daymet_dff)[['pix', 'year'] + [v for v, _, _ in self.rain_list]]
+#         df = df.drop(columns=[v for v, _, _ in self.rain_list], errors='ignore').merge(dm, on=['pix', 'year'],
+#                                                                                       how='left')
+#         print('Daymet rainfall structure merged:', dm['pix'].nunique(), 'pixels')
+#         return df, info
 
 
 class C_exclusion(Growing_season_trend):
@@ -1472,23 +1474,47 @@ class C_exclusion(Growing_season_trend):
 
 class Attribution_figures():
     ## paper figures drawn from saved results only (no model is rerun) (2026-11-20)
-    ## fig4c: Model 1, observed vs expected LAI trend per vegetation type (95% CI) and the gap
-    ## output: Result2\03_response\attribution_figures\\
+    ## one function per figure; the file name = the function name + period
+    ##   decouple_SPEI_LAI              : Model 1, observed vs drought-expected LAI trend (beta x SPEI trend)
+    ##   attribute_LAI_trend_bar        : Model 2, grouped bars of climate (P, Pant, VPD), composition, unexplained, observed
+    ##   attribute_LAI_trend_maps       : Model 2, maps of climate / composition / unexplained
+    ##   robustness_grass_unexplained   : grass unexplained trend under every check (forest plot)
+    ## output: Result2\03_response\attribution_figures\
     def __init__(self):
         self.outdir = this_root + rf'Result2\03_response\attribution_figures\\'
         T.mk_dir(self.outdir, force=True)
         self.tag = '2003_2024'
         self.class_list = ['All', 'Forest', 'Shrub', 'Grass', 'Savanna']
+        self.resp = this_root + rf'Result2\03_response\\'
+        ## Model 2 terms: (column, label, colour)
+        self.term_list = [('A_P', 'Climate: growing-season P', '#F4A261'),
+                          ('A_Pant', 'Climate: antecedent P', '#E9C46A'),
+                          ('A_VPD', 'Climate: VPD', '#C2410C'),
+                          ('B', 'Vegetation composition (RAP)', '#7B5EA7'),
+                          ('C', 'Unexplained', '#8C8C8C')]
+        ## ternary map palettes, end colours (climate, composition, unexplained); try several, keep one (2026-11-20)
+        self.ternary_palette = {
+            'blue_magenta_green': [[0.05, 0.25, 0.90], [0.90, 0.05, 0.60], [0.00, 0.65, 0.20]],
+            'blue_magenta_orange': [[0.05, 0.25, 0.90], [0.90, 0.05, 0.60], [0.95, 0.50, 0.00]],
+            'blue_red_yellow': [[0.10, 0.30, 0.85], [0.85, 0.10, 0.10], [0.98, 0.85, 0.05]],
+            'teal_purple_orange': [[0.11, 0.62, 0.47], [0.46, 0.44, 0.70], [0.85, 0.37, 0.01]],
+            'red_green_blue': [[0.90, 0.10, 0.10], [0.10, 0.30, 0.90], [0.10, 0.75, 0.15]],
+        }
+        self.palette = 'blue_magenta_green'
 
     def run(self):
-        self.fig4c_model1()
+        # self.decouple_SPEI_LAI()
+        self.attribute_LAI_trend_bar()
+        # self.attribute_LAI_trend_maps()
+        # self.attribute_LAI_trend_ternary_map()   ## dropped 2026-11-20: pixel-level C is mostly trend noise
+        # self.robustness_grass_unexplained()
         pass
 
-    def fig4c_model1(self):
-        f = this_root + rf'Result2\03_response\attribution_model1\attribution_model1_summary_{self.tag}.csv'
+    def decouple_SPEI_LAI(self):
+        f = self.resp + rf'attribution_model1\attribution_model1_summary_{self.tag}.csv'
         d = pd.read_csv(f)
         d = d[d['region'] == 'all'].set_index('class').reindex(self.class_list)
-        comp = [('observed', 'Observed', '#2E7D32'), ('expected', 'Expected from drought (\u03b2 \u00d7 SPEI trend)', '#C2410C')]
+        comp = [('observed', 'Observed', '#2E7D32'), ('expected', 'Expected from drought (β × SPEI trend)', '#C2410C')]
         x = np.arange(len(d))
         wid = 0.36
         fig, ax = plt.subplots(figsize=(13 * centimeter_factor, 7.5 * centimeter_factor))
@@ -1505,17 +1531,239 @@ class Attribution_figures():
         ax.set_xticklabels([f'{c}\n(n={int(n)})' for c, n in zip(d.index, d['n_pix'])], fontsize=7)
         ax.set_ylabel('LAI trend (% per decade)', fontsize=8)
         ax.tick_params(axis='y', labelsize=7)
-        ax.legend(fontsize=6.5, frameon=False, loc='lower left')
+        ax.legend(fontsize=6.5, frameon=False, loc='upper center', bbox_to_anchor=(0.5, 1.0), ncol=2)
         ax.set_ylim(min(d['observed_ci_low'].min(), d['expected_ci_low'].min()) - 0.8,
-                    max(d['observed_ci_high'].max(), d['expected_ci_high'].max()) + 1.6)
+                    max(d['observed_ci_high'].max(), d['expected_ci_high'].max()) + 2.6)
         ax.spines[['top', 'right']].set_visible(False)
-        ax.set_title('Observed vs drought-expected LAI trend, 2003-2024 (gap = observed - expected; bold: CI excludes 0)',
-                     fontsize=7)
+        ax.set_title('Observed vs drought-expected LAI trend, 2003-2024', fontsize=8)   ## gap in bold: 95% CI excludes 0
         plt.tight_layout()
-        plt.savefig(self.outdir + f'Fig4c_model1_observed_expected_{self.tag}.png', dpi=300)
-        plt.savefig(self.outdir + f'Fig4c_model1_observed_expected_{self.tag}.pdf')
-        plt.close()
+        self.save(f'decouple_SPEI_LAI_{self.tag}')
         print(d[['n_pix', 'observed', 'expected', 'gap', 'gap_ci_low', 'gap_ci_high']].round(2).to_string())
+
+    def attribute_LAI_trend_bar(self):
+        ## grouped bars (2026-11-20, replaces the waterfall): per vegetation type, each Model 2 term and the observed
+        ## trend drawn from 0 with its 95% CI (1 x 1 deg block bootstrap)
+        f = self.resp + rf'attribution_model2\attribution_model2_summary_{self.tag}.csv'
+        d = pd.read_csv(f)
+        d = d[d['region'] == 'all'].set_index('class').reindex(self.class_list)
+        bar_list = self.term_list + [('observed', 'Observed', '#2E7D32')]
+        nb = len(bar_list)
+        wid = 0.8 / nb
+        x = np.arange(len(self.class_list))
+        fig, ax = plt.subplots(figsize=(18 * centimeter_factor, 8 * centimeter_factor))
+        for k, (col, lab, c) in enumerate(bar_list):
+            v = d[col].values
+            err = np.array([v - d[f'{col}_ci_low'].values, d[f'{col}_ci_high'].values - v])
+            ax.bar(x + (k - (nb - 1) / 2) * wid, v, width=wid, color=c, label=lab, yerr=err, capsize=1.2,
+                   error_kw={'lw': 0.5}, edgecolor='white', linewidth=0.3)
+        ax.axhline(0, color='k', lw=0.6)
+        for xi in x[:-1]:
+            ax.axvline(xi + 0.5, color='#DDDDDD', lw=0.5)
+        ax.set_xticks(x)
+        ax.set_xticklabels([f'{c}\n(n={int(n)})' for c, n in zip(d.index, d['n_pix'])], fontsize=7)
+        ax.set_ylabel('Contribution to LAI trend (% per decade)', fontsize=8)
+        ax.tick_params(axis='y', labelsize=7)
+        ax.legend(fontsize=6.5, frameon=False, ncol=3, loc='lower left')
+        ax.spines[['top', 'right']].set_visible(False)
+        ax.set_title('Attribution of the LAI trend, 2003-2024 (Model 2)', fontsize=8)
+        plt.tight_layout()
+        self.save(f'attribute_LAI_trend_bar_{self.tag}')
+        print(d[['observed'] + [c for c, _, _ in self.term_list]].round(2).to_string())
+
+    def attribute_LAI_trend_maps(self):
+        ## maps of the three parts, same discrete colour steps (% per decade), area-weighted mean in the title
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.ticker as mticker
+        from matplotlib.colors import BoundaryNorm
+        df = T.load_df(self.resp + rf'attribution_model2\attribution_model2_{self.tag}.df')
+        df = df[df['landcover_type'].isin(self.class_list[1:])]
+        w = df['area_weight'].values
+        bounds = [-10, -6, -3, -1, 1, 3, 6, 10]
+        cmap = plt.get_cmap('RdBu', len(bounds) - 1)
+        norm = BoundaryNorm(bounds, cmap.N)
+        part_list = [('A', 'Climate (P + antecedent P + VPD)'), ('B', 'Vegetation composition (RAP)'),
+                     ('C', 'Unexplained')]
+        fig = plt.figure(figsize=(24 * centimeter_factor, 9 * centimeter_factor))
+        for k, (col, title) in enumerate(part_list):
+            ax = fig.add_subplot(1, 3, k + 1, projection=ccrs.PlateCarree())
+            arr = D.pix_dic_to_spatial_arr(dict(zip(df.index, df[col].values)))
+            arr[arr <= -9999] = np.nan
+            im = ax.imshow(arr, cmap=cmap, norm=norm, extent=[-124.529, -102.079, 25.579, 48.979],
+                           transform=ccrs.PlateCarree(), interpolation='nearest')
+            ax.add_feature(cfeature.STATES, linewidth=0.3)
+            ax.add_feature(cfeature.LAND, facecolor='none', edgecolor='black', linewidth=0.4)
+            ax.set_extent([-125, -105, 30, 45], crs=ccrs.PlateCarree())
+            gl = ax.gridlines(draw_labels=True, linewidth=0)
+            gl.top_labels = False
+            gl.right_labels = False
+            gl.xlocator = mticker.FixedLocator(range(-125, -100, 5))
+            gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
+            gl.xlabel_style = {'size': 6}
+            gl.ylabel_style = {'size': 6}
+            v = df[col].values
+            ok = np.isfinite(v)
+            ax.set_title(f'{title}\nmean {np.sum(v[ok] * w[ok]) / np.sum(w[ok]):+.2f}', fontsize=7.5)
+        cax = fig.add_axes([0.25, 0.08, 0.5, 0.03])
+        cb = fig.colorbar(im, cax=cax, orientation='horizontal', ticks=bounds, extend='both')
+        cb.set_label('Contribution to LAI trend (% per decade)', fontsize=7)
+        cb.ax.tick_params(labelsize=6.5)
+        plt.subplots_adjust(left=0.04, right=0.98, top=0.9, bottom=0.18, wspace=0.12)
+        self.save(f'attribute_LAI_trend_maps_{self.tag}')
+
+    def robustness_grass_unexplained(self):
+        ## grass unexplained trend (C) with 95% CI under every check; band = baseline CI
+        def row(f, cond, col='C'):
+            d = pd.read_csv(self.resp + f)
+            for k, v in cond.items():
+                d = d[d[k] == v]
+            r = d.iloc[0]
+            return r[col], r[f'{col}_ci_low'], r[f'{col}_ci_high']
+        g = {'class': 'Grass'}
+        m2 = rf'attribution_model2\attribution_model2_summary_{self.tag}.csv'
+        rob = rf'model2_robustness\model2_robustness_summary_{self.tag}.csv'
+        exc = rf'C_exclusion\C_exclusion_steps_{self.tag}.csv'
+        check_list = [
+            ('Baseline (Model 2)', row(m2, {**g, 'region': 'all'})),
+            ## SWE version dropped (2026-11-20)
+            ## Model 3 (rainfall structure) dropped (2026-11-20)
+            ('Nonlinear climate response', row(rob, g, 'C_nonlinear')),
+            ('Climate sensitivity changing in time', row(rob, g, 'C_time')),
+            ('Unburned pixels only (MTBS)', row(rf'fire_check\fire_group_summary_{self.tag}.csv',
+                                                {**g, 'fire_group': 'unburned'})),
+            ('Land-use change removed (NLCD)', row(exc, {**g, 'step': '1 - land use'})),
+            ('Land use, fire, type change, cheatgrass removed', row(exc, {**g, 'step': '4 - AFG change (clean)'})),
+        ]
+        names = [n for n, _ in check_list]
+        vals = np.array([v for _, v in check_list], dtype=float)
+        y = np.arange(len(names))[::-1]
+        fig, ax = plt.subplots(figsize=(13 * centimeter_factor, 7.5 * centimeter_factor))
+        ax.axvspan(vals[0, 1], vals[0, 2], color='#8C8C8C', alpha=0.15, lw=0)
+        ax.axvline(vals[0, 0], color='#8C8C8C', lw=0.6, ls='--')
+        ax.axvline(0, color='k', lw=0.6)
+        ax.errorbar(vals[:, 0], y, xerr=[vals[:, 0] - vals[:, 1], vals[:, 2] - vals[:, 0]], fmt='o', color='#1F2A33',
+                    ms=3.5, lw=0.9, capsize=2)
+        for yy, v in zip(y, vals):
+            ax.text(v[2] + 0.1, yy, f'{v[0]:.2f}', va='center', fontsize=6.5)
+        ax.set_yticks(y)
+        ax.set_yticklabels(names, fontsize=7)
+        ax.set_xlim(0, max(vals[:, 2]) + 0.8)
+        ax.set_xlabel('Grass unexplained LAI trend (% per decade, 95% CI)', fontsize=7.5)
+        ax.tick_params(axis='x', labelsize=7)
+        ax.spines[['top', 'right']].set_visible(False)
+        plt.tight_layout()
+        self.save(f'robustness_grass_unexplained_{self.tag}')
+        pd.DataFrame(vals, index=names, columns=['C', 'ci_low', 'ci_high']).round(3).to_csv(
+            self.outdir + f'robustness_grass_unexplained_{self.tag}.csv')
+        print(pd.DataFrame(vals, index=names, columns=['C', 'ci_low', 'ci_high']).round(2).to_string())
+
+    def attribute_LAI_trend_ternary_map(self, min_total=1.0):
+        ## ternary map (2026-11-20): each pixel coloured by the shares of |climate|, |composition|, |unexplained|
+        ## in |A| + |B| + |C| (which part dominates the pixel, not its sign); pixels with |A| + |B| + |C| < min_total
+        ## (% per decade) are grey (all parts small). Right: colour key triangle + dominant part per vegetation type
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.ticker as mticker
+        df = T.load_df(self.resp + rf'attribution_model2\attribution_model2_{self.tag}.df')
+        df = df[df['landcover_type'].isin(self.class_list[1:])]
+        mag = np.abs(df[['A', 'B', 'C']].values)
+        tot = mag.sum(axis=1)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            share = mag / tot[:, None]
+        weak = ~(tot >= min_total)
+        rgb = self.ternary_rgb(np.nan_to_num(share))
+        rgb[weak] = [0.85, 0.85, 0.85]
+        ny, nx = 468, 449   ## template grid
+        img = np.ones((ny, nx, 4))
+        img[..., 3] = 0
+        for (r, c), col, ok in zip(df.index, rgb, np.isfinite(tot)):
+            if ok:
+                img[r, c, :3] = col
+                img[r, c, 3] = 1
+        fig = plt.figure(figsize=(10, 4.8))
+        ax = fig.add_axes([0.02, 0.06, 0.56, 0.88], projection=ccrs.PlateCarree())
+        ax.imshow(img, extent=[-124.529, -102.079, 25.579, 48.979], transform=ccrs.PlateCarree(),
+                  interpolation='nearest', origin='upper')
+        ax.add_feature(cfeature.STATES, linewidth=0.3)
+        ax.add_feature(cfeature.LAND, facecolor='none', edgecolor='black', linewidth=0.4)
+        ax.set_extent([-125, -105, 30, 45], crs=ccrs.PlateCarree())
+        gl = ax.gridlines(draw_labels=True, linewidth=0)
+        gl.top_labels = False
+        gl.right_labels = False
+        gl.xlocator = mticker.FixedLocator(range(-125, -100, 5))
+        gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
+        ax.set_title('Which part dominates the LAI trend, 2003-2024', fontsize=9)
+        self.ternary_legend(fig.add_axes([0.62, 0.48, 0.34, 0.46]))
+        ## dominant part (largest share) per vegetation type, area %
+        w = df['area_weight'].values
+        dom = np.where(weak, 3, np.argmax(np.nan_to_num(share), axis=1))
+        lab = ['Climate', 'Composition', 'Unexplained', 'All small']
+        col = [list(self.ternary_rgb(np.eye(3)[k:k + 1])[0]) for k in range(3)] + [[0.85, 0.85, 0.85]]
+        tab = []
+        for lc in self.class_list:
+            m = (df['landcover_type'] == lc).values if lc != 'All' else np.ones(len(df), dtype=bool)
+            tab.append([np.sum(w[m & (dom == k)]) / np.sum(w[m]) * 100 for k in range(4)])
+        tab = np.array(tab)
+        pd.DataFrame(tab, index=self.class_list, columns=lab).round(1).to_csv(
+            self.outdir + f'attribute_LAI_trend_ternary_dominant_{self.tag}.csv')
+        self.dominant_bar(fig.add_axes([0.70, 0.08, 0.27, 0.32]), tab, lab, col)
+        self.save(f'attribute_LAI_trend_ternary_map_{self.palette}_{self.tag}')
+        print(pd.DataFrame(tab, index=self.class_list, columns=lab).round(1).to_string())
+
+    def dominant_bar(self, ax2, tab, lab, col):
+        y = np.arange(len(self.class_list))[::-1]
+        left = np.zeros(len(self.class_list))
+        for k in range(len(lab)):
+            ax2.barh(y, tab[:, k], left=left, color=col[k], height=0.7, edgecolor='white', linewidth=0.5, label=lab[k])
+            for yy, l0, v in zip(y, left, tab[:, k]):
+                if v >= 10:
+                    ax2.text(l0 + v / 2, yy, f'{v:.0f}', ha='center', va='center', fontsize=5.5,
+                             color='white' if k in (0, 1, 2) else 'black')
+            left += tab[:, k]
+        ax2.set_yticks(y)
+        ax2.set_yticklabels(self.class_list, fontsize=6.5)
+        ax2.set_xlim(0, 100)
+        ax2.set_xlabel('Area where the part is the largest (%)', fontsize=6.5)
+        ax2.tick_params(labelsize=6)
+        ax2.spines[['top', 'right']].set_visible(False)
+
+    def ternary_rgb(self, share):
+        ## share: n x 3 (climate, composition, unexplained), rows sum to 1 -> colour from self.palette;
+        ## mixed pixels fade to a light centre
+        end = np.array(self.ternary_palette[self.palette], dtype=float)
+        share = np.asarray(share, dtype=float)
+        mix = share @ end
+        dist = np.sqrt(np.sum((share - 1 / 3) ** 2, axis=1, keepdims=True)) / (np.sqrt(6) / 3)
+        light = np.clip(1 - dist, 0, 1)   ## 1 at the centre, 0 at a corner (smooth, no seams)
+        return np.clip(mix + 0.45 * light ** 2 * (1 - mix), 0, 1)   ## stronger colours, light only near the centre
+
+    def ternary_legend(self, ax, n=60):
+        ## colour key: climate bottom-left, composition bottom-right, unexplained top
+        h = np.sqrt(3) / 2
+        pts, shares = [], []
+        for i in range(n + 1):
+            for j in range(n + 1 - i):
+                a, b = i / n, j / n
+                c = 1 - a - b
+                shares.append([a, b, c])
+                pts.append([b + 0.5 * c, h * c])
+        pts, shares = np.array(pts), np.array(shares)
+        ax.scatter(pts[:, 0], pts[:, 1], c=self.ternary_rgb(shares), s=9, marker='h', linewidths=0)
+        ax.plot([0, 1, 0.5, 0], [0, 0, h, 0], color='k', lw=0.6)
+        ax.text(-0.02, -0.06, 'Climate', ha='center', va='top', fontsize=7)
+        ax.text(1.02, -0.06, 'Composition', ha='center', va='top', fontsize=7)
+        ax.text(0.5, h + 0.04, 'Unexplained', ha='center', va='bottom', fontsize=7)
+        ax.text(0.5, -0.17, 'share of |climate| + |composition| + |unexplained|', ha='center', va='top', fontsize=5.5,
+                color='#555555')
+        ax.set_xlim(-0.15, 1.15)
+        ax.set_ylim(-0.25, h + 0.12)
+        ax.set_aspect('equal')
+        ax.axis('off')
+
+    def save(self, fname):
+        plt.savefig(self.outdir + f'{fname}.png', dpi=300, bbox_inches='tight')
+        plt.savefig(self.outdir + f'{fname}.pdf', bbox_inches='tight')
+        plt.close()
 
 
 def main():
