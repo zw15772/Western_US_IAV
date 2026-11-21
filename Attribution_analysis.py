@@ -369,6 +369,155 @@ class Attribution_model2(Growing_season_trend):
         plt.close()
 
 
+class Model2_annual_perennial(Attribution_model2):
+    ## step 3: does C shrink when annual-grass-dominated pixels get their own climate sensitivity? (2026-11-21)
+    ## problem: layer 1 of Model 2 fits ONE set of beta per vegetation type. Pixels dominated by annual grass
+    ##   (e.g. NAIP site G01, cheatgrass) boom in wet years and crash in dry years, much more than the pooled beta;
+    ##   the part of their trend that follows the climate is then under-estimated in A and ends up in C
+    ## change: layer 1 is fitted per vegetation type x herbaceous group
+    ##   annual    : 2003-2024 mean RAP AFG cover > mean RAP PFG cover
+    ##   perennial : otherwise
+    ##   (a group with < 30 pixels uses the pooled beta of its vegetation type)
+    ## everything else as Model 2: same pixels, same climate variables, layer 2 per vegetation type -> B, C
+    ## compare: C of this model vs standard Model 2, per vegetation type and per herbaceous group
+    ## output: Result2\03_response\model2_annual_perennial\
+    def __init__(self):
+        super().__init__()
+        self.outdir = this_root + rf'Result2\03_response\model2_annual_perennial\\'
+        T.mk_dir(self.outdir, force=True)
+        self.mapper = Map_plotter(self.outdir)
+        self.m2_dff = this_root + rf'Result2\03_response\attribution_model2\attribution_model2_{self.tag}.df'
+        self.group_list = ['annual', 'perennial']
+        self.herb_group = None
+
+    def run(self):
+        super().run()   ## Model 2 with the layer 1 below
+        self.compare()
+        pass
+
+    def rap_missing_check(self, info, rap):
+        ## used here as the hook where the RAP cover of every pixel is available: herbaceous group per pixel
+        super().rap_missing_check(info, rap)
+        with np.errstate(invalid='ignore'):
+            afg = np.nanmean(rap['RAP_AFG'], axis=1)
+            pfg = np.nanmean(rap['RAP_PFG'], axis=1)
+        self.herb_group = pd.Series(np.where(afg > pfg, 'annual', 'perennial'), index=info.index)
+        self.herb_cover = pd.DataFrame({'AFG_mean': afg, 'PFG_mean': pfg}, index=info.index)
+        for lc in self.class_list[1:]:
+            m = (info['landcover_type'] == lc).values
+            print(f'{lc:8s} annual-dominated pixels: {np.mean(self.herb_group.values[m] == "annual") * 100:.1f}%')
+
+    def layer1(self, info, lai, X, res):
+        ## as Model 2, but pooled OLS per vegetation type x herbaceous group
+        lai_d = detrend(lai, axis=1)
+        X_d = {k: detrend(v, axis=1) for k, v in X.items()}
+        X_tr = {k: self.trend(v)[0] for k, v in X.items()}
+        names = list(X.keys())
+        for k in names:
+            res[f'{k}_trend'] = X_tr[k]
+        grp = self.herb_group.reindex(info.index).values
+        res['herb_group'] = grp
+        A = {k: np.full(len(info), np.nan) for k in names}
+        result = []
+        for lc in self.class_list[1:]:
+            m_lc = (info['landcover_type'] == lc).values
+            b_pool = self.fit(lai_d, X_d, names, m_lc)[0]
+            for g in self.group_list:
+                m = m_lc & (grp == g)
+                if m.sum() < 30:
+                    b, r2 = b_pool, np.nan
+                else:
+                    b, r2 = self.fit(lai_d, X_d, names, m)
+                for j, k in enumerate(names):
+                    A[k][m] = b[j] * X_tr[k][m]
+                result.append([lc, g, int(m.sum()), r2] + list(b))
+        for k in names:
+            res[f'A_{k}'] = A[k]
+        res['A'] = sum(A[k] for k in names)
+        coef = pd.DataFrame(result, columns=['class', 'herb_group', 'n_pix', 'R2'] + [f'beta_{k}' for k in names])
+        print(coef.round(3).to_string())
+        return coef
+
+    def fit(self, lai_d, X_d, names, m):
+        y = lai_d[m].ravel()
+        M = np.column_stack([X_d[k][m].ravel() for k in names])
+        b, *_ = np.linalg.lstsq(M, y, rcond=None)
+        r2 = 1 - np.sum((y - M @ b) ** 2) / np.sum(y ** 2)
+        return b, r2
+
+    def compare(self):
+        ## standard Model 2 vs this model: A, B, C per vegetation type and herbaceous group
+        new = T.load_df(self.outdir + f'attribution_model2_{self.tag}.df')
+        std = T.load_df(self.m2_dff).reindex(new.index)
+        df = new[['lon', 'lat', 'area_weight', 'landcover_type', 'herb_group', 'observed']].copy()
+        for k in ['A', 'B', 'C']:
+            df[f'{k}_standard'] = std[k].values
+            df[f'{k}_new'] = new[k].values
+        df = df.join(self.herb_cover)
+        T.save_df(df, self.outdir + f'model2_annual_perennial_compare_{self.tag}.df')
+        name_list = ['observed', 'A_standard', 'A_new', 'B_standard', 'B_new', 'C_standard', 'C_new']
+        result = []
+        for lc in self.class_list:
+            m_lc = np.ones(len(df), dtype=bool) if lc == 'All' else (df['landcover_type'] == lc).values
+            for g in ['all'] + self.group_list:
+                m = m_lc & (np.ones(len(df), dtype=bool) if g == 'all' else (df['herb_group'] == g).values)
+                m &= np.isfinite(df['C_standard'].values) & np.isfinite(df['C_new'].values)
+                if m.sum() < 30:
+                    continue
+                w = df['area_weight'].values[m]
+                row = [lc, g, int(m.sum()), np.sum(w) / np.sum(df['area_weight'].values[m_lc]) * 100]
+                for name in name_list:
+                    v = df[name].values[m]
+                    lo, hi = self.block_ci(df[m], v, w)
+                    row += [np.sum(v * w) / np.sum(w), lo, hi]
+                result.append(row)
+        cols = ['class', 'herb_group', 'n_pix', 'area_%_of_class']
+        for name in name_list:
+            cols += [name, f'{name}_ci_low', f'{name}_ci_high']
+        tab = pd.DataFrame(result, columns=cols)
+        tab.to_csv(self.outdir + f'model2_annual_perennial_compare_{self.tag}.csv', index=False)
+        print(tab[['class', 'herb_group', 'n_pix', 'area_%_of_class'] + name_list].round(2).to_string())
+        self.plot_compare(tab)
+
+    def plot_compare(self, tab):
+        ## C standard vs C new: left all pixels per vegetation type, right grass by herbaceous group (A and C)
+        fig, axs = plt.subplots(1, 2, figsize=(18 * centimeter_factor, 7 * centimeter_factor),
+                                gridspec_kw={'width_ratios': [5, 3]})
+        d = tab[tab['herb_group'] == 'all'].set_index('class').reindex(self.class_list)
+        x = np.arange(len(d))
+        for k, (name, label, color) in enumerate([('C_standard', 'C, standard Model 2', '#9E9E9E'),
+                                                  ('C_new', 'C, beta per annual / perennial', '#1F2A33')]):
+            err = np.array([d[name] - d[f'{name}_ci_low'], d[f'{name}_ci_high'] - d[name]])
+            axs[0].bar(x + (k - 0.5) * 0.38, d[name], width=0.38, color=color, yerr=err, capsize=2,
+                       error_kw={'lw': 0.6}, label=label)
+        axs[0].set_xticks(x)
+        axs[0].set_xticklabels(self.class_list, fontsize=7.5)
+        axs[0].legend(fontsize=6.5, frameon=False, loc='upper left')
+        d = tab[(tab['class'] == 'Grass') & (tab['herb_group'].isin(self.group_list))].set_index('herb_group') \
+            .reindex(self.group_list)
+        x = np.arange(len(d))
+        bars = [('A_standard', 'A standard', '#F4A582'), ('A_new', 'A new', '#C0392B'),
+                ('C_standard', 'C standard', '#9E9E9E'), ('C_new', 'C new', '#1F2A33')]
+        for k, (name, label, color) in enumerate(bars):
+            err = np.array([d[name] - d[f'{name}_ci_low'], d[f'{name}_ci_high'] - d[name]])
+            axs[1].bar(x + (k - 1.5) * 0.2, d[name], width=0.2, color=color, yerr=err, capsize=1.5,
+                       error_kw={'lw': 0.5}, label=label)
+        axs[1].set_xticks(x)
+        axs[1].set_xticklabels([f'{g}\n({a:.0f}% of grass)' for g, a in zip(self.group_list, d['area_%_of_class'])],
+                               fontsize=7.5)
+        axs[1].set_title('Grass', fontsize=8)
+        axs[1].legend(fontsize=6, frameon=False, ncol=2)
+        for ax in axs:
+            ax.axhline(0, color='grey', lw=0.5)
+            ax.tick_params(labelsize=7)
+            ax.spines[['top', 'right']].set_visible(False)
+        axs[0].set_ylabel('LAI trend (% per decade)', fontsize=8)
+        plt.tight_layout()
+        plt.savefig(self.outdir + f'model2_annual_perennial_compare_{self.tag}.png', dpi=300, bbox_inches='tight')
+        plt.savefig(self.outdir + f'model2_annual_perennial_compare_{self.tag}.pdf', bbox_inches='tight')
+        plt.close()
+
+
 class Phenology_C(Growing_season_trend):
     ## where in the season does the greening sit, and is C (Model 2 remainder) linked to phenology? (2026-11-15)
     ## data  : monthly MODIS LAI 2003-2024 (Data\MODIS_LAI_0706\dic), growing_season.df (gs_start, gs_end),
@@ -1570,8 +1719,9 @@ class Attribution_figures():
 
 
 def main():
-    Attribution_model1().run()   ## needs bivariate.py first (best SPEI scale)
-    Attribution_model2().run()
+    # Attribution_model1().run()   ## needs bivariate.py first (best SPEI scale)
+    # Attribution_model2().run()
+    Model2_annual_perennial().run()  ## step 3: layer 1 beta per annual / perennial grass group (needs Model 2 output)
     # Phenology_C().run()            ## needs Model 2 output
 
 
@@ -1583,7 +1733,7 @@ def main():
     # Attribution_model2_SWE().run() ## Model 2 + snow (GS_SWE)
     # Attribution_model3().run()     ## Model 2 + rainfall structure (Daymet: wet days, SDII, CDD)
     # C_exclusion().run()            ## needs Fire_check and Data_processing_Annual_NLCD outputs
-    Attribution_figures().run()    ## paper figures from saved results
+    # Attribution_figures().run()    ## paper figures from saved results
 
 
 if __name__ == '__main__':

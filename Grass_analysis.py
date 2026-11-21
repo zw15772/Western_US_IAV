@@ -590,14 +590,218 @@ class Cropland_threshold_C(Growing_season_trend):
         print(s[['site', 'group', 'observed', 'C_raw', 'cropland_%']].round(1).to_string())
 
 
+class C_by_herb_cover(Growing_season_trend):
+    ## step 4: LAI trend and its components along the herbaceous composition, before calling the greening
+    ##   "perennial" (2026-11-21); descriptive, no annual / perennial threshold
+    ## pixels: Grass and Shrub of Model2_annual_perennial (NLCD cropland < 5% mask)
+    ## x axes (RAP, 2003-2024 mean cover of the pixel):
+    ##   annual share = AFG / (AFG + PFG)   (0 = all perennial, 1 = all annual), bins 0-0.1-0.2-0.35-0.5-0.65-1
+    ##   PFG cover (%)                     bins 0-5-10-20-30-45-100
+    ## per bin: area-weighted mean of observed (model-free), A, B, C of the model with beta per annual / perennial
+    ##   (C_new) and of the standard Model 2 (C_standard), 95% CI by 1 x 1 deg block bootstrap, area share
+    ## note: C_new uses a different beta below / above annual share 0.5, so it can jump there; observed and
+    ##   C_standard do not depend on the split
+    ## output: Result2\05_Grass_attribution\herb_cover\
+    def __init__(self):
+        super().__init__(this_root + rf'Result2\05_Grass_attribution\herb_cover\\')
+        self.cmp_dff = this_root + \
+            rf'Result2\03_response\model2_annual_perennial\model2_annual_perennial_compare_{self.tag}.df'
+        self.lc_list = ['Grass', 'Shrub']
+        self.axis_dic = {'annual_share': ([0, 0.1, 0.2, 0.35, 0.5, 0.65, 1.0001],
+                                          'Annual share of herbaceous cover, AFG / (AFG + PFG)'),
+                         'PFG_mean': ([0, 5, 10, 20, 30, 45, 100], 'Perennial forb & grass cover, RAP mean (%)')}
+        self.var_dic = {'observed': ('Observed', '#2E7D32', '-'), 'A_new': ('A climate', '#C0392B', '-'),
+                        'B_new': ('B composition', '#8E44AD', '-'), 'C_new': ('C unexplained', '#1F2A33', '-'),
+                        'C_standard': ('C, standard Model 2', '#9E9E9E', '--')}
+
+    def run(self):
+        df = self.load()
+        tab = self.bin_table(df)
+        self.plot(tab)
+        pass
+
+    def load(self):
+        df = T.load_df(self.cmp_dff)
+        df = df[df['landcover_type'].isin(self.lc_list)].copy()
+        with np.errstate(invalid='ignore', divide='ignore'):
+            df['annual_share'] = df['AFG_mean'] / (df['AFG_mean'] + df['PFG_mean'])
+        print('pixels:', len(df), '| no herbaceous cover:', int(df['annual_share'].isna().sum()))
+        return df
+
+    def bin_table(self, df):
+        result = []
+        for lc in self.lc_list:
+            m_lc = (df['landcover_type'] == lc).values
+            w_lc = df['area_weight'].values[m_lc].sum()
+            for xname, (edges, _) in self.axis_dic.items():
+                b = np.digitize(df[xname].values, edges) - 1
+                for k in range(len(edges) - 1):
+                    m = m_lc & (b == k)
+                    if m.sum() < 30:
+                        continue
+                    w = df['area_weight'].values[m]
+                    row = [lc, xname, edges[k], min(edges[k + 1], edges[-1]), int(m.sum()),
+                           np.sum(w) / w_lc * 100, np.sum(df[xname].values[m] * w) / np.sum(w)]
+                    for var in self.var_dic:
+                        v = df[var].values[m]
+                        lo, hi = self.block_ci(df[m], v, w)
+                        row += [np.sum(v * w) / np.sum(w), lo, hi]
+                    result.append(row)
+        cols = ['class', 'x', 'x_low', 'x_high', 'n_pix', 'area_%_of_class', 'x_mean']
+        for var in self.var_dic:
+            cols += [var, f'{var}_ci_low', f'{var}_ci_high']
+        tab = pd.DataFrame(result, columns=cols)
+        tab.to_csv(self.outdir + f'LAI_trend_by_herb_cover_{self.tag}.csv', index=False)
+        print(tab[['class', 'x', 'x_low', 'x_high', 'n_pix', 'area_%_of_class'] + list(self.var_dic)]
+              .round(2).to_string())
+        return tab
+
+    def plot(self, tab):
+        ## rows: Grass, Shrub; columns: annual share, PFG cover; bars below = area share of the bin
+        fig, axs = plt.subplots(2, 2, figsize=(18 * centimeter_factor, 13 * centimeter_factor), sharey='row')
+        for i, lc in enumerate(self.lc_list):
+            for j, (xname, (_, xlabel)) in enumerate(self.axis_dic.items()):
+                ax = axs[i, j]
+                d = tab[(tab['class'] == lc) & (tab['x'] == xname)]
+                for var, (label, color, ls) in self.var_dic.items():
+                    err = np.array([d[var] - d[f'{var}_ci_low'], d[f'{var}_ci_high'] - d[var]])
+                    ax.errorbar(d['x_mean'], d[var], yerr=err, marker='o', ms=2.5, capsize=1.5, color=color,
+                                ls=ls, lw=1.6 if var in ('observed', 'C_new') else 1, label=label)
+                ax.axhline(0, color='grey', lw=0.5)
+                if xname == 'annual_share':
+                    ax.axvline(0.5, color='grey', lw=0.5, ls=':')
+                ax2 = ax.twinx()
+                ax2.bar(d['x_mean'], d['area_%_of_class'], width=(d['x_high'] - d['x_low']) * 0.8,
+                        color='#D9D9D9', alpha=0.5, zorder=0)
+                ax2.set_ylim(0, 100)
+                ax2.tick_params(labelsize=6)
+                if j == 1:
+                    ax2.set_ylabel('Area (% of class)', fontsize=7)
+                ax.set_zorder(ax2.get_zorder() + 1)
+                ax.patch.set_visible(False)
+                ax.set_title(lc, fontsize=8)
+                ax.set_xlabel(xlabel, fontsize=7)
+                ax.tick_params(labelsize=7)
+            axs[i, 0].set_ylabel('LAI trend (% per decade)', fontsize=8)
+        axs[0, 0].legend(fontsize=6, frameon=False, ncol=2)
+        plt.tight_layout()
+        plt.savefig(self.outdir + f'LAI_trend_by_herb_cover_{self.tag}.png', dpi=300, bbox_inches='tight')
+        plt.savefig(self.outdir + f'LAI_trend_by_herb_cover_{self.tag}.pdf', bbox_inches='tight')
+        plt.close()
+
+
+class Observed_trend_by_herb_cover(Growing_season_trend):
+    ## observed LAI trend (model-free) along the herbaceous composition at the START and at the END of the record
+    ##   (2026-11-21); answers: did grasslands that already had much perennial grass green more?
+    ## pixels: Grass and Shrub of Model2_annual_perennial (NLCD cropland < 5% mask); observed = OLS trend of GS LAI
+    ##   (% of the pixel mean per decade, 2003-2024), the same as Fig 3 and Model 2
+    ## composition from RAP yearly cover (GS.df), mean over the years of self.period_dic:
+    ##   now (2026-11-21): one line, 2003-2024 mean cover (>= 18 RAP years)
+    ##   option kept below: early = 2003-2006 / late = 2021-2024 (>= 2 RAP years); early vs late gave the same
+    ##   pattern for grass (2 -> 4 % per decade from PFG < 10% to PFG 30-45%)
+    ## x axes: annual share AFG / (AFG + PFG), bins 0-0.1-0.2-0.35-0.5-0.65-1; PFG cover (%), bins 0-5-10-20-30-45-100
+    ## per bin: area-weighted mean observed trend, 95% CI (1 x 1 deg block bootstrap), n and area share
+    ## output: Result2\05_Grass_attribution\herb_cover\
+    def __init__(self):
+        super().__init__(this_root + rf'Result2\05_Grass_attribution\herb_cover\\')
+        self.cmp_dff = this_root + \
+            rf'Result2\03_response\model2_annual_perennial\model2_annual_perennial_compare_{self.tag}.df'
+        self.lc_list = ['Grass', 'Shrub']
+        self.period_dic = {'mean': (list(range(2003, 2025)), '2003-2024 mean', '-')}
+        # self.period_dic = {'early': ([2003, 2004, 2005, 2006], '2003-2006', '-'),
+        #                    'late': ([2021, 2022, 2023, 2024], '2021-2024', '--')}
+        self.axis_dic = {'annual_share': ([0, 0.1, 0.2, 0.35, 0.5, 0.65, 1.0001],
+                                          'Annual share of herbaceous cover, AFG / (AFG + PFG)'),
+                         'PFG': ([0, 5, 10, 20, 30, 45, 100], 'Perennial forb & grass cover, RAP (%)')}
+        self.color = {'Grass': '#D9480F', 'Shrub': '#7B5EA7'}
+
+    def run(self):
+        df = self.load()
+        tab = self.bin_table(df)
+        self.plot(tab)
+        pass
+
+    def load(self):
+        df = T.load_df(self.cmp_dff)
+        df = df[df['landcover_type'].isin(self.lc_list)][['lon', 'lat', 'area_weight', 'landcover_type', 'observed']]
+        gs = T.load_df(self.dff)
+        afg = self.matrix(gs, df, 'RAP_AFG')
+        pfg = self.matrix(gs, df, 'RAP_PFG')
+        del gs
+        for p, (years, _, _) in self.period_dic.items():
+            col = [self.year_list.index(y) for y in years]
+            ok = np.isfinite(afg[:, col]).sum(axis=1) >= (2 if len(years) <= 4 else 18)
+            with np.errstate(invalid='ignore', divide='ignore'):
+                a = np.where(ok, np.nanmean(afg[:, col], axis=1), np.nan)
+                f = np.where(ok, np.nanmean(pfg[:, col], axis=1), np.nan)
+                df[f'PFG_{p}'] = f
+                df[f'annual_share_{p}'] = a / (a + f)
+            print(f'{p}: pixels with RAP cover {int(np.isfinite(f).sum())} / {len(df)}')
+        T.save_df(df, self.outdir + f'observed_trend_by_herb_cover_{self.tag}.df')
+        return df
+
+    def bin_table(self, df):
+        result = []
+        for lc in self.lc_list:
+            m_lc = (df['landcover_type'] == lc).values
+            w_lc = df['area_weight'].values[m_lc].sum()
+            for p in self.period_dic:
+                for xname, (edges, _) in self.axis_dic.items():
+                    x = df[f'{xname}_{p}'].values
+                    b = np.digitize(x, edges) - 1
+                    for k in range(len(edges) - 1):
+                        m = m_lc & (b == k) & np.isfinite(df['observed'].values)
+                        if m.sum() < 30:
+                            continue
+                        w = df['area_weight'].values[m]
+                        v = df['observed'].values[m]
+                        lo, hi = self.block_ci(df[m], v, w)
+                        result.append([lc, p, xname, edges[k], min(edges[k + 1], edges[-1]), int(m.sum()),
+                                       np.sum(w) / w_lc * 100, np.sum(x[m] * w) / np.sum(w),
+                                       np.sum(v * w) / np.sum(w), lo, hi])
+        tab = pd.DataFrame(result, columns=['class', 'period', 'x', 'x_low', 'x_high', 'n_pix', 'area_%_of_class',
+                                            'x_mean', 'observed', 'observed_ci_low', 'observed_ci_high'])
+        tab.to_csv(self.outdir + f'observed_trend_by_herb_cover_{self.tag}.csv', index=False)
+        print(tab.round(2).to_string())
+        return tab
+
+    def plot(self, tab):
+        ## rows: Grass, Shrub; columns: annual share, PFG cover; solid = early cover, dashed = late cover
+        fig, axs = plt.subplots(2, 2, figsize=(17 * centimeter_factor, 12 * centimeter_factor), sharey='row')
+        for i, lc in enumerate(self.lc_list):
+            for j, (xname, (_, xlabel)) in enumerate(self.axis_dic.items()):
+                ax = axs[i, j]
+                for p, (_, plabel, ls) in self.period_dic.items():
+                    d = tab[(tab['class'] == lc) & (tab['period'] == p) & (tab['x'] == xname)]
+                    err = np.array([d['observed'] - d['observed_ci_low'], d['observed_ci_high'] - d['observed']])
+                    ax.errorbar(d['x_mean'], d['observed'], yerr=err, marker='o' if p != 'late' else 's', ms=3,
+                                capsize=2, color=self.color[lc], ls=ls, lw=1.6 if p != 'late' else 1,
+                                alpha=1 if p != 'late' else 0.7, label=f'cover {plabel}')
+                ax.axhline(0, color='grey', lw=0.5)
+                ax.set_title(lc, fontsize=8)
+                ax.set_xlabel(xlabel, fontsize=7)
+                ax.tick_params(labelsize=7)
+                ax.spines[['top', 'right']].set_visible(False)
+            axs[i, 0].set_ylabel('Observed LAI trend (% per decade)', fontsize=8)
+            if len(self.period_dic) > 1:
+                axs[i, 0].legend(fontsize=6.5, frameon=False)
+        plt.tight_layout()
+        plt.savefig(self.outdir + f'observed_trend_by_herb_cover_{self.tag}.png', dpi=300, bbox_inches='tight')
+        plt.savefig(self.outdir + f'observed_trend_by_herb_cover_{self.tag}.pdf', bbox_inches='tight')
+        plt.close()
+
+
 def main():
     ## step 1: where grass greens beyond climate and composition
-    Grass_smooth_trend().run()   ## 1a: raw vs smoothed (0.25 deg) unexplained trend maps (done)
-    Grass_aridity().run()        ## 1b: unexplained trend along aridity (done)
+    # Grass_smooth_trend().run()   ## 1a: raw vs smoothed (0.25 deg) unexplained trend maps (done)
+    # Grass_aridity().run()        ## 1b: unexplained trend along aridity (done)
     ## step 2: look at the hotspots on NAIP
     # Grass_NAIP_sites().run()     ## 2a: pick greening / resisting / browning / control sites, write csv, kml and GEE swipe app (done)
     ## step 3: cropland inside the pixels (needs Data_processing_NLCD_cropland first)
     # Cropland_threshold_C().run()  ## 3a: C under stricter cropland masks, all vegetation types
+    ## step 4: trend components along the herbaceous composition (needs Model2_annual_perennial output)
+    # C_by_herb_cover().run()       ## 4a: observed, A, B, C by annual share and by PFG cover, Grass and Shrub (done)
+    Observed_trend_by_herb_cover().run()   ## 4b: observed trend by cover of 2003-2006 and of 2021-2024
 
 
 if __name__ == '__main__':
