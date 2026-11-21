@@ -374,10 +374,12 @@ class Model2_annual_perennial(Attribution_model2):
     ## problem: layer 1 of Model 2 fits ONE set of beta per vegetation type. Pixels dominated by annual grass
     ##   (e.g. NAIP site G01, cheatgrass) boom in wet years and crash in dry years, much more than the pooled beta;
     ##   the part of their trend that follows the climate is then under-estimated in A and ends up in C
-    ## change: layer 1 is fitted per vegetation type x herbaceous group
+    ## change: for Grass and Shrub, layer 1 is fitted per vegetation type x herbaceous group (6 sets of beta)
     ##   annual    : 2003-2024 mean RAP AFG cover > mean RAP PFG cover
     ##   perennial : otherwise
+    ##   Forest and Savanna keep one pooled beta (LAI mostly from trees, herbaceous layer matters little)
     ##   (a group with < 30 pixels uses the pooled beta of its vegetation type)
+    ## 2026-11-21: this is the main Model 2 of the paper (Attribution_figures reads its output)
     ## everything else as Model 2: same pixels, same climate variables, layer 2 per vegetation type -> B, C
     ## compare: C of this model vs standard Model 2, per vegetation type and per herbaceous group
     ## output: Result2\03_response\model2_annual_perennial\
@@ -388,6 +390,7 @@ class Model2_annual_perennial(Attribution_model2):
         self.mapper = Map_plotter(self.outdir)
         self.m2_dff = this_root + rf'Result2\03_response\attribution_model2\attribution_model2_{self.tag}.df'
         self.group_list = ['annual', 'perennial']
+        self.split_class_list = ['Grass', 'Shrub']   ## vegetation types split into annual / perennial
         self.herb_group = None
 
     def run(self):
@@ -421,7 +424,12 @@ class Model2_annual_perennial(Attribution_model2):
         result = []
         for lc in self.class_list[1:]:
             m_lc = (info['landcover_type'] == lc).values
-            b_pool = self.fit(lai_d, X_d, names, m_lc)[0]
+            b_pool, r2_pool = self.fit(lai_d, X_d, names, m_lc)
+            if lc not in self.split_class_list:
+                for j, k in enumerate(names):
+                    A[k][m_lc] = b_pool[j] * X_tr[k][m_lc]
+                result.append([lc, 'pooled', int(m_lc.sum()), r2_pool] + list(b_pool))
+                continue
             for g in self.group_list:
                 m = m_lc & (grp == g)
                 if m.sum() < 30:
@@ -453,9 +461,12 @@ class Model2_annual_perennial(Attribution_model2):
         for k in ['A', 'B', 'C']:
             df[f'{k}_standard'] = std[k].values
             df[f'{k}_new'] = new[k].values
+        for k in ['A_P', 'A_Pant', 'A_VPD']:   ## climate parts of this model (for Attribution_figures)
+            df[f'{k}_new'] = new[k].values
         df = df.join(self.herb_cover)
         T.save_df(df, self.outdir + f'model2_annual_perennial_compare_{self.tag}.df')
-        name_list = ['observed', 'A_standard', 'A_new', 'B_standard', 'B_new', 'C_standard', 'C_new']
+        name_list = ['observed', 'A_standard', 'A_new', 'B_standard', 'B_new', 'C_standard', 'C_new',
+                     'A_P_new', 'A_Pant_new', 'A_VPD_new']
         result = []
         for lc in self.class_list:
             m_lc = np.ones(len(df), dtype=bool) if lc == 'All' else (df['landcover_type'] == lc).values
@@ -646,10 +657,6 @@ class Phenology_C(Growing_season_trend):
         plt.savefig(self.outdir + f'phenology_profile_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'phenology_profile_{self.tag}.pdf', bbox_inches='tight')
         plt.close()
-
-
-
-
 
 
 class Dry_wet_trend(Growing_season_trend):
@@ -1429,6 +1436,9 @@ class Attribution_figures():
     ## one function per figure; the file name = the function name + period
     ##   decouple_SPEI_LAI              : Model 1, observed vs drought-expected LAI trend (beta x SPEI trend)
     ##   attribute_LAI_trend_bar        : Model 2, grouped bars of climate (P, Pant, VPD), composition, unexplained, observed
+    ##                                    Grass and Shrub also split into annual / perennial (2026-11-21)
+    ## Model 2 = Model2_annual_perennial (beta per annual / perennial for Grass and Shrub, 2026-11-21);
+    ##   set self.m2_dir = 'attribution_model2' for the standard Model 2
     ##   attribute_LAI_trend_maps       : Model 2, maps of climate / composition / unexplained
     ##   robustness_grass_unexplained   : grass unexplained trend under every check (forest plot)
     ## output: Result2\03_response\attribution_figures\
@@ -1438,6 +1448,8 @@ class Attribution_figures():
         self.tag = '2003_2024'
         self.class_list = ['All', 'Forest', 'Shrub', 'Grass', 'Savanna']
         self.resp = this_root + rf'Result2\03_response\\'
+        self.m2_dir = 'model2_annual_perennial'   ## main Model 2 (2026-11-21); 'attribution_model2' = standard
+        self.group_list = ['annual', 'perennial']
         ## Model 2 terms: (column, label, colour)
         self.term_list = [('A_P', 'Climate: growing-season P', '#F4A261'),
                           ('A_Pant', 'Climate: antecedent P', '#E9C46A'),
@@ -1455,9 +1467,9 @@ class Attribution_figures():
         self.palette = 'blue_magenta_green'
 
     def run(self):
-        self.decouple_SPEI_LAI()
+        # self.decouple_SPEI_LAI()
         self.attribute_LAI_trend_bar()
-        self.attribute_LAI_trend_maps()
+        # self.attribute_LAI_trend_maps()
         # self.attribute_LAI_trend_ternary_map()   ## dropped 2026-11-20: pixel-level C is mostly trend noise
         # self.robustness_grass_unexplained()
         pass
@@ -1495,32 +1507,62 @@ class Attribution_figures():
     def attribute_LAI_trend_bar(self):
         ## grouped bars (2026-11-20, replaces the waterfall): per vegetation type, each Model 2 term and the observed
         ## trend drawn from 0 with its 95% CI (1 x 1 deg block bootstrap)
-        f = self.resp + rf'attribution_model2\attribution_model2_summary_{self.tag}.csv'
-        d = pd.read_csv(f)
-        d = d[d['region'] == 'all'].set_index('class').reindex(self.class_list)
+        ## 2026-11-21: Shrub and Grass: all pixels, then annual- and perennial-dominated pixels (RAP AFG vs PFG mean)
+        d = self.model2_bar_table()
         bar_list = self.term_list + [('observed', 'Observed', '#2E7D32')]
         nb = len(bar_list)
         wid = 0.8 / nb
-        x = np.arange(len(self.class_list))
-        fig, ax = plt.subplots(figsize=(18 * centimeter_factor, 8 * centimeter_factor))
+        x = np.arange(len(d))
+        fig, ax = plt.subplots(figsize=(22 * centimeter_factor, 8.5 * centimeter_factor))
         for k, (col, lab, c) in enumerate(bar_list):
             v = d[col].values
             err = np.array([v - d[f'{col}_ci_low'].values, d[f'{col}_ci_high'].values - v])
-            ax.bar(x + (k - (nb - 1) / 2) * wid, v, width=wid, color=c, label=lab, yerr=err, capsize=1.2,
+            ax.bar(x + (k - (nb - 1) / 2) * wid, v, width=wid, color=c, label=lab, yerr=err, capsize=1.0,
                    error_kw={'lw': 0.5}, edgecolor='white', linewidth=0.3)
         ax.axhline(0, color='k', lw=0.6)
-        for xi in x[:-1]:
-            ax.axvline(xi + 0.5, color='#DDDDDD', lw=0.5)
+        for xi, (a, b) in zip(x[:-1], zip(d['class'].values[:-1], d['class'].values[1:])):
+            ax.axvline(xi + 0.5, color='#BBBBBB' if a != b else '#EEEEEE', lw=0.6 if a != b else 0.4)
         ax.set_xticks(x)
-        ax.set_xticklabels([f'{c}\n(n={int(n)})' for c, n in zip(d.index, d['n_pix'])], fontsize=7)
+        ax.set_xticklabels(d['label'], fontsize=6.5)
         ax.set_ylabel('Contribution to LAI trend (% per decade)', fontsize=8)
         ax.tick_params(axis='y', labelsize=7)
-        ax.legend(fontsize=6.5, frameon=False, ncol=6, loc='upper center', bbox_to_anchor=(0.5, -0.17))   ## below the axis
+        ax.legend(fontsize=6.5, frameon=False, ncol=6, loc='upper center', bbox_to_anchor=(0.5, -0.2))   ## below the axis
         ax.spines[['top', 'right']].set_visible(False)
-        ax.set_title('Attribution of the LAI trend, 2003-2024 (Model 2)', fontsize=8)
+        ax.set_title('Attribution of the LAI trend, 2003-2024 (Model 2, beta per annual / perennial for Grass and Shrub)',
+                     fontsize=8)
         plt.tight_layout()
         self.save(f'attribute_LAI_trend_bar_{self.tag}')
-        print(d[['observed'] + [c for c, _, _ in self.term_list]].round(2).to_string())
+        d.round(3).to_csv(self.outdir + f'attribute_LAI_trend_bar_{self.tag}.csv', index=False)
+        print(d[['label', 'n_pix', 'observed'] + [c for c, _, _ in self.term_list]].round(2).to_string())
+
+    def model2_bar_table(self):
+        ## one row per bar group: class rows from the Model 2 summary, annual / perennial rows from the compare table
+        cols = ['observed'] + [c for c, _, _ in self.term_list]
+        s = pd.read_csv(self.resp + rf'{self.m2_dir}\attribution_model2_summary_{self.tag}.csv')
+        s = s[s['region'] == 'all'].set_index('class')
+        g = None
+        if self.m2_dir == 'model2_annual_perennial':
+            g = pd.read_csv(self.resp + rf'{self.m2_dir}\model2_annual_perennial_compare_{self.tag}.csv')
+        rows = []
+        for lc in self.class_list:
+            r = {'class': lc, 'group': 'all', 'n_pix': s.loc[lc, 'n_pix'],
+                 'label': f'{lc}\n(n={int(s.loc[lc, "n_pix"])})'}
+            for c in cols:
+                for suf in ['', '_ci_low', '_ci_high']:
+                    r[c + suf] = s.loc[lc, c + suf]
+            rows.append(r)
+            if g is None or lc not in ('Shrub', 'Grass'):
+                continue
+            for grp in self.group_list:
+                q = g[(g['class'] == lc) & (g['herb_group'] == grp)].iloc[0]
+                r = {'class': lc, 'group': grp, 'n_pix': q['n_pix'],
+                     'label': f'{lc} {grp}\n({q["area_%_of_class"]:.0f}% of {lc.lower()})'}
+                for c in cols:
+                    src = c if c == 'observed' else f'{c}_new'
+                    for suf in ['', '_ci_low', '_ci_high']:
+                        r[c + suf] = q[src + suf]
+                rows.append(r)
+        return pd.DataFrame(rows)
 
     def attribute_LAI_trend_maps(self):
         ## maps of the three parts, same discrete colour steps (% per decade), area-weighted mean in the title
@@ -1528,7 +1570,7 @@ class Attribution_figures():
         import cartopy.feature as cfeature
         import matplotlib.ticker as mticker
         from matplotlib.colors import BoundaryNorm
-        df = T.load_df(self.resp + rf'attribution_model2\attribution_model2_{self.tag}.df')
+        df = T.load_df(self.resp + rf'{self.m2_dir}\attribution_model2_{self.tag}.df')
         df = df[df['landcover_type'].isin(self.class_list[1:])]
         w = df['area_weight'].values
         bounds = [-10, -6, -3, -1, 1, 3, 6, 10]
@@ -1721,13 +1763,12 @@ class Attribution_figures():
 def main():
     # Attribution_model1().run()   ## needs bivariate.py first (best SPEI scale)
     # Attribution_model2().run()
-    Model2_annual_perennial().run()  ## step 3: layer 1 beta per annual / perennial grass group (needs Model 2 output)
+    # Model2_annual_perennial().run()  ## main Model 2: beta per annual / perennial for Grass and Shrub (needs Model 2)
+    Attribution_figures().run()      ## paper figures from saved results (reads Model2_annual_perennial)
     # Phenology_C().run()            ## needs Model 2 output
-
-
     # Dry_wet_trend().run()          ## needs bivariate.py output (best SPEI scale)
     # Water_threshold().run()        ## needs bivariate.py and SPEI_long_term_plot outputs
-    # Fire_check().run()             ## needs MTBS_processing.py, Model 2 and C_aridity outputs
+    # Fire_check().run()             ## needs MTBS_processing.py, Model 2 and the old C_aridity output (AI)
     # Fire_grass().run()             ## needs Fire_check output
     # Model2_robustness().run()      ## C with nonlinear / time-varying climate sensitivity
     # Attribution_model2_SWE().run() ## Model 2 + snow (GS_SWE)

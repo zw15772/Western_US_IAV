@@ -113,6 +113,100 @@ class Time_series_base():
         df_trend.to_csv(outdir + f'{fname}_trend.csv', index=False)
         print(df_trend)
 
+    def pixel_trend(self, df, var, years=np.arange(2003, 2025)):
+        ## per-pixel OLS trend (per decade) and two-sided p of df[var], pixels with all years only (2026-11-21)
+        mat = df.pivot_table(index='pix', columns='year', values=var).reindex(columns=years)
+        info = df.groupby('pix')[['lon', 'lat', 'area_weight', 'landcover_type']].first().loc[mat.index]
+        y = mat.values
+        ok = np.isfinite(y).all(axis=1)
+        y, info = y[ok], info[ok]
+        x = years.astype(float) - years.mean()
+        ym = y - y.mean(axis=1, keepdims=True)
+        slope = ym @ x / np.sum(x ** 2)
+        resid = ym - slope[:, None] * x[None, :]
+        se = np.sqrt(np.sum(resid ** 2, axis=1) / (len(x) - 2) / np.sum(x ** 2))
+        with np.errstate(divide='ignore', invalid='ignore'):
+            p = 2 * stats.t.sf(np.abs(slope / se), len(x) - 2)
+        return info, slope * 10, p
+
+    def trend_sig_map(self, info, trend, p, outdir, fname, label, bounds, cmap, cat_names, stride=3):
+        ## trend map with discrete colours, dots = p < 0.05 (every `stride`-th pixel in both directions, so the dots
+        ## stay readable), colour bar under the map; small bar chart in the lower-left corner of the map
+        ## (Pacific, outside the study pixels) = area share of 4 classes: sig / non-sig negative,
+        ## non-sig / sig positive (layout 2026-11-21)
+        ## cat_names: (negative word, positive word), e.g. ('drying', 'wetting') or ('browning', 'greening')
+        ## also saves {fname}_area.csv: the 4 classes per vegetation type
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.ticker as mticker
+        from matplotlib.colors import BoundaryNorm
+        T.mk_dir(outdir, force=True)
+        ny, nx = 468, 449
+        arr = np.full((ny, nx), np.nan)
+        rows = np.array([q[0] for q in info.index])
+        cols = np.array([q[1] for q in info.index])
+        arr[rows, cols] = trend
+        cmap_obj = plt.get_cmap(cmap, len(bounds) - 1)
+        norm = BoundaryNorm(bounds, cmap_obj.N)
+        neg, pos = cat_names
+        cats = [(f'Sig. {neg}', (trend < 0) & (p < 0.05), cmap_obj(0.0)),
+            (f'Non-sig. {neg}', (trend < 0) & ~(p < 0.05), '#BDBDBD'),  ## non-sig: grey
+        (f'Non-sig. {pos}', (trend >= 0) & ~(p < 0.05), '#BDBDBD'),
+                (f'Sig. {pos}', (trend >= 0) & (p < 0.05), cmap_obj(0.999))]
+        w = info['area_weight'].values
+        area = [np.sum(w[m]) / np.sum(w) * 100 for _, m, _ in cats]
+        fig = plt.figure(figsize=(self.map_width, self.map_height))
+        ax = plt.axes(projection=ccrs.PlateCarree())
+        im = ax.imshow(arr, cmap=cmap_obj, norm=norm, extent=[-124.529, -102.079, 25.579, 48.979],
+                       transform=ccrs.PlateCarree(), interpolation='nearest')
+        sig = (p < 0.05) & (rows % stride == 0) & (cols % stride == 0)
+        ax.scatter(info['lon'].values[sig], info['lat'].values[sig], s=0.6, c='k', marker='.', lw=0,
+                   transform=ccrs.PlateCarree(), zorder=5)
+        ax.add_feature(cfeature.STATES, linewidth=0.3)
+        ax.add_feature(cfeature.LAND, facecolor='none', edgecolor='black', linewidth=0.4)
+        ax.set_extent([-125, -102, 28, 49], crs=ccrs.PlateCarree())   ## room in the lower right for the bar chart
+        gl = ax.gridlines(draw_labels=True, linewidth=0)
+        gl.top_labels = False
+        gl.right_labels = False
+        gl.xlocator = mticker.FixedLocator(range(-125, -100, 5))
+        gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
+        gl.xlabel_style = {'size': 6}
+        gl.ylabel_style = {'size': 6}
+        ax.set_title(label, fontsize=7)
+        cb = plt.colorbar(im, ax=ax, orientation='horizontal', shrink=0.7, ticks=bounds, extend='both', pad=0.08,
+                          aspect=35)
+        cb.ax.tick_params(labelsize=6)
+        cb.set_label('Dots: p < 0.05', fontsize=6)
+        ## small bar chart in the lower-left corner of the map (Pacific, no study pixels there), no axis labels:
+        ##   bars left to right = sig negative, non-sig negative, non-sig positive, sig positive (explained in caption)
+        ax_b = ax.inset_axes([0.03, 0.03, 0.24, 0.17])
+        ax_b.bar(range(4), area, color=[c for _, _, c in cats], width=0.75, edgecolor='#333333', linewidth=0.25)
+        for i_, a in enumerate(area):
+            ax_b.text(i_, a + max(area) * 0.04, f'{a:.0f}%', ha='center', va='bottom', fontsize=4.5)
+        ax_b.set_ylim(0, max(area) * 1.3 + 1)
+        ax_b.set_xticks([])
+        ax_b.set_yticks([])
+        ax_b.spines[['top', 'right', 'left']].set_visible(False)
+        ax_b.spines['bottom'].set_linewidth(0.4)
+        ax_b.patch.set_alpha(0)
+        ax_b.set_zorder(20)
+        plt.savefig(outdir + f'{fname}.png', dpi=300, bbox_inches='tight')
+        plt.savefig(outdir + f'{fname}.pdf', bbox_inches='tight')
+        plt.close()
+        ## table per vegetation type
+        result = []
+        for lc in ['All', 'Forest', 'Shrub', 'Grass', 'Savanna']:
+            m = np.ones(len(info), dtype=bool) if lc == 'All' else (info['landcover_type'] == lc).values
+            if m.sum() == 0:
+                continue
+            row = [lc, int(m.sum()), np.sum(trend[m] * w[m]) / np.sum(w[m])]
+            row += [np.sum(w[m & mm]) / np.sum(w[m]) * 100 for _, mm, _ in cats]
+            result.append(row)
+        tab = pd.DataFrame(result, columns=['class', 'n_pix', 'mean_trend'] + [n + ' area_%' for n, _, _ in cats])
+        tab.to_csv(outdir + f'{fname}_area.csv', index=False)
+        print(fname)
+        print(tab.round(2).to_string())
+
 
 class SPEI_time_series_MODIS(Time_series_base):
     def __init__(self):
@@ -122,6 +216,8 @@ class SPEI_time_series_MODIS(Time_series_base):
         self.main_list = ['SPEI03', 'SPEI06', 'SPEI12', 'SPEI24', 'SPEI48']
         self.other_list = ['SPEI01', 'SPEI09', 'SPEI15', 'SPEI18', 'SPEI21', 'SPEI27',
                            'SPEI30', 'SPEI33', 'SPEI36', 'SPEI39', 'SPEI42', 'SPEI45']
+        self.short_list = ['SPEI03', 'SPEI06', 'SPEI09', 'SPEI12']   ## 2026-11-21: 3-12 months, 2003-2024
+        self.spei_bounds = [-0.6, -0.4, -0.2, -0.1, 0, 0.1, 0.2, 0.4, 0.6]   ## SPEI per decade, discrete colours
         pass
 
 
@@ -129,10 +225,20 @@ class SPEI_time_series_MODIS(Time_series_base):
     def run(self):
         ## SPEI averaged over each pixel's main growing season (GS.df), 2003-2024
         df = self.load_GS_df()
+        df = df[df['landcover_type'].isin(['Forest', 'Shrub', 'Grass', 'Savanna'])]   ## four vegetation types (2026-11-21)
+        print('pixels (four vegetation types):', df['pix'].nunique())
+        self.color_dic = {'growing': '#D9480F'}   ## SPEI in orange-red, as in SPEI_long_term_plot (load_GS_df sets LAI green)
         outdir = self.outdir
-        other_list = [v for v in self.other_list if v != 'SPEI01']   ## GS.df has SPEI03 ... SPEI48
-        self.plot_time_series(df, self.main_list, 2003, outdir, 'Fig_SPEI_main_GS')
-        self.plot_time_series(df, other_list, 2003, outdir, 'FigS_SPEI_other_GS')
+        # other_list = [v for v in self.other_list if v != 'SPEI01']   ## GS.df has SPEI03 ... SPEI48
+        # self.plot_time_series(df, self.main_list, 2003, outdir, 'Fig_SPEI_main_GS')
+        # self.plot_time_series(df, other_list, 2003, outdir, 'FigS_SPEI_other_GS')
+        ## 2026-11-21: SPEI03-12, 2003-2024: time series + trend maps (dots p < 0.05, inset: 4 classes)
+        self.plot_time_series(df, self.short_list, 2003, outdir, 'Fig_SPEI03_12_GS')
+        for var in self.short_list:
+            info, tr, p = self.pixel_trend(df, f'growing_{var}')
+            self.trend_sig_map(info, tr, p, outdir + 'trend_map\\', f'GS_{var}_trend_sig_dots_2003_2024',
+                               f'Growing-season {var} trend 2003-2024 (per decade)', self.spei_bounds, 'RdBu',
+                               ('drying', 'wetting'))
         pass
 
 
@@ -179,6 +285,11 @@ class MODIS_LAI_time_series(Time_series_base):
         print('pixels (four vegetation types):', df['pix'].nunique())
         self.ylabel_dic = {'LAI_rel': 'Relative Change (%)'}
         self.plot_time_series(df, ['LAI_rel'], 2003, self.outdir + rf'\\', 'Fig_MODIS_LAI_GS')
+        ## 2026-11-21: LAI trend map, dots p < 0.05, inset: 4 classes (non-sig / sig browning, greening)
+        info, tr, p = self.pixel_trend(df, 'growing_LAI_rel')
+        self.trend_sig_map(info, tr, p, self.outdir, 'GS_LAI_trend_sig_dots_2003_2024',
+                           'Growing-season LAI trend 2003-2024 (% per decade)', [-10, -6, -3, -1, 0, 1, 3, 6, 10],
+                           'RdBu', ('browning', 'greening'))
         self.trend_bar(df)   ## 2026-11-20: LAI trend per vegetation type, bar plot
         pass
 
@@ -408,6 +519,7 @@ class SPEI_long_term_plot(Time_series_base):
         self.scale_list = list(range(3, 49, 3))
         self.map_scale_list = [3, 6, 9, 12, 24, 36, 48]
         self.main_list = ['SPEI03', 'SPEI06', 'SPEI12', 'SPEI24', 'SPEI48']   ## main figure, same as SPEI_time_series
+        self.sig_bounds = [-0.6, -0.4, -0.2, -0.1, 0, 0.1, 0.2, 0.4, 0.6]   ## SPEI per decade, dots maps (2026-11-21)
         self.class_list = ['All', 'Forest', 'Shrub', 'Grass', 'Savanna']
         self.season_list = ['growing']
         self.color_dic = {'growing': '#D9480F'}   ## orange-red
@@ -422,8 +534,12 @@ class SPEI_long_term_plot(Time_series_base):
         df = T.load_df(self.dff_out)
         ## same pixels as the LAI analysis: the four vegetation types only ('Other' IGBP classes left out)
         df = df[df['landcover_type'].isin(self.class_list[1:])]
+        ## 2026-11-21: keep only the pixels of the current growing_season.df (NLCD cropland < 5% mask); the cached
+        ##   SPEI_GS_1958_2024.df was built before the mask
+        pix_now = set(T.load_df(self.gs_dff).index)
+        df = df[df['pix'].isin(pix_now)]
         print('pixels (four vegetation types):', df['pix'].nunique())
-        self.time_series(df)
+        # self.time_series(df)
         self.period_table(df)
         self.trend_maps(df)
         pass
@@ -539,7 +655,7 @@ class SPEI_long_term_plot(Time_series_base):
         outdir = self.outdir + rf'trend_map\\'
         T.mk_dir(outdir, force=True)
         mapper = Map_plotter(outdir)
-        info = df.groupby('pix')[['area_weight', 'landcover_type']].first()
+        info = df.groupby('pix')[['lon', 'lat', 'area_weight', 'landcover_type']].first()
         w_all = info['area_weight'].values
         var_list = [f'SPEI{s:02d}' for s in self.scale_list]
         map_var_list = [f'SPEI{s:02d}' for s in self.map_scale_list]
@@ -571,6 +687,12 @@ class SPEI_long_term_plot(Time_series_base):
                     D.arr_to_tif(arr.copy(), outdir + f'{fname}.tif')
                     ok = np.isfinite(v)
                     mapper.plot_map(arr, fname, 'RdBu', -vlim, vlim, f'Growing-season {var} {label}', v[ok], w_all[ok])
+                ## 2026-11-21: trend maps in the paper style: discrete colours, dots = p < 0.05, area panel with
+                ##   non-sig / sig drying and non-sig / sig wetting (+ _area.csv per vegetation type)
+                if p is not None:
+                    ok = np.isfinite(vals) & np.isfinite(p)
+                    self.trend_sig_map(info[ok], vals[ok], p[ok], outdir, f'GS_{var}_{key}_sig_dots',
+                                       f'Growing-season {var} {label}', self.sig_bounds, 'RdBu', ('drying', 'wetting'))
         ## table: area-weighted mean and area with significant decrease / increase (trends only)
         result = []
         for lc in self.class_list:
@@ -605,8 +727,10 @@ def main():
     # MODIS_LAI_time_series().run()
 
     # SPEI_time_series_MODIS().run()     ## modis record
-    MODIS_LAI_time_series().run()   ## growing-season MODIS LAI (GS.df); 2026-11-20: + trend bar per vegetation type
-    SPEI_long_term_plot().run()     ## growing-season SPEI 1958-2024: time series and trend maps
+    # MODIS_LAI_time_series().run()   ## growing-season MODIS LAI (GS.df); 2026-11-20: + trend bar per vegetation type (done, NLCD mask)
+    SPEI_long_term_plot().run()     ## growing-season SPEI 1958-2024: time series and trend maps (+ dots maps 2026-11-21)
+    SPEI_time_series_MODIS().run()     ## 2026-11-21: SPEI03-12 2003-2024 time series + trend maps with dots
+    MODIS_LAI_time_series().run()      ## + LAI trend map with dots (2026-11-21)
 
 
 if __name__ == '__main__':
