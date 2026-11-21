@@ -129,7 +129,8 @@ class Time_series_base():
             p = 2 * stats.t.sf(np.abs(slope / se), len(x) - 2)
         return info, slope * 10, p
 
-    def trend_sig_map(self, info, trend, p, outdir, fname, label, bounds, cmap, cat_names, stride=3):
+    def trend_sig_map(self, info, trend, p, outdir, fname, label, bounds, cmap, cat_names, stride=3, lighten=0.,
+                      dot_size=0.6):
         ## trend map with discrete colours, dots = p < 0.05 (every `stride`-th pixel in both directions, so the dots
         ## stay readable), colour bar under the map; small bar chart in the lower-left corner of the map
         ## (Pacific, outside the study pixels) = area share of 4 classes: sig / non-sig negative,
@@ -146,7 +147,20 @@ class Time_series_base():
         rows = np.array([q[0] for q in info.index])
         cols = np.array([q[1] for q in info.index])
         arr[rows, cols] = trend
-        cmap_obj = plt.get_cmap(cmap, len(bounds) - 1)
+        if isinstance(cmap, (list, tuple)):   ## a list of hex colours, one per class (2026-11-21)
+            from matplotlib.colors import ListedColormap
+            cmap_obj = ListedColormap(list(cmap))
+            cmap_obj.set_under(cmap[0])
+            cmap_obj.set_over(cmap[-1])
+        else:
+            cmap_obj = plt.get_cmap(cmap, len(bounds) - 1)
+        if lighten > 0:   ## mix the colours with white so the dots stay visible on the dark classes (2026-11-21)
+            from matplotlib.colors import ListedColormap
+            rgba = cmap_obj(np.arange(cmap_obj.N))
+            rgba[:, :3] = rgba[:, :3] * (1 - lighten) + lighten
+            cmap_obj = ListedColormap(rgba)
+            cmap_obj.set_under(rgba[0])
+            cmap_obj.set_over(rgba[-1])
         norm = BoundaryNorm(bounds, cmap_obj.N)
         neg, pos = cat_names
         cats = [(f'Sig. {neg}', (trend < 0) & (p < 0.05), cmap_obj(0.0)),
@@ -160,7 +174,7 @@ class Time_series_base():
         im = ax.imshow(arr, cmap=cmap_obj, norm=norm, extent=[-124.529, -102.079, 25.579, 48.979],
                        transform=ccrs.PlateCarree(), interpolation='nearest')
         sig = (p < 0.05) & (rows % stride == 0) & (cols % stride == 0)
-        ax.scatter(info['lon'].values[sig], info['lat'].values[sig], s=0.6, c='k', marker='.', lw=0,
+        ax.scatter(info['lon'].values[sig], info['lat'].values[sig], s=dot_size, c='k', marker='.', lw=0,
                    transform=ccrs.PlateCarree(), zorder=5)
         ax.add_feature(cfeature.STATES, linewidth=0.3)
         ax.add_feature(cfeature.LAND, facecolor='none', edgecolor='black', linewidth=0.4)
@@ -211,7 +225,7 @@ class Time_series_base():
 class SPEI_time_series_MODIS(Time_series_base):
     def __init__(self):
         super().__init__()
-        self.outdir = self.result2 + rf'01_drought\SPEI_timeseries\\'
+        self.outdir =  self.result2 + rf'01_drought\SPEI_short_term\\'   ## 2026-11-21: renamed from SPEI_timeseries
         self.start_year = 1982
         self.main_list = ['SPEI03', 'SPEI06', 'SPEI12', 'SPEI24', 'SPEI48']
         self.other_list = ['SPEI01', 'SPEI09', 'SPEI15', 'SPEI18', 'SPEI21', 'SPEI27',
@@ -273,6 +287,8 @@ class MODIS_LAI_time_series(Time_series_base):
         self.var_list = ['MODIS_LAI_relative_change']
         self.ylabel_dic = {'MODIS_LAI_relative_change': 'Relative Change (%)'}
         self.trend_period_list = [(2003, 2024, '-')]   ## MODIS starts 2003: one trend only
+        ## vegetation trend palette (2026-11-21): brown (browning) -> pale green-grey -> blue-teal (greening), 8 classes
+        self.veg_colors = ['#7B3F13', '#C0692A', '#EBA14A', '#F5D38E', '#CFE3D1', '#87B8CF', '#3D7FA6', '#0B4F6C']
         self.LAI_threshold = 0.3   ## drop pixels whose multi-year mean LAI < 0.3
         pass
 
@@ -288,8 +304,8 @@ class MODIS_LAI_time_series(Time_series_base):
         ## 2026-11-21: LAI trend map, dots p < 0.05, inset: 4 classes (non-sig / sig browning, greening)
         info, tr, p = self.pixel_trend(df, 'growing_LAI_rel')
         self.trend_sig_map(info, tr, p, self.outdir, 'GS_LAI_trend_sig_dots_2003_2024',
-                           'Growing-season LAI trend 2003-2024 (% per decade)', [-10, -6, -3, -1, 0, 1, 3, 6, 10],
-                           'RdBu', ('browning', 'greening'))
+                           'Growing-season LAI trend 2003-2024 (% per decade)', [-20, -15, -10, -5,  0,  5, 10, 15,20],
+                           self.veg_colors, ('browning', 'greening'), stride=4, dot_size=2.5)   ## -20..20, bigger dots
         self.trend_bar(df)   ## 2026-11-20: LAI trend per vegetation type, bar plot
         pass
 
@@ -728,8 +744,8 @@ def main():
 
     # SPEI_time_series_MODIS().run()     ## modis record
     # MODIS_LAI_time_series().run()   ## growing-season MODIS LAI (GS.df); 2026-11-20: + trend bar per vegetation type (done, NLCD mask)
-    SPEI_long_term_plot().run()     ## growing-season SPEI 1958-2024: time series and trend maps (+ dots maps 2026-11-21)
-    SPEI_time_series_MODIS().run()     ## 2026-11-21: SPEI03-12 2003-2024 time series + trend maps with dots
+    # SPEI_long_term_plot().run()     ## growing-season SPEI 1958-2024: time series and trend maps (+ dots maps 2026-11-21) (done)
+    # SPEI_time_series_MODIS().run()     ## 2026-11-21: SPEI03-12 2003-2024 time series + trend maps with dots (done)
     MODIS_LAI_time_series().run()      ## + LAI trend map with dots (2026-11-21)
 
 
