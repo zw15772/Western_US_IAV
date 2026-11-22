@@ -3,6 +3,9 @@
 ## compared with the observed LAI trend; gap = observed - expected
 ## uses the trend tools of growing_season_extraction.py and the best scale from bivariate.py
 from growing_season_extraction import *
+## 2026-11-21: larger fonts in all figures (default sizes; explicit fontsize values were also enlarged x1.6)
+plt.rcParams.update({'font.size': 12, 'axes.titlesize': 13, 'axes.labelsize': 13, 'xtick.labelsize': 11,
+                     'ytick.labelsize': 11, 'legend.fontsize': 11, 'legend.title_fontsize': 11})
 from scipy.signal import detrend
 
 
@@ -112,10 +115,10 @@ class Attribution_model1(Growing_season_trend):
                        capsize=2, error_kw={'lw': 0.6}, label=name)
             ax.axhline(0, color='k', lw=0.5)
             ax.set_xticks(x)
-            ax.set_xticklabels(d['class'], fontsize=8)
-            ax.set_title(region, fontsize=9)
-        np.atleast_1d(axs)[0].set_ylabel('LAI trend (% per decade)', fontsize=8)
-        np.atleast_1d(axs)[0].legend(fontsize=7, frameon=False)
+            ax.set_xticklabels(d['class'], fontsize=13)
+            ax.set_title(region, fontsize=14.5)
+        np.atleast_1d(axs)[0].set_ylabel('LAI trend (% per decade)', fontsize=13)
+        np.atleast_1d(axs)[0].legend(fontsize=11, frameon=False)
         plt.tight_layout()
         plt.savefig(self.outdir + f'attribution_model1_bar_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'attribution_model1_bar_{self.tag}.pdf', bbox_inches='tight')
@@ -137,10 +140,10 @@ class Attribution_model1(Growing_season_trend):
             ax.axhline(0, color='k', lw=0.5)
             ax.axvline(0, color='k', lw=0.5)
             above = np.sum(w[obs[m] > exp[m]]) / np.sum(w) * 100
-            ax.text(0.03, 0.97, f'obs > exp: {above:.0f}%', transform=ax.transAxes, ha='left', va='top', fontsize=8)
-            ax.set_title(f'{lc} (n={m.sum()})', fontsize=9)
-            ax.set_xlabel('Expected LAI trend (% /decade)', fontsize=8)
-        axs[0].set_ylabel('Observed LAI trend (% /decade)', fontsize=8)
+            ax.text(0.03, 0.97, f'obs > exp: {above:.0f}%', transform=ax.transAxes, ha='left', va='top', fontsize=13)
+            ax.set_title(f'{lc} (n={m.sum()})', fontsize=14.5)
+            ax.set_xlabel('Expected LAI trend (% /decade)', fontsize=13)
+        axs[0].set_ylabel('Observed LAI trend (% /decade)', fontsize=13)
         plt.tight_layout()
         plt.savefig(self.outdir + f'{fname}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'{fname}.pdf', bbox_inches='tight')
@@ -359,10 +362,10 @@ class Attribution_model2(Growing_season_trend):
                        color=self.color_dic[name], yerr=err, capsize=1.5, error_kw={'lw': 0.5}, label=name)
             ax.axhline(0, color='k', lw=0.5)
             ax.set_xticks(x)
-            ax.set_xticklabels(d['class'], fontsize=8)
-            ax.set_title(region, fontsize=9)
-        np.atleast_1d(axs)[0].set_ylabel('LAI trend (% per decade)', fontsize=8)
-        np.atleast_1d(axs)[0].legend(fontsize=6, frameon=False, ncol=2)
+            ax.set_xticklabels(d['class'], fontsize=13)
+            ax.set_title(region, fontsize=14.5)
+        np.atleast_1d(axs)[0].set_ylabel('LAI trend (% per decade)', fontsize=13)
+        np.atleast_1d(axs)[0].legend(fontsize=9.5, frameon=False, ncol=2)
         plt.tight_layout()
         plt.savefig(self.outdir + f'attribution_model2_bar_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'attribution_model2_bar_{self.tag}.pdf', bbox_inches='tight')
@@ -502,8 +505,8 @@ class Model2_annual_perennial(Attribution_model2):
             axs[0].bar(x + (k - 0.5) * 0.38, d[name], width=0.38, color=color, yerr=err, capsize=2,
                        error_kw={'lw': 0.6}, label=label)
         axs[0].set_xticks(x)
-        axs[0].set_xticklabels(self.class_list, fontsize=7.5)
-        axs[0].legend(fontsize=6.5, frameon=False, loc='upper left')
+        axs[0].set_xticklabels(self.class_list, fontsize=12)
+        axs[0].legend(fontsize=10.5, frameon=False, loc='upper left')
         d = tab[(tab['class'] == 'Grass') & (tab['herb_group'].isin(self.group_list))].set_index('herb_group') \
             .reindex(self.group_list)
         x = np.arange(len(d))
@@ -515,14 +518,14 @@ class Model2_annual_perennial(Attribution_model2):
                        error_kw={'lw': 0.5}, label=label)
         axs[1].set_xticks(x)
         axs[1].set_xticklabels([f'{g}\n({a:.0f}% of grass)' for g, a in zip(self.group_list, d['area_%_of_class'])],
-                               fontsize=7.5)
-        axs[1].set_title('Grass', fontsize=8)
-        axs[1].legend(fontsize=6, frameon=False, ncol=2)
+                               fontsize=12)
+        axs[1].set_title('Grass', fontsize=13)
+        axs[1].legend(fontsize=9.5, frameon=False, ncol=2)
         for ax in axs:
             ax.axhline(0, color='grey', lw=0.5)
-            ax.tick_params(labelsize=7)
+            ax.tick_params(labelsize=11)
             ax.spines[['top', 'right']].set_visible(False)
-        axs[0].set_ylabel('LAI trend (% per decade)', fontsize=8)
+        axs[0].set_ylabel('LAI trend (% per decade)', fontsize=13)
         plt.tight_layout()
         plt.savefig(self.outdir + f'model2_annual_perennial_compare_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'model2_annual_perennial_compare_{self.tag}.pdf', bbox_inches='tight')
@@ -649,10 +652,10 @@ class Phenology_C(Growing_season_trend):
             ax.axhline(0, color='grey', lw=0.5)
             ax.axvspan(0 if name == 'start' else -3.3, 3.3 if name == 'start' else 0, color='#2E7D32', alpha=0.08)
             ax.set_xticks(self.offset_list)
-            ax.set_xlabel(f'Month relative to growing-season {name}', fontsize=8)
-            ax.set_title(f'aligned to season {name} (green = inside the season)', fontsize=8)
-        axs[0].set_ylabel('LAI trend (% of GS mean per decade)', fontsize=8)
-        axs[0].legend(fontsize=7, frameon=False)
+            ax.set_xlabel(f'Month relative to growing-season {name}', fontsize=13)
+            ax.set_title(f'aligned to season {name} (green = inside the season)', fontsize=13)
+        axs[0].set_ylabel('LAI trend (% of GS mean per decade)', fontsize=13)
+        axs[0].legend(fontsize=11, frameon=False)
         plt.tight_layout()
         plt.savefig(self.outdir + f'phenology_profile_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'phenology_profile_{self.tag}.pdf', bbox_inches='tight')
@@ -782,8 +785,8 @@ class Dry_wet_trend(Growing_season_trend):
                 ax.plot(self.s_list, y, color='k', marker='o', ms=3)
             ax.axhline(0, color='grey', lw=0.5)
             ax.axvline(-1, color='#C0392B', lw=0.5, ls='--')
-            ax.set_title(lc, fontsize=9)
-            ax.set_xlabel('SPEI of the year (best scale)', fontsize=8)
+            ax.set_title(lc, fontsize=14.5)
+            ax.set_xlabel('SPEI of the year (best scale)', fontsize=13)
             ## bottom: LAI_rel by category, early vs late period
             ax = axs[1, k]
             d = df_c[df_c['class'] == lc]
@@ -799,9 +802,9 @@ class Dry_wet_trend(Growing_season_trend):
                            error_kw={'lw': 0.6})
             ax.axhline(0, color='grey', lw=0.5)
             ax.set_xticks(range(len(self.cat_list)))
-            ax.set_xticklabels([c for c, _, _ in self.cat_list], fontsize=8)
-        axs[0, 0].set_ylabel('LAI trend (% per decade)', fontsize=8)
-        axs[1, 0].set_ylabel('LAI_rel (%), light = 2003-2013, dark = 2014-2024', fontsize=7)
+            ax.set_xticklabels([c for c, _, _ in self.cat_list], fontsize=13)
+        axs[0, 0].set_ylabel('LAI trend (% per decade)', fontsize=13)
+        axs[1, 0].set_ylabel('LAI_rel (%), light = 2003-2013, dark = 2014-2024', fontsize=11)
         plt.tight_layout()
         plt.savefig(self.outdir + f'dry_wet_trend_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'dry_wet_trend_{self.tag}.pdf', bbox_inches='tight')
@@ -936,11 +939,11 @@ class Fire_check(Growing_season_trend):
                        error_kw={'lw': 0.5}, label=name)
             ax.axhline(0, color='k', lw=0.5)
             ax.set_xticks(x)
-            ax.set_xticklabels([f"{g}\n({a:.0f}%)" for g, a in zip(d['fire_group'], d['area_%'])], fontsize=5.5,
+            ax.set_xticklabels([f"{g}\n({a:.0f}%)" for g, a in zip(d['fire_group'], d['area_%'])], fontsize=9,
                                rotation=45, ha='right')
-            ax.set_title(lc, fontsize=9)
-        axs[0].set_ylabel('LAI trend (% per decade)', fontsize=8)
-        axs[0].legend(fontsize=6, frameon=False)
+            ax.set_title(lc, fontsize=14.5)
+        axs[0].set_ylabel('LAI trend (% per decade)', fontsize=13)
+        axs[0].legend(fontsize=9.5, frameon=False)
         ax = axs[n]
         for sub, c in [('all pixels', 'k'), ('unburned', '#D9480F')]:
             d = df_ai[df_ai['subset'] == sub]
@@ -948,9 +951,9 @@ class Fire_check(Growing_season_trend):
                         capsize=2, color=c, label=sub)
         ax.axhline(0, color='grey', lw=0.5)
         ax.set_xscale('log')
-        ax.set_xlabel('Aridity index P / PET', fontsize=8)
-        ax.set_title('Grass C vs aridity', fontsize=9)
-        ax.legend(fontsize=7, frameon=False)
+        ax.set_xlabel('Aridity index P / PET', fontsize=13)
+        ax.set_title('Grass C vs aridity', fontsize=14.5)
+        ax.legend(fontsize=11, frameon=False)
         plt.tight_layout()
         plt.savefig(self.outdir + f'fire_check_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'fire_check_{self.tag}.pdf', bbox_inches='tight')
@@ -1015,11 +1018,11 @@ class Fire_grass(Growing_season_trend):
                        error_kw={'lw': 0.6}, label=name)
             ax.axhline(0, color='k', lw=0.5)
             ax.set_xticks(x)
-            ax.set_xticklabels([f"{l}\n(n={n})" for l, n in zip(d['burned_%'], d['n_pix'])], fontsize=7)
-            ax.set_xlabel(f'Share of pixel {panel} (%)', fontsize=8)
-            ax.set_title(f'{self.lc}: {panel}', fontsize=9)
-        np.atleast_1d(axs)[0].set_ylabel('LAI trend (% per decade)', fontsize=8)
-        np.atleast_1d(axs)[0].legend(fontsize=7, frameon=False)
+            ax.set_xticklabels([f"{l}\n(n={n})" for l, n in zip(d['burned_%'], d['n_pix'])], fontsize=11)
+            ax.set_xlabel(f'Share of pixel {panel} (%)', fontsize=13)
+            ax.set_title(f'{self.lc}: {panel}', fontsize=14.5)
+        np.atleast_1d(axs)[0].set_ylabel('LAI trend (% per decade)', fontsize=13)
+        np.atleast_1d(axs)[0].legend(fontsize=11, frameon=False)
         plt.tight_layout()
         plt.savefig(self.outdir + f'fire_grass_burned_share_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'fire_grass_burned_share_{self.tag}.pdf', bbox_inches='tight')
@@ -1172,7 +1175,7 @@ class Model2_robustness(Attribution_model2):
                        capsize=2, error_kw={'lw': 0.6}, label=label)
             ax.axhline(0, color='k', lw=0.5)
             ax.set_xticks([])
-            ax.set_title(f"{lc} (observed {d['observed']:.1f})", fontsize=9)
+            ax.set_title(f"{lc} (observed {d['observed']:.1f})", fontsize=14.5)
             ax = axs[1, k]
             if lc != 'All':
                 d = df_r[df_r['class'] == lc]
@@ -1180,13 +1183,13 @@ class Model2_robustness(Attribution_model2):
                     ax.plot(d['window_centre'], d[f'beta_{name}'] / d[f'beta_{name}'].abs().mean(), marker='o', ms=3,
                             color=c, label=name)
                 ax.axhline(0, color='grey', lw=0.5)
-                ax.set_xlabel('Centre of 11-year window', fontsize=8)
+                ax.set_xlabel('Centre of 11-year window', fontsize=13)
             else:
                 ax.axis('off')
-        axs[0, 0].set_ylabel('% per decade', fontsize=8)
-        axs[0, 0].legend(fontsize=6, frameon=False)
-        axs[1, 1].set_ylabel('beta / mean |beta|', fontsize=8)
-        axs[1, 1].legend(fontsize=7, frameon=False)
+        axs[0, 0].set_ylabel('% per decade', fontsize=13)
+        axs[0, 0].legend(fontsize=9.5, frameon=False)
+        axs[1, 1].set_ylabel('beta / mean |beta|', fontsize=13)
+        axs[1, 1].legend(fontsize=11, frameon=False)
         plt.tight_layout()
         plt.savefig(self.outdir + f'model2_robustness_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'model2_robustness_{self.tag}.pdf', bbox_inches='tight')
@@ -1394,11 +1397,11 @@ class C_exclusion(Growing_season_trend):
                        error_kw={'lw': 0.5}, label=comp)
             ax.axhline(0, color='k', lw=0.5)
             ax.set_xticks(x)
-            ax.set_xticklabels([f"{s}\n({a:.0f}%)" for s, a in zip(d['step'], d['area_kept_%'])], fontsize=5.5,
+            ax.set_xticklabels([f"{s}\n({a:.0f}%)" for s, a in zip(d['step'], d['area_kept_%'])], fontsize=9,
                                rotation=45, ha='right')
-            ax.set_title(lc, fontsize=9)
-        axs[0].set_ylabel('LAI trend (% per decade)', fontsize=8)
-        axs[0].legend(fontsize=6, frameon=False)
+            ax.set_title(lc, fontsize=14.5)
+        axs[0].set_ylabel('LAI trend (% per decade)', fontsize=13)
+        axs[0].legend(fontsize=9.5, frameon=False)
         for ax, var in zip(axs[len(cls):], var_list):
             d = df_type[df_type['variable'] == var].reset_index(drop=True)
             x = np.arange(len(d))
@@ -1408,9 +1411,9 @@ class C_exclusion(Growing_season_trend):
                        error_kw={'lw': 0.5}, label=comp)
             ax.axhline(0, color='k', lw=0.5)
             ax.set_xticks(x)
-            ax.set_xticklabels([f"{l}\n(n={n})" for l, n in zip(d['share_%'], d['n_pix'])], fontsize=6)
-            ax.set_xlabel(var.replace('nlcd_', '') + ' (% of pixel)', fontsize=8)
-            ax.set_title('Grass, land use & fire removed', fontsize=8)
+            ax.set_xticklabels([f"{l}\n(n={n})" for l, n in zip(d['share_%'], d['n_pix'])], fontsize=9.5)
+            ax.set_xlabel(var.replace('nlcd_', '') + ' (% of pixel)', fontsize=13)
+            ax.set_title('Grass, land use & fire removed', fontsize=13)
         plt.tight_layout()
         plt.savefig(self.outdir + f'C_exclusion_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'C_exclusion_{self.tag}.pdf', bbox_inches='tight')
@@ -1488,18 +1491,18 @@ class Attribution_figures():
             ax.bar(x + (j - 0.5) * wid, v, width=wid, color=c, label=lab, yerr=err, capsize=2, error_kw={'lw': 0.7})
         for xi, (_, r) in zip(x, d.iterrows()):
             top = max(r['observed_ci_high'], r['expected_ci_high'], 0)
-            ax.text(xi, top + 0.4, f"gap {r['gap']:+.1f}", ha='center', va='bottom', fontsize=6.5,
+            ax.text(xi, top + 0.4, f"gap {r['gap']:+.1f}", ha='center', va='bottom', fontsize=10.5,
                     color='#1F2A33', fontweight='bold' if r['gap_ci_low'] * r['gap_ci_high'] > 0 else 'normal')
         ax.axhline(0, color='k', lw=0.6)
         ax.set_xticks(x)
-        ax.set_xticklabels([f'{c}\n(n={int(n)})' for c, n in zip(d.index, d['n_pix'])], fontsize=7)
-        ax.set_ylabel('LAI trend (% per decade)', fontsize=8)
-        ax.tick_params(axis='y', labelsize=7)
-        ax.legend(fontsize=6.5, frameon=False, loc='upper center', bbox_to_anchor=(0.5, 1.0), ncol=2)
+        ax.set_xticklabels([f'{c}\n(n={int(n)})' for c, n in zip(d.index, d['n_pix'])], fontsize=11)
+        ax.set_ylabel('LAI trend (% per decade)', fontsize=13)
+        ax.tick_params(axis='y', labelsize=11)
+        ax.legend(fontsize=10.5, frameon=False, loc='upper center', bbox_to_anchor=(0.5, 1.0), ncol=2)
         ax.set_ylim(min(d['observed_ci_low'].min(), d['expected_ci_low'].min()) - 0.8,
                     max(d['observed_ci_high'].max(), d['expected_ci_high'].max()) + 2.6)
         ax.spines[['top', 'right']].set_visible(False)
-        ax.set_title('Observed vs drought-expected LAI trend, 2003-2024', fontsize=8)   ## gap in bold: 95% CI excludes 0
+        ax.set_title('Observed vs drought-expected LAI trend, 2003-2024', fontsize=13)   ## gap in bold: 95% CI excludes 0
         plt.tight_layout()
         self.save(f'decouple_SPEI_LAI_{self.tag}')
         print(d[['n_pix', 'observed', 'expected', 'gap', 'gap_ci_low', 'gap_ci_high']].round(2).to_string())
@@ -1523,13 +1526,13 @@ class Attribution_figures():
         for xi, (a, b) in zip(x[:-1], zip(d['class'].values[:-1], d['class'].values[1:])):
             ax.axvline(xi + 0.5, color='#BBBBBB' if a != b else '#EEEEEE', lw=0.6 if a != b else 0.4)
         ax.set_xticks(x)
-        ax.set_xticklabels(d['label'], fontsize=6.5)
-        ax.set_ylabel('Contribution to LAI trend (% per decade)', fontsize=8)
-        ax.tick_params(axis='y', labelsize=7)
-        ax.legend(fontsize=6.5, frameon=False, ncol=6, loc='upper center', bbox_to_anchor=(0.5, -0.2))   ## below the axis
+        ax.set_xticklabels(d['label'], fontsize=10.5)
+        ax.set_ylabel('Contribution to LAI trend (% per decade)', fontsize=13)
+        ax.tick_params(axis='y', labelsize=11)
+        ax.legend(fontsize=10.5, frameon=False, ncol=6, loc='upper center', bbox_to_anchor=(0.5, -0.2))   ## below the axis
         ax.spines[['top', 'right']].set_visible(False)
         ax.set_title('Attribution of the LAI trend, 2003-2024 (Model 2, beta per annual / perennial for Grass and Shrub)',
-                     fontsize=8)
+                     fontsize=13)
         plt.tight_layout()
         self.save(f'attribute_LAI_trend_bar_{self.tag}')
         d.round(3).to_csv(self.outdir + f'attribute_LAI_trend_bar_{self.tag}.csv', index=False)
@@ -1594,15 +1597,15 @@ class Attribution_figures():
             gl.right_labels = False
             gl.xlocator = mticker.FixedLocator(range(-125, -100, 5))
             gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
-            gl.xlabel_style = {'size': 6}
-            gl.ylabel_style = {'size': 6}
+            gl.xlabel_style = {'size': 9.5}
+            gl.ylabel_style = {'size': 9.5}
             v = df[col].values
             ok = np.isfinite(v)
-            ax.set_title(f'{title}\nmean {np.sum(v[ok] * w[ok]) / np.sum(w[ok]):+.2f}', fontsize=7.5)
+            ax.set_title(f'{title}\nmean {np.sum(v[ok] * w[ok]) / np.sum(w[ok]):+.2f}', fontsize=12)
         cax = fig.add_axes([0.25, 0.08, 0.5, 0.03])
         cb = fig.colorbar(im, cax=cax, orientation='horizontal', ticks=bounds, extend='both')
-        cb.set_label('Contribution to LAI trend (% per decade)', fontsize=7)
-        cb.ax.tick_params(labelsize=6.5)
+        cb.set_label('Contribution to LAI trend (% per decade)', fontsize=11)
+        cb.ax.tick_params(labelsize=10.5)
         plt.subplots_adjust(left=0.04, right=0.98, top=0.9, bottom=0.18, wspace=0.12)
         self.save(f'attribute_LAI_trend_maps_{self.tag}')
 
@@ -1639,12 +1642,12 @@ class Attribution_figures():
         ax.errorbar(vals[:, 0], y, xerr=[vals[:, 0] - vals[:, 1], vals[:, 2] - vals[:, 0]], fmt='o', color='#1F2A33',
                     ms=3.5, lw=0.9, capsize=2)
         for yy, v in zip(y, vals):
-            ax.text(v[2] + 0.1, yy, f'{v[0]:.2f}', va='center', fontsize=6.5)
+            ax.text(v[2] + 0.1, yy, f'{v[0]:.2f}', va='center', fontsize=10.5)
         ax.set_yticks(y)
-        ax.set_yticklabels(names, fontsize=7)
+        ax.set_yticklabels(names, fontsize=11)
         ax.set_xlim(0, max(vals[:, 2]) + 0.8)
-        ax.set_xlabel('Grass unexplained LAI trend (% per decade, 95% CI)', fontsize=7.5)
-        ax.tick_params(axis='x', labelsize=7)
+        ax.set_xlabel('Grass unexplained LAI trend (% per decade, 95% CI)', fontsize=12)
+        ax.tick_params(axis='x', labelsize=11)
         ax.spines[['top', 'right']].set_visible(False)
         plt.tight_layout()
         self.save(f'robustness_grass_unexplained_{self.tag}')
@@ -1687,7 +1690,7 @@ class Attribution_figures():
         gl.right_labels = False
         gl.xlocator = mticker.FixedLocator(range(-125, -100, 5))
         gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
-        ax.set_title('Which part dominates the LAI trend, 2003-2024', fontsize=9)
+        ax.set_title('Which part dominates the LAI trend, 2003-2024', fontsize=14.5)
         self.ternary_legend(fig.add_axes([0.62, 0.48, 0.34, 0.46]))
         ## dominant part (largest share) per vegetation type, area %
         w = df['area_weight'].values
@@ -1712,14 +1715,14 @@ class Attribution_figures():
             ax2.barh(y, tab[:, k], left=left, color=col[k], height=0.7, edgecolor='white', linewidth=0.5, label=lab[k])
             for yy, l0, v in zip(y, left, tab[:, k]):
                 if v >= 10:
-                    ax2.text(l0 + v / 2, yy, f'{v:.0f}', ha='center', va='center', fontsize=5.5,
+                    ax2.text(l0 + v / 2, yy, f'{v:.0f}', ha='center', va='center', fontsize=9,
                              color='white' if k in (0, 1, 2) else 'black')
             left += tab[:, k]
         ax2.set_yticks(y)
-        ax2.set_yticklabels(self.class_list, fontsize=6.5)
+        ax2.set_yticklabels(self.class_list, fontsize=10.5)
         ax2.set_xlim(0, 100)
-        ax2.set_xlabel('Area where the part is the largest (%)', fontsize=6.5)
-        ax2.tick_params(labelsize=6)
+        ax2.set_xlabel('Area where the part is the largest (%)', fontsize=10.5)
+        ax2.tick_params(labelsize=9.5)
         ax2.spines[['top', 'right']].set_visible(False)
 
     def ternary_rgb(self, share):
@@ -1745,10 +1748,10 @@ class Attribution_figures():
         pts, shares = np.array(pts), np.array(shares)
         ax.scatter(pts[:, 0], pts[:, 1], c=self.ternary_rgb(shares), s=9, marker='h', linewidths=0)
         ax.plot([0, 1, 0.5, 0], [0, 0, h, 0], color='k', lw=0.6)
-        ax.text(-0.02, -0.06, 'Climate', ha='center', va='top', fontsize=7)
-        ax.text(1.02, -0.06, 'Composition', ha='center', va='top', fontsize=7)
-        ax.text(0.5, h + 0.04, 'Unexplained', ha='center', va='bottom', fontsize=7)
-        ax.text(0.5, -0.17, 'share of |climate| + |composition| + |unexplained|', ha='center', va='top', fontsize=5.5,
+        ax.text(-0.02, -0.06, 'Climate', ha='center', va='top', fontsize=11)
+        ax.text(1.02, -0.06, 'Composition', ha='center', va='top', fontsize=11)
+        ax.text(0.5, h + 0.04, 'Unexplained', ha='center', va='bottom', fontsize=11)
+        ax.text(0.5, -0.17, 'share of |climate| + |composition| + |unexplained|', ha='center', va='top', fontsize=9,
                 color='#555555')
         ax.set_xlim(-0.15, 1.15)
         ax.set_ylim(-0.25, h + 0.12)

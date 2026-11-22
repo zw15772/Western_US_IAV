@@ -1,4 +1,7 @@
 from __Global__ import *
+## 2026-11-21: larger fonts in all figures (default sizes; explicit fontsize values were also enlarged x1.6)
+plt.rcParams.update({'font.size': 12, 'axes.titlesize': 13, 'axes.labelsize': 13, 'xtick.labelsize': 11,
+                     'ytick.labelsize': 11, 'legend.fontsize': 11, 'legend.title_fontsize': 11})
 import os
 import warnings
 from scipy import stats
@@ -82,7 +85,7 @@ class Time_series_base():
         trend_list = []
 
         fig, axes = plt.subplots(len(var_list), 1, sharex=True, squeeze=False,
-                                 figsize=(self.map_width * 1.5, self.map_height * 0.6 * max(len(var_list), 1.5)))
+                                 figsize=(self.map_width * 2.0, self.map_height * 0.7 * max(len(var_list), 1.5)))
         axes = axes[:, 0]
 
         for ax, var in zip(axes, var_list):
@@ -116,18 +119,18 @@ class Time_series_base():
                     text += f'  {t_start}-{t_end}: {slope * 10:.2f}/10yr, p={p:.2f}'
                     trend_list.append([var, season, f'{t_start}-{t_end}', slope * 10, p])
                 ax.text(0.01, 0.95 if season == 'spring' else 0.84, text,
-                        transform=ax.transAxes, color=color, fontsize=7.5, va='top')
+                        transform=ax.transAxes, color=color, fontsize=10, va='top')   ## one long line: 10
 
             if 'SPEI' in var:
                 ax.axhline(0, color='grey', lw=0.5)
             if self.split_year > start_year:
                 ax.axvspan(self.split_year, self.end_year, color='grey', alpha=0.1)
-            ax.set_ylabel(self.ylabel_dic.get(var, var), fontsize=10)
+            ax.set_ylabel(self.ylabel_dic.get(var, var), fontsize=16)
             ax.set_xlim(start_year, self.end_year)
             ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
         axes[0].legend(loc='upper right', frameon=False, ncol=2)
-        axes[-1].set_xlabel('Year', fontsize=10)
+        axes[-1].set_xlabel('Year', fontsize=16)
         plt.tight_layout()
         plt.savefig(outdir + f'{fname}.png', dpi=300)
         plt.savefig(outdir + f'{fname}.pdf')
@@ -174,7 +177,7 @@ class Time_series_base():
         import matplotlib.patches as mpatches
         colors = [cats[0][2], '#A6A6A6', '#D9D9D9', cats[3][2]]
         names = [n for n, _, _ in cats]
-        fig, ax = plt.subplots(figsize=(self.map_width * 0.9, self.map_height * 0.75))
+        fig, ax = plt.subplots(figsize=(self.map_width * 1.5, self.map_height * 1.1))
         y = np.arange(len(tab))[::-1]
         left = np.zeros(len(tab))
         for k, (c, n) in enumerate(zip(colors, names)):
@@ -182,20 +185,20 @@ class Time_series_base():
             ax.barh(y, v, left=left, color=c, height=0.7, edgecolor='white', linewidth=0.5)
             for yy, l0, vv in zip(y, left, v):
                 if vv >= 8:
-                    ax.text(l0 + vv / 2, yy, f'{vv:.0f}', ha='center', va='center', fontsize=6,
+                    ax.text(l0 + vv / 2, yy, f'{vv:.0f}', ha='center', va='center', fontsize=9.5,
                             color='white' if k in (0, 3) else 'black')
             left += v
         for yy, mt in zip(y, tab['mean_trend'].values):
-            ax.text(102, yy, f'{mt:+.2f}', va='center', fontsize=6.5)
-        ax.text(102, y[0] + 0.55, 'Mean', va='bottom', fontsize=6.5)
+            ax.text(102, yy, f'{mt:+.2f}', va='center', fontsize=10.5)
+        ax.text(102, y[0] + 0.55, 'Mean', va='bottom', fontsize=10.5)
         ax.set_yticks(y)
-        ax.set_yticklabels([f'{c} (n={n})' for c, n in zip(tab['class'], tab['n_pix'])], fontsize=7)
+        ax.set_yticklabels([f'{c} (n={n})' for c, n in zip(tab['class'], tab['n_pix'])], fontsize=11)
         ax.set_xlim(0, 100)
-        ax.set_xlabel('Area (%)', fontsize=8)
-        ax.tick_params(labelsize=7)
+        ax.set_xlabel('Area (%)', fontsize=13)
+        ax.tick_params(labelsize=11)
         ax.spines[['top', 'right']].set_visible(False)
         handles = [mpatches.Patch(color=c, label=n) for c, n in zip(colors, names)]
-        fig.legend(handles=handles, loc='lower center', ncol=4, fontsize=6.5, frameon=False,
+        fig.legend(handles=handles, loc='lower center', ncol=4, fontsize=10.5, frameon=False,
                    bbox_to_anchor=(0.5, 0.0))
         plt.tight_layout(rect=[0, 0.07, 0.92, 1])
         plt.savefig(outdir + f'{fname}_by_group.png', dpi=300, bbox_inches='tight')
@@ -257,19 +260,19 @@ class Time_series_base():
         gl.right_labels = False
         gl.xlocator = mticker.FixedLocator(range(-125, -100, 5))
         gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
-        gl.xlabel_style = {'size': 6}
-        gl.ylabel_style = {'size': 6}
-        ax.set_title(label, fontsize=7)
+        gl.xlabel_style = {'size': 9.5}
+        gl.ylabel_style = {'size': 9.5}
+        ax.set_title(label, fontsize=11)
         cb = plt.colorbar(im, ax=ax, orientation='horizontal', shrink=0.7, ticks=bounds, extend='both', pad=0.08,
                           aspect=35)
-        cb.ax.tick_params(labelsize=6)
-        cb.set_label('Dots: p < 0.05', fontsize=6)
+        cb.ax.tick_params(labelsize=9.5)
+        cb.set_label('Dots: p < 0.05', fontsize=9.5)
         ## small bar chart in the lower-left corner of the map (Pacific, no study pixels there), no axis labels:
         ##   bars left to right = sig negative, non-sig negative, non-sig positive, sig positive (explained in caption)
         ax_b = ax.inset_axes([0.03, 0.03, 0.24, 0.17])
         ax_b.bar(range(4), area, color=[c for _, _, c in cats], width=0.75, edgecolor='#333333', linewidth=0.25)
         for i_, a in enumerate(area):
-            ax_b.text(i_, a + max(area) * 0.04, f'{a:.0f}%', ha='center', va='bottom', fontsize=4.5)
+            ax_b.text(i_, a + max(area) * 0.04, f'{a:.0f}%', ha='center', va='bottom', fontsize=7)
         ax_b.set_ylim(0, max(area) * 1.3 + 1)
         ax_b.set_xticks([])
         ax_b.set_yticks([])
@@ -417,7 +420,7 @@ class Long_LAI_time_series(Time_series_base):
             d = d.assign(rel=(d[col] / mean - 1) * 100)
             out[label] = self.wmean(d, 'rel', years)
         r, p_r = stats.pearsonr(out['MODIS'], out[self.name])
-        fig, ax = plt.subplots(figsize=(self.map_width * 1.2, self.map_height * 0.7))
+        fig, ax = plt.subplots(figsize=(self.map_width * 1.6, self.map_height * 0.9))
         text = f'r = {r:.2f} (p = {p_r:.3f})'
         for label, color in [('MODIS', '#555555'), (self.name, '#2E7D32')]:
             y = out[label]
@@ -425,10 +428,10 @@ class Long_LAI_time_series(Time_series_base):
             ax.plot(years, y, color=color, lw=1.5, label=label)
             ax.plot(years, sl * years + ic, color=color, lw=1, ls='--')
             text += f'\n{label}: {sl * 10:+.2f} % per decade (p = {p:.2f})'
-        ax.text(0.01, 0.97, text, transform=ax.transAxes, fontsize=7, va='top')
+        ax.text(0.01, 0.97, text, transform=ax.transAxes, fontsize=11, va='top')
         ax.axhline(0, color='grey', lw=0.5)
-        ax.set_ylabel('GS LAI (% of 2003-end mean)', fontsize=9)
-        ax.legend(frameon=False, fontsize=7, loc='lower right')
+        ax.set_ylabel('GS LAI (% of 2003-end mean)', fontsize=14.5)
+        ax.legend(frameon=False, fontsize=11, loc='lower right')
         ax.spines[['top', 'right']].set_visible(False)
         plt.tight_layout()
         plt.savefig(self.outdir + f'Fig_{self.name}_vs_MODIS.png', dpi=300)
@@ -467,7 +470,7 @@ class Long_LAI_time_series(Time_series_base):
         groups = list(dict.fromkeys(tab['class']))
         xx = np.arange(len(groups))
         wd = 0.26
-        fig, ax = plt.subplots(figsize=(self.map_width * 1.4, self.map_height * 0.8))
+        fig, ax = plt.subplots(figsize=(self.map_width * 1.8, self.map_height * 1.0))
         for k, (per, color) in enumerate(zip(period_list, color_list)):
             d = tab[tab['period'] == per].set_index('class').reindex(groups)
             v = d['trend_per_decade'].values
@@ -476,11 +479,11 @@ class Long_LAI_time_series(Time_series_base):
                    label=per)
         ax.axhline(0, color='k', lw=0.6)
         ax.set_xticks(xx)
-        ax.set_xticklabels([g.replace(' ', '\n') for g in groups], fontsize=7)
-        ax.set_ylabel('LAI trend (% per decade)', fontsize=9)
-        ax.set_title(f'{self.name} growing-season LAI trend by group', fontsize=9)
-        ax.legend(frameon=False, fontsize=7, ncol=3)
-        ax.tick_params(labelsize=7)
+        ax.set_xticklabels([g.replace(' ', '\n') for g in groups], fontsize=11)
+        ax.set_ylabel('LAI trend (% per decade)', fontsize=14.5)
+        ax.set_title(f'{self.name} growing-season LAI trend by group', fontsize=14.5)
+        ax.legend(frameon=False, fontsize=11, ncol=3)
+        ax.tick_params(labelsize=11)
         ax.spines[['top', 'right']].set_visible(False)
         plt.tight_layout()
         plt.savefig(self.outdir + f'Fig_{self.name}_trend_bar.png', dpi=300)
@@ -564,20 +567,20 @@ class MODIS_LAI_time_series(Time_series_base):
                                             'sig_increase_area_%', 'sig_decrease_area_%'])
         tab.to_csv(self.outdir + 'Fig_MODIS_LAI_GS_trend_bar.csv', index=False)
         print(tab.round(2).to_string())
-        fig, ax = plt.subplots(figsize=(self.map_width * 1.2, self.map_height * 0.8))
+        fig, ax = plt.subplots(figsize=(self.map_width * 1.6, self.map_height * 1.0))
         xx = np.arange(len(tab))
         err = np.array([tab['trend_per_decade'] - tab['ci_low'], tab['ci_high'] - tab['trend_per_decade']])
         ax.bar(xx, tab['trend_per_decade'], color=[color_dic[c] for c in tab['class']], width=0.65,
                yerr=err, capsize=3, error_kw={'lw': 0.8})
         for xi, v, lo, hi in zip(xx, tab['trend_per_decade'], tab['ci_low'], tab['ci_high']):
             ax.text(xi, hi + 0.2 if v >= 0 else lo - 0.2, f'{v:+.2f}', ha='center',
-                    va='bottom' if v >= 0 else 'top', fontsize=7)
+                    va='bottom' if v >= 0 else 'top', fontsize=11)
         ax.axhline(0, color='k', lw=0.6)
         ax.set_xticks(xx)
         ax.set_xticklabels([f'{c.replace(" ", chr(10))}\n(n={n})' for c, n in zip(tab['class'], tab['n_pix'])],
-                           fontsize=7)
-        ax.set_ylabel('LAI trend (% per decade)', fontsize=9)
-        ax.set_title('Growing-season LAI trend, 2003-2024', fontsize=9)
+                           fontsize=11)
+        ax.set_ylabel('LAI trend (% per decade)', fontsize=14.5)
+        ax.set_title('Growing-season LAI trend, 2003-2024', fontsize=14.5)
         lo_lim = min(0, tab['ci_low'].min()) * 1.25
         hi_lim = max(0, tab['ci_high'].max()) * 1.25
         ax.set_ylim(lo_lim - 0.5, hi_lim + 0.5)
@@ -760,7 +763,7 @@ class Daymet_time_series(Time_series_base):
                 if len(var_list) == 0:
                     continue
                 fig, axs = plt.subplots(len(var_list), 1, sharex=True, squeeze=False,
-                                        figsize=(self.map_width * 1.2, self.map_height * 0.45 * len(var_list)))
+                                        figsize=(self.map_width * 1.7, self.map_height * 0.6 * len(var_list)))
                 axs = axs[:, 0]
                 for ax, var in zip(axs, var_list):
                     d = df_t[(df_t['window'] == season) & (df_t['variable'] == var)].reset_index(drop=True)
@@ -773,18 +776,18 @@ class Daymet_time_series(Time_series_base):
                     ax.errorbar(xx, v, yerr=[v - lo, hi - v], fmt='none', ecolor='k', elinewidth=0.6, capsize=2)
                     for xi, vi, l0, h0 in zip(xx, v, lo, hi):
                         ax.text(xi, h0 if vi >= 0 else l0, f'{vi:+.2f}', ha='center', va='bottom' if vi >= 0 else 'top',
-                                fontsize=5.5)
+                                fontsize=9)
                     ax.axhline(0, color='k', lw=0.5)
                     unit = d['unit'].iloc[0]
-                    ax.set_ylabel(f'{var}\n({unit})', fontsize=7)
-                    ax.tick_params(labelsize=6.5)
+                    ax.set_ylabel(f'{var}\n({unit})', fontsize=11)
+                    ax.tick_params(labelsize=10.5)
                     ax.spines[['top', 'right']].set_visible(False)
                     ymin, ymax = min(0, np.nanmin(lo)), max(0, np.nanmax(hi))
                     pad = (ymax - ymin) * 0.25 + 1e-9
                     ax.set_ylim(ymin - pad, ymax + pad)
                 axs[-1].set_xticks(xx)
-                axs[-1].set_xticklabels([c.replace(' ', '\n') for c in d['class']], fontsize=6.5)
-                axs[0].set_title(f'Daymet {season} trend 2003-2024 by group (faded: 95% CI includes 0)', fontsize=8)
+                axs[-1].set_xticklabels([c.replace(' ', '\n') for c in d['class']], fontsize=10.5)
+                axs[0].set_title(f'Daymet {season} trend 2003-2024 by group (faded: 95% CI includes 0)', fontsize=13)
                 plt.tight_layout()
                 plt.savefig(self.outdir + f'Fig_Daymet_{season}_trend_bar_{tag}.png', dpi=300, bbox_inches='tight')
                 plt.savefig(self.outdir + f'Fig_Daymet_{season}_trend_bar_{tag}.pdf', bbox_inches='tight')

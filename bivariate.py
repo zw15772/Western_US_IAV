@@ -1,6 +1,9 @@
 ## LAI trend vs SPEI trend at each pixel's best SPEI scale (2026-11-15)
 ## uses GS.df and the trend tools of growing_season_extraction.py (same pixels, same trend, same map style)
 from growing_season_extraction import *
+## 2026-11-21: larger fonts in all figures (default sizes; explicit fontsize values were also enlarged x1.6)
+plt.rcParams.update({'font.size': 12, 'axes.titlesize': 13, 'axes.labelsize': 13, 'xtick.labelsize': 11,
+                     'ytick.labelsize': 11, 'legend.fontsize': 11, 'legend.title_fontsize': 11})
 
 
 class GS_LAI_SPEI_bivariate(Growing_season_trend):
@@ -149,7 +152,7 @@ class GS_LAI_SPEI_bivariate(Growing_season_trend):
         gl.right_labels = False
         gl.xlocator = mticker.FixedLocator(range(-125, -100, 5))
         gl.ylocator = mticker.FixedLocator(range(25, 50, 5))
-        ax.set_title(fname, fontsize=9)
+        ax.set_title(fname, fontsize=14.5)
         ## stacked bars per vegetation type
         ax2 = fig.add_axes([0.66, 0.22, 0.31, 0.66])
         y = np.arange(len(group_names))[::-1]
@@ -158,18 +161,18 @@ class GS_LAI_SPEI_bivariate(Growing_season_trend):
             ax2.barh(y, share[:, c], left=left, color=colors[c], height=0.7, edgecolor='white', linewidth=0.5)
             for yy, l0, v in zip(y, left, share[:, c]):
                 if v >= 8:
-                    ax2.text(l0 + v / 2, yy, f'{v:.0f}', ha='center', va='center', fontsize=6,
+                    ax2.text(l0 + v / 2, yy, f'{v:.0f}', ha='center', va='center', fontsize=9.5,
                              color='white' if c in (0, n - 2, n - 1) else 'black')
             left += share[:, c]
         ax2.set_yticks(y)
-        ax2.set_yticklabels(group_names, fontsize=8)
+        ax2.set_yticklabels(group_names, fontsize=13)
         ax2.set_xlim(0, 100)
-        ax2.set_xlabel('Area (%)', fontsize=8)
-        ax2.tick_params(labelsize=7)
+        ax2.set_xlabel('Area (%)', fontsize=13)
+        ax2.tick_params(labelsize=11)
         ax2.spines[['top', 'right']].set_visible(False)
         ## legend of the classes
         handles = [mpatches.Patch(color=c, label=l) for l, c in zip(labels, colors)]
-        fig.legend(handles=handles, loc='lower center', ncol=n, fontsize=7, title=cbar_label, title_fontsize=7,
+        fig.legend(handles=handles, loc='lower center', ncol=n, fontsize=11, title=cbar_label, title_fontsize=11,
                    frameon=False, bbox_to_anchor=(0.5, 0.0))
         plt.savefig(self.outdir + f'{fname}_map.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'{fname}_map.pdf', bbox_inches='tight')
@@ -200,8 +203,8 @@ class GS_LAI_SPEI_bivariate(Growing_season_trend):
         gl.right_labels = False
         handles = [mpatches.Patch(color=c, label=f'{q.replace("_", " + ")} ({a:.0f}%)')
                    for q, c, a in zip(self.quad_list, self.quad_color, area)]
-        ax.legend(handles=handles, loc='lower left', fontsize=6, title='SPEI trend + LAI trend (area)',
-                  title_fontsize=6, framealpha=1)
+        ax.legend(handles=handles, loc='lower left', fontsize=9.5, title='SPEI trend + LAI trend (area)',
+                  title_fontsize=9.5, framealpha=1)
         plt.title(fname)
         plt.savefig(self.outdir + f'{fname}_map.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'{fname}_map.pdf', bbox_inches='tight')
@@ -227,10 +230,10 @@ class GS_LAI_SPEI_bivariate(Growing_season_trend):
                                            ['left', 'left', 'right', 'right'], ['bottom', 'top', 'top', 'bottom']):
                 a = np.sum(w[(np.sign(x) == sx) & (np.where(y >= 0, 1, -1) == sy)]) / np.sum(w) * 100
                 ax.text(0.03 if sx < 0 else 0.97, 0.03 if sy < 0 else 0.97, f'{a:.0f}%', color=c, ha=ha, va=va,
-                        transform=ax.transAxes, fontsize=8, fontweight='bold')
-            ax.set_title(f'{lc} (n={m.sum()})', fontsize=9)
-            ax.set_xlabel('SPEI trend, best scale (/decade)', fontsize=8)
-        axs[0].set_ylabel('LAI trend (% /decade)', fontsize=8)
+                        transform=ax.transAxes, fontsize=13, fontweight='bold')
+            ax.set_title(f'{lc} (n={m.sum()})', fontsize=14.5)
+            ax.set_xlabel('SPEI trend, best scale (/decade)', fontsize=13)
+        axs[0].set_ylabel('LAI trend (% /decade)', fontsize=13)
         plt.tight_layout()
         plt.savefig(self.outdir + f'{fname}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'{fname}.pdf', bbox_inches='tight')
@@ -368,18 +371,18 @@ class LAI_SPEI_scale_heatmap(GS_LAI_SPEI_bivariate):
             for i in range(v.shape[0]):
                 for j in range(v.shape[1]):
                     hi = v[i, j] > bounds[0] + 0.6 * (bounds[-1] - bounds[0])
-                    ax.text(j, i, fmt.format(v[i, j]), ha='center', va='center', fontsize=6,
+                    ax.text(j, i, fmt.format(v[i, j]), ha='center', va='center', fontsize=9.5,
                             color='white' if hi else 'black')
                 if col == 'mean_r':
                     j = int(np.nanargmax(v[i]))
                     ax.add_patch(Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False, edgecolor='#C2410C', lw=1.5))
             ax.set_xticks(range(v.shape[1]))
-            ax.set_xticklabels([f'{s}' for s in mat.columns], fontsize=7)
+            ax.set_xticklabels([f'{s}' for s in mat.columns], fontsize=11)
             ax.set_yticks(range(v.shape[0]))
-            ax.set_yticklabels(mat.index, fontsize=8)
-            ax.set_title(title, fontsize=9)
+            ax.set_yticklabels(mat.index, fontsize=13)
+            ax.set_title(title, fontsize=14.5)
             plt.colorbar(im, ax=ax, fraction=0.025, pad=0.01, ticks=bounds, extend='max')
-        axs[-1].set_xlabel('SPEI scale (months)', fontsize=8)
+        axs[-1].set_xlabel('SPEI scale (months)', fontsize=13)
         plt.tight_layout()
         plt.savefig(self.outdir + f'LAI_SPEI_scale_heatmap_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'LAI_SPEI_scale_heatmap_{self.tag}.pdf', bbox_inches='tight')
@@ -466,11 +469,127 @@ class Best_scale_long(GS_LAI_SPEI_bivariate):
         return out
 
 
+class Decoupling_long(Best_scale_long):
+    ## decoupling of LAI from drought with the long LAI records, as Fig 4 (bivariate + Model 1) (2026-11-21)
+    ## input : best_scale_long_{name}_{y0}_{y1}.df (Best_scale_long must run first), GS_{name}.df, SPEI_GS_1958_2024.df
+    ## beta  : Model 1 main version: pooled slope of detrended GS_LAI_rel (% of the pixel's mean) on detrended SPEI at
+    ##         the pixel's best scale, per vegetation type (Forest, Shrub, Grass, Savanna), whole record
+    ## per period (whole record, y0-1999, 2000-y1): OLS trends (per decade, not detrended) of GS_LAI_rel and of
+    ##   SPEI at the best scale ->
+    ##   bivariate classes: drier + browning, drier + greening, wetter + greening, wetter + browning
+    ##     (map + area by group, LAI_SPEI_bivariate_{tag}_{t0}_{t1}_map.png)
+    ##   expected = beta x SPEI trend; gap = observed - expected; area-weighted mean per group with 95% CI
+    ## figure: decoupling_bar_{tag}.png, one panel per period, observed / expected / gap per group
+    ## table : decoupling_summary_{tag}.csv (also the area % of the four classes per group and period)
+    ## output: Result2\03_response\best_scale_long\
+    def __init__(self, name, first_year, last_year):
+        super().__init__(name, first_year, last_year)
+        self.period_list = [(first_year, last_year), (first_year, 1999), (2000, last_year)]
+        self.lc_list = ['Forest', 'Shrub', 'Grass', 'Savanna']
+        self.color_dic = {'observed': '#2E7D32', 'expected': '#C0392B', 'gap': '#7F8C8D'}
+
+    def run(self):
+        from scipy.signal import detrend
+        bs = T.load_df(self.outdir + f'best_scale_long_{self.tag}.df')
+        info = bs[['area_weight', 'landcover_type', 'lon', 'lat']]
+        best_scale = bs['best_scale'].values
+        lai_df = T.load_df(self.lai_dff)
+        lai_df = lai_df[lai_df['pix'].isin(set(info.index))]
+        lai = lai_df.pivot(index='pix', columns='year', values='GS_LAI_rel').reindex(index=info.index,
+                                                                                     columns=self.year_list).values
+        spei_df = T.load_df(self.spei_dff)
+        spei_df = spei_df[spei_df['pix'].isin(set(info.index))]
+        spei = np.full(lai.shape, np.nan)
+        for scale in self.scale_list:
+            m = best_scale == scale
+            if m.sum() == 0:
+                continue
+            spei[m] = spei_df.pivot(index='pix', columns='year', values=f'growing_SPEI{scale:02d}').reindex(
+                index=info.index, columns=self.year_list).values[m]
+        ok = np.isfinite(lai).all(axis=1) & np.isfinite(spei).all(axis=1)
+        info, lai, spei = info[ok], lai[ok], spei[ok]
+        print(self.tag, '| pixels:', len(info))
+        ## beta per vegetation type, whole record
+        lai_d, spei_d = detrend(lai, axis=1), detrend(spei, axis=1)
+        beta = np.full(len(info), np.nan)
+        for lc in self.lc_list:
+            m = (info['landcover_type'] == lc).values
+            beta[m] = np.sum(lai_d[m] * spei_d[m]) / np.sum(spei_d[m] ** 2)
+            print(f'  beta {lc}: {beta[m][0]:.2f} % LAI per SPEI unit')
+        years = np.array(self.year_list)
+        groups = self.group_masks(info)
+        w_all = info['area_weight'].values
+        result = []
+        for t0, t1 in self.period_list:
+            k = (years >= t0) & (years <= t1)
+            tr_lai = self.trend_years(lai[:, k], years[k])
+            tr_spei = self.trend_years(spei[:, k], years[k])
+            quad = np.where(tr_spei < 0, np.where(tr_lai < 0, 1, 2), np.where(tr_lai >= 0, 3, 4)).astype(float)
+            self.class_map(info, quad, f'LAI_SPEI_bivariate_{self.tag}_{t0}_{t1}', [0.5, 1.5, 2.5, 3.5, 4.5],
+                           ['Drier + browning', 'Drier + greening', 'Wetter + greening', 'Wetter + browning'],
+                           self.quad_color, f'SPEI trend + LAI trend, {t0}-{t1}')
+            exp = beta * tr_spei
+            gap = tr_lai - exp
+            for g, mg in groups.items():
+                m = mg & np.isfinite(gap)
+                if m.sum() < 30:
+                    continue
+                w = w_all[m]
+                row = [f'{t0}-{t1}', g, int(m.sum()), np.sum(tr_spei[m] * w) / np.sum(w)]
+                for v in [tr_lai, exp, gap]:
+                    lo, hi = self.block_ci(info[m], v[m], w)
+                    row += [np.sum(v[m] * w) / np.sum(w), lo, hi]
+                row += [np.sum(w[quad[m] == q]) / np.sum(w) * 100 for q in [1, 2, 3, 4]]
+                result.append(row)
+        cols = ['period', 'class', 'n_pix', 'SPEI_trend']
+        for name in ['observed', 'expected', 'gap']:
+            cols += [name, f'{name}_ci_low', f'{name}_ci_high']
+        cols += [f'{q}_area_%' for q in self.quad_list]
+        tab = pd.DataFrame(result, columns=cols)
+        tab.to_csv(self.outdir + f'decoupling_summary_{self.tag}.csv', index=False)
+        print(tab[['period', 'class', 'n_pix', 'SPEI_trend', 'observed', 'expected', 'gap', 'drier_greening_area_%']]
+              .round(2).to_string())
+        self.decoupling_bar(tab)
+        pass
+
+    def trend_years(self, arr, years):
+        ## OLS slope per decade per row
+        x = years.astype(float) - years.mean()
+        ym = arr - arr.mean(axis=1, keepdims=True)
+        return ym @ x / np.sum(x ** 2) * 10
+
+    def decoupling_bar(self, tab):
+        ## one panel per period: observed / expected / gap per group, 95% CI
+        period_list = list(dict.fromkeys(tab['period']))
+        fig, axs = plt.subplots(len(period_list), 1, figsize=(9, 2.6 * len(period_list)), sharex=True, sharey=True)
+        for ax, per in zip(np.atleast_1d(axs), period_list):
+            d = tab[tab['period'] == per].reset_index(drop=True)
+            x = np.arange(len(d))
+            for k, name in enumerate(['observed', 'expected', 'gap']):
+                err = np.array([d[name] - d[f'{name}_ci_low'], d[f'{name}_ci_high'] - d[name]])
+                ax.bar(x + (k - 1) * 0.27, d[name], width=0.27, color=self.color_dic[name], yerr=err, capsize=2,
+                       error_kw={'lw': 0.6}, label=name)
+            ax.axhline(0, color='k', lw=0.5)
+            ax.set_title(f'{self.name} {per}', fontsize=14.5)
+            ax.set_ylabel('LAI trend (% per decade)', fontsize=13)
+            ax.tick_params(labelsize=11)
+            ax.spines[['top', 'right']].set_visible(False)
+        ax.set_xticks(x)
+        ax.set_xticklabels([c.replace(' ', '\n') for c in d['class']], fontsize=11)
+        np.atleast_1d(axs)[0].legend(fontsize=11, frameon=False, ncol=3)
+        plt.tight_layout()
+        plt.savefig(self.outdir + f'decoupling_bar_{self.tag}.png', dpi=300, bbox_inches='tight')
+        plt.savefig(self.outdir + f'decoupling_bar_{self.tag}.pdf', bbox_inches='tight')
+        plt.close()
+
+
 def main():
     # GS_LAI_SPEI_bivariate().run()    ## 2026-11-21: area bars of the class maps in 7 groups (done)
     # LAI_SPEI_scale_heatmap().run()   ## detrended LAI vs SPEI r by scale and vegetation type
-    Best_scale_long('GIMMS', 1982, 2020).run()   ## 2026-11-21: best SPEI scale with GIMMS LAI
-    Best_scale_long('SNU', 1982, 2024).run()     ## 2026-11-21: best SPEI scale with SNU LAI
+    # Best_scale_long('GIMMS', 1982, 2020).run()   ## 2026-11-21: best SPEI scale with GIMMS LAI (done)
+    # Best_scale_long('SNU', 1982, 2024).run()     ## 2026-11-21: best SPEI scale with SNU LAI (done)
+    Decoupling_long('GIMMS', 1982, 2020).run()   ## 2026-11-21: bivariate + Model 1, three periods
+    Decoupling_long('SNU', 1982, 2024).run()
 
 
 if __name__ == '__main__':

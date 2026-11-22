@@ -1,5 +1,8 @@
 # coding='utf-8'
 from __Global__ import *
+## 2026-11-21: larger fonts in all figures (default sizes; explicit fontsize values were also enlarged x1.6)
+plt.rcParams.update({'font.size': 12, 'axes.titlesize': 13, 'axes.labelsize': 13, 'xtick.labelsize': 11,
+                     'ytick.labelsize': 11, 'legend.fontsize': 11, 'legend.title_fontsize': 11})
 from scipy import stats
 tif_template = data_root + rf'basedata\200902.tif'   ## 0.05 deg template grid, 449 x 468
 D = DIC_and_TIF(tif_template=tif_template)
@@ -40,7 +43,7 @@ class Map_plotter():
         gl.ylocator = mticker.FixedLocator(range(25, 50, 5))
         if discrete_levels is not None:
             cbar = plt.colorbar(im, ax=ax, shrink=0.8, ticks=levels, spacing='uniform')
-            cbar.ax.tick_params(labelsize=6)
+            cbar.ax.tick_params(labelsize=9.5)
         else:
             cbar = plt.colorbar(im, ax=ax, shrink=0.8)
         cbar.set_label(cbar_label)
@@ -59,8 +62,8 @@ class Map_plotter():
             centers = (edges[:-1] + edges[1:]) / 2
             ax_in.bar(centers, area, width=edges[1] - edges[0], color=cmap_obj(norm(centers)))
             ax_in.axvline(0, color='grey', lw=0.5)
-        ax_in.set_title('Area (%)', fontsize=6, pad=2)
-        ax_in.tick_params(labelsize=6)
+        ax_in.set_title('Area (%)', fontsize=9.5, pad=2)
+        ax_in.tick_params(labelsize=9.5)
         ax_in.set_zorder(20)
         ax_in.patch.set_facecolor('white')
         ax_in.patch.set_alpha(1)

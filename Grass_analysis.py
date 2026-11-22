@@ -3,6 +3,9 @@
 ## all outputs in Result2\Grass_attribution\ (one sub-folder per class)
 ## 2026-11-20
 from growing_season_extraction import *
+## 2026-11-21: larger fonts in all figures (default sizes; explicit fontsize values were also enlarged x1.6)
+plt.rcParams.update({'font.size': 12, 'axes.titlesize': 13, 'axes.labelsize': 13, 'xtick.labelsize': 11,
+                     'ytick.labelsize': 11, 'legend.fontsize': 11, 'legend.title_fontsize': 11})
 from scipy import ndimage
 import matplotlib.ticker
 
@@ -103,13 +106,13 @@ class Grass_smooth_trend():
             gl.right_labels = False
             gl.xlocator = mticker.FixedLocator(range(-125, -100, 5))
             gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
-            gl.xlabel_style = {'size': 6}
-            gl.ylabel_style = {'size': 6}
-            ax.set_title(title[name], fontsize=7.5)
+            gl.xlabel_style = {'size': 9.5}
+            gl.ylabel_style = {'size': 9.5}
+            ax.set_title(title[name], fontsize=12)
         cax = fig.add_axes([0.2, 0.08, 0.6, 0.03])
         cb = fig.colorbar(im, cax=cax, orientation='horizontal', ticks=self.bounds, extend='both')
-        cb.set_label('Grass unexplained LAI trend (% per decade)', fontsize=7)
-        cb.ax.tick_params(labelsize=6.5)
+        cb.set_label('Grass unexplained LAI trend (% per decade)', fontsize=11)
+        cb.ax.tick_params(labelsize=10.5)
         plt.subplots_adjust(left=0.04, right=0.98, top=0.9, bottom=0.18, wspace=0.12)
         plt.savefig(self.outdir + f'grass_C_raw_vs_smooth_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'grass_C_raw_vs_smooth_{self.tag}.pdf', bbox_inches='tight')
@@ -211,12 +214,12 @@ class Grass_aridity(Growing_season_trend):
             ax.xaxis.set_major_locator(matplotlib.ticker.FixedLocator([0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1.0]))
             ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%.2f'))   ## plain decimals
             ax.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
-            ax.set_xlabel('Aridity index P / PET (drier ←)', fontsize=8)
-            ax.set_ylabel(label, fontsize=8)
-            ax.tick_params(labelsize=7)
+            ax.set_xlabel('Aridity index P / PET (drier ←)', fontsize=13)
+            ax.set_ylabel(label, fontsize=13)
+            ax.tick_params(labelsize=11)
             ax.spines[['top', 'right']].set_visible(False)
         if len(self.group_color) > 1:
-            axs[0].legend(fontsize=6.5, frameon=False)
+            axs[0].legend(fontsize=10.5, frameon=False)
         plt.tight_layout()
         plt.savefig(self.outdir + f'grass_C_aridity_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'grass_C_aridity_{self.tag}.pdf', bbox_inches='tight')
@@ -465,12 +468,12 @@ y1.onChange(refresh); y2.onChange(refresh);
             ax.scatter(d['lon'], d['lat'], marker=self.group_marker[g], s=28, facecolor=color, edgecolor='white', lw=0.6,
                        transform=ccrs.PlateCarree(), label=g, zorder=5)
             for _, s in d.iterrows():
-                ax.text(s['lon'] + 0.25, s['lat'] + 0.15, s['site'], fontsize=5.5, transform=ccrs.PlateCarree(),
+                ax.text(s['lon'] + 0.25, s['lat'] + 0.15, s['site'], fontsize=9, transform=ccrs.PlateCarree(),
                         zorder=6)
-        ax.legend(fontsize=6.5, frameon=False, loc='lower left')
+        ax.legend(fontsize=10.5, frameon=False, loc='lower left')
         cb = fig.colorbar(im, ax=ax, orientation='horizontal', ticks=bounds, extend='both', fraction=0.04, pad=0.04)
-        cb.set_label('Grass unexplained LAI trend, smoothed (% per decade)', fontsize=7)
-        cb.ax.tick_params(labelsize=6.5)
+        cb.set_label('Grass unexplained LAI trend, smoothed (% per decade)', fontsize=11)
+        cb.ax.tick_params(labelsize=10.5)
         plt.savefig(self.outdir + 'grass_NAIP_sites_map.png', dpi=300, bbox_inches='tight')
         plt.close()
 
@@ -562,16 +565,16 @@ class Cropland_threshold_C(Growing_season_trend):
             axs[1].plot(x, d['area_kept_%'], marker='o', ms=3, color=self.color[lc],
                         lw=2 if lc in ('Grass', 'All') else 1, label=lc)
         axs[0].axhline(0, color='grey', lw=0.5)
-        axs[0].set_ylabel('Unexplained LAI trend C (% per decade)', fontsize=8)
-        axs[1].set_ylabel('Area kept (% of Model 2 area)', fontsize=8)
+        axs[0].set_ylabel('Unexplained LAI trend C (% per decade)', fontsize=13)
+        axs[1].set_ylabel('Area kept (% of Model 2 area)', fontsize=13)
         axs[1].set_ylim(0, 105)
         for ax in axs:
             ax.set_xticks(x)
-            ax.set_xticklabels(labels, fontsize=7)
-            ax.set_xlabel('Cropland share allowed in a pixel (NLCD 81 + 82)', fontsize=8)
-            ax.tick_params(labelsize=7)
+            ax.set_xticklabels(labels, fontsize=11)
+            ax.set_xlabel('Cropland share allowed in a pixel (NLCD 81 + 82)', fontsize=13)
+            ax.tick_params(labelsize=11)
             ax.spines[['top', 'right']].set_visible(False)
-        axs[0].legend(fontsize=6.5, frameon=False, ncol=2)
+        axs[0].legend(fontsize=10.5, frameon=False, ncol=2)
         plt.tight_layout()
         plt.savefig(self.outdir + f'cropland_threshold_C_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'cropland_threshold_C_{self.tag}.pdf', bbox_inches='tight')
@@ -674,16 +677,16 @@ class C_by_herb_cover(Growing_season_trend):
                 ax2.bar(d['x_mean'], d['area_%_of_class'], width=(d['x_high'] - d['x_low']) * 0.8,
                         color='#D9D9D9', alpha=0.5, zorder=0)
                 ax2.set_ylim(0, 100)
-                ax2.tick_params(labelsize=6)
+                ax2.tick_params(labelsize=9.5)
                 if j == 1:
-                    ax2.set_ylabel('Area (% of class)', fontsize=7)
+                    ax2.set_ylabel('Area (% of class)', fontsize=11)
                 ax.set_zorder(ax2.get_zorder() + 1)
                 ax.patch.set_visible(False)
-                ax.set_title(lc, fontsize=8)
-                ax.set_xlabel(xlabel, fontsize=7)
-                ax.tick_params(labelsize=7)
-            axs[i, 0].set_ylabel('LAI trend (% per decade)', fontsize=8)
-        axs[0, 0].legend(fontsize=6, frameon=False, ncol=2)
+                ax.set_title(lc, fontsize=13)
+                ax.set_xlabel(xlabel, fontsize=11)
+                ax.tick_params(labelsize=11)
+            axs[i, 0].set_ylabel('LAI trend (% per decade)', fontsize=13)
+        axs[0, 0].legend(fontsize=9.5, frameon=False, ncol=2)
         plt.tight_layout()
         plt.savefig(self.outdir + f'LAI_trend_by_herb_cover_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'LAI_trend_by_herb_cover_{self.tag}.pdf', bbox_inches='tight')
@@ -778,13 +781,13 @@ class Observed_trend_by_herb_cover(Growing_season_trend):
                                 capsize=2, color=self.color[lc], ls=ls, lw=1.6 if p != 'late' else 1,
                                 alpha=1 if p != 'late' else 0.7, label=f'cover {plabel}')
                 ax.axhline(0, color='grey', lw=0.5)
-                ax.set_title(lc, fontsize=8)
-                ax.set_xlabel(xlabel, fontsize=7)
-                ax.tick_params(labelsize=7)
+                ax.set_title(lc, fontsize=13)
+                ax.set_xlabel(xlabel, fontsize=11)
+                ax.tick_params(labelsize=11)
                 ax.spines[['top', 'right']].set_visible(False)
-            axs[i, 0].set_ylabel('Observed LAI trend (% per decade)', fontsize=8)
+            axs[i, 0].set_ylabel('Observed LAI trend (% per decade)', fontsize=13)
             if len(self.period_dic) > 1:
-                axs[i, 0].legend(fontsize=6.5, frameon=False)
+                axs[i, 0].legend(fontsize=10.5, frameon=False)
         plt.tight_layout()
         plt.savefig(self.outdir + f'observed_trend_by_herb_cover_{self.tag}.png', dpi=300, bbox_inches='tight')
         plt.savefig(self.outdir + f'observed_trend_by_herb_cover_{self.tag}.pdf', bbox_inches='tight')
