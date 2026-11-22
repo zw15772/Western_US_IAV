@@ -16,6 +16,21 @@ class GS_LAI_SPEI_bivariate(Growing_season_trend):
         self.scale_list = list(range(3, 49, 3))
         self.quad_list = ['drier_browning', 'drier_greening', 'wetter_greening', 'wetter_browning']
         self.quad_color = ['#C0392B', '#27AE60', '#2471A3', '#E67E22']
+        ## herbaceous group per pixel (annual: 2003-2024 mean RAP AFG > PFG), from Model2_annual_perennial (2026-11-21)
+        self.herb_dff = this_root + rf'Result2\03_response\model2_annual_perennial\model2_annual_perennial_compare_{self.tag}.df'
+
+    def group_masks(self, info):
+        ## 7 groups as Fig 5 (2026-11-21): All, Forest, Shrub annual / perennial, Grass annual / perennial, Savanna
+        hg = T.load_df(self.herb_dff)
+        grp_dic = dict(zip(hg.index, hg['herb_group'].values))
+        grp = np.array([grp_dic.get(pix, '') for pix in info.index])
+        lc = info['landcover_type'].values
+        out = {'All': np.ones(len(info), dtype=bool), 'Forest': lc == 'Forest'}
+        for c in ['Shrub', 'Grass']:
+            for g in ['annual', 'perennial']:
+                out[f'{c} {g}'] = (lc == c) & (grp == g)
+        out['Savanna'] = lc == 'Savanna'
+        return out
 
     def run(self):
         df, info = self.load()
@@ -110,15 +125,16 @@ class GS_LAI_SPEI_bivariate(Growing_season_trend):
         D.arr_to_tif(D.pix_dic_to_spatial_arr(dict(zip(info.index, vals))), self.outdir + f'{fname}.tif')
         arr = D.pix_dic_to_spatial_arr(dict(zip(info.index, k + 1)))
         arr[arr <= 0] = np.nan
-        ## area % per vegetation type x class
+        ## area % per group x class; 2026-11-21: 7 groups as Fig 5 (Shrub and Grass split into annual / perennial)
         w = info['area_weight'].values
-        lc_all = info['landcover_type'].values
+        groups = self.group_masks(info)
+        group_names = list(groups)
         share = []
-        for lc in self.class_list:
-            m = np.isfinite(k) & ((lc_all == lc) if lc != 'All' else True)
+        for g, mg in groups.items():
+            m = np.isfinite(k) & mg
             share.append([np.sum(w[m & (k == c)]) / np.sum(w[m]) * 100 for c in range(n)])
         share = np.array(share)
-        pd.DataFrame(share, index=self.class_list, columns=labels).round(1).to_csv(
+        pd.DataFrame(share, index=group_names, columns=labels).round(1).to_csv(
             self.outdir + f'{fname}_area_by_vegetation.csv')
         fig = plt.figure(figsize=(10, 4.8))
         ax = fig.add_axes([0.02, 0.14, 0.56, 0.80], projection=ccrs.PlateCarree())
@@ -136,8 +152,8 @@ class GS_LAI_SPEI_bivariate(Growing_season_trend):
         ax.set_title(fname, fontsize=9)
         ## stacked bars per vegetation type
         ax2 = fig.add_axes([0.66, 0.22, 0.31, 0.66])
-        y = np.arange(len(self.class_list))[::-1]
-        left = np.zeros(len(self.class_list))
+        y = np.arange(len(group_names))[::-1]
+        left = np.zeros(len(group_names))
         for c in range(n):
             ax2.barh(y, share[:, c], left=left, color=colors[c], height=0.7, edgecolor='white', linewidth=0.5)
             for yy, l0, v in zip(y, left, share[:, c]):
@@ -146,7 +162,7 @@ class GS_LAI_SPEI_bivariate(Growing_season_trend):
                              color='white' if c in (0, n - 2, n - 1) else 'black')
             left += share[:, c]
         ax2.set_yticks(y)
-        ax2.set_yticklabels(self.class_list, fontsize=8)
+        ax2.set_yticklabels(group_names, fontsize=8)
         ax2.set_xlim(0, 100)
         ax2.set_xlabel('Area (%)', fontsize=8)
         ax2.tick_params(labelsize=7)
@@ -371,8 +387,8 @@ class LAI_SPEI_scale_heatmap(GS_LAI_SPEI_bivariate):
 
 
 def main():
-    GS_LAI_SPEI_bivariate().run()
-    LAI_SPEI_scale_heatmap().run()   ## detrended LAI vs SPEI r by scale and vegetation type
+    GS_LAI_SPEI_bivariate().run()    ## 2026-11-21: area bars of the class maps in 7 groups
+    # LAI_SPEI_scale_heatmap().run()   ## detrended LAI vs SPEI r by scale and vegetation type
 
 
 if __name__ == '__main__':

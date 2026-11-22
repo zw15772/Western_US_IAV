@@ -20,6 +20,8 @@ class Time_series_base():
         ## trend periods: (start, end, linestyle)
         self.trend_period_list = [(1982, 2024, ':'), (2000, 2024, '-')]
         self.ylabel_dic = {}   ## y-axis label per variable; default = variable name
+        ## herbaceous group per pixel (annual: 2003-2024 mean RAP AFG > PFG), from Model2_annual_perennial (2026-11-21)
+        self.herb_dff = self.result2 + rf'03_response\model2_annual_perennial\model2_annual_perennial_compare_2003_2024.df'
         pass
 
     def load_df(self):
@@ -129,8 +131,56 @@ class Time_series_base():
             p = 2 * stats.t.sf(np.abs(slope / se), len(x) - 2)
         return info, slope * 10, p
 
+    def group_masks(self, info):
+        ## 7 groups as Fig 5 (2026-11-21): All, Forest, Shrub annual / perennial, Grass annual / perennial, Savanna
+        ## Shrub and Grass split by the herbaceous group of Model2_annual_perennial (mean AFG > mean PFG -> annual)
+        hg = T.load_df(self.herb_dff)
+        grp_dic = dict(zip(hg.index, hg['herb_group'].values))
+        grp = np.array([grp_dic.get(pix, '') for pix in info.index])
+        lc = info['landcover_type'].values
+        out = {'All': np.ones(len(info), dtype=bool), 'Forest': lc == 'Forest'}
+        for c in ['Shrub', 'Grass']:
+            for g in ['annual', 'perennial']:
+                out[f'{c} {g}'] = (lc == c) & (grp == g)
+        out['Savanna'] = lc == 'Savanna'
+        return out
+
+    def group_area_bar(self, tab, cats, outdir, fname):
+        ## stacked horizontal bars per group: area % of the 4 classes; area-weighted mean trend on the right (2026-11-21)
+        ## the two non-sig classes in two greys (dark = negative, light = positive)
+        import matplotlib.patches as mpatches
+        colors = [cats[0][2], '#A6A6A6', '#D9D9D9', cats[3][2]]
+        names = [n for n, _, _ in cats]
+        fig, ax = plt.subplots(figsize=(self.map_width * 0.9, self.map_height * 0.75))
+        y = np.arange(len(tab))[::-1]
+        left = np.zeros(len(tab))
+        for k, (c, n) in enumerate(zip(colors, names)):
+            v = tab[n + ' area_%'].values
+            ax.barh(y, v, left=left, color=c, height=0.7, edgecolor='white', linewidth=0.5)
+            for yy, l0, vv in zip(y, left, v):
+                if vv >= 8:
+                    ax.text(l0 + vv / 2, yy, f'{vv:.0f}', ha='center', va='center', fontsize=6,
+                            color='white' if k in (0, 3) else 'black')
+            left += v
+        for yy, mt in zip(y, tab['mean_trend'].values):
+            ax.text(102, yy, f'{mt:+.2f}', va='center', fontsize=6.5)
+        ax.text(102, y[0] + 0.55, 'Mean', va='bottom', fontsize=6.5)
+        ax.set_yticks(y)
+        ax.set_yticklabels([f'{c} (n={n})' for c, n in zip(tab['class'], tab['n_pix'])], fontsize=7)
+        ax.set_xlim(0, 100)
+        ax.set_xlabel('Area (%)', fontsize=8)
+        ax.tick_params(labelsize=7)
+        ax.spines[['top', 'right']].set_visible(False)
+        handles = [mpatches.Patch(color=c, label=n) for c, n in zip(colors, names)]
+        fig.legend(handles=handles, loc='lower center', ncol=4, fontsize=6.5, frameon=False,
+                   bbox_to_anchor=(0.5, 0.0))
+        plt.tight_layout(rect=[0, 0.07, 0.92, 1])
+        plt.savefig(outdir + f'{fname}_by_group.png', dpi=300, bbox_inches='tight')
+        plt.savefig(outdir + f'{fname}_by_group.pdf', bbox_inches='tight')
+        plt.close()
+
     def trend_sig_map(self, info, trend, p, outdir, fname, label, bounds, cmap, cat_names, stride=3, lighten=0.,
-                      dot_size=0.6):
+                      dot_size=0.6, split_herb=False):
         ## trend map with discrete colours, dots = p < 0.05 (every `stride`-th pixel in both directions, so the dots
         ## stay readable), colour bar under the map; small bar chart in the lower-left corner of the map
         ## (Pacific, outside the study pixels) = area share of 4 classes: sig / non-sig negative,
@@ -207,10 +257,15 @@ class Time_series_base():
         plt.savefig(outdir + f'{fname}.png', dpi=300, bbox_inches='tight')
         plt.savefig(outdir + f'{fname}.pdf', bbox_inches='tight')
         plt.close()
-        ## table per vegetation type
+        ## table per vegetation type; split_herb: 7 groups as Fig 5 + stacked bar figure {fname}_by_group (2026-11-21)
+        if split_herb:
+            groups = self.group_masks(info)
+        else:
+            lc_all = info['landcover_type'].values
+            groups = {lc: (np.ones(len(info), dtype=bool) if lc == 'All' else lc_all == lc)
+                      for lc in ['All', 'Forest', 'Shrub', 'Grass', 'Savanna']}
         result = []
-        for lc in ['All', 'Forest', 'Shrub', 'Grass', 'Savanna']:
-            m = np.ones(len(info), dtype=bool) if lc == 'All' else (info['landcover_type'] == lc).values
+        for lc, m in groups.items():
             if m.sum() == 0:
                 continue
             row = [lc, int(m.sum()), np.sum(trend[m] * w[m]) / np.sum(w[m])]
@@ -220,6 +275,8 @@ class Time_series_base():
         tab.to_csv(outdir + f'{fname}_area.csv', index=False)
         print(fname)
         print(tab.round(2).to_string())
+        if split_herb:
+            self.group_area_bar(tab, cats, outdir, fname)
 
 
 class SPEI_time_series_MODIS(Time_series_base):
@@ -252,7 +309,7 @@ class SPEI_time_series_MODIS(Time_series_base):
             info, tr, p = self.pixel_trend(df, f'growing_{var}')
             self.trend_sig_map(info, tr, p, outdir + 'trend_map\\', f'GS_{var}_trend_sig_dots_2003_2024',
                                f'Growing-season {var} trend 2003-2024 (per decade)', self.spei_bounds, 'RdBu',
-                               ('drying', 'wetting'))
+                               ('drying', 'wetting'), split_herb=True)   ## + 7-group bar (2026-11-21)
         pass
 
 
@@ -305,7 +362,8 @@ class MODIS_LAI_time_series(Time_series_base):
         info, tr, p = self.pixel_trend(df, 'growing_LAI_rel')
         self.trend_sig_map(info, tr, p, self.outdir, 'GS_LAI_trend_sig_dots_2003_2024',
                            'Growing-season LAI trend 2003-2024 (% per decade)', [-20, -15, -10, -5,  0,  5, 10, 15,20],
-                           self.veg_colors, ('browning', 'greening'), stride=4, dot_size=2.5)   ## -20..20, bigger dots
+                           self.veg_colors, ('browning', 'greening'), stride=4, dot_size=2.5,
+                           split_herb=True)   ## -20..20, bigger dots; + 7-group bar (2026-11-21)
         self.trend_bar(df)   ## 2026-11-20: LAI trend per vegetation type, bar plot
         pass
 
@@ -313,10 +371,11 @@ class MODIS_LAI_time_series(Time_series_base):
         ## per pixel OLS trend of the growing-season LAI (% of the pixel's 2003-2024 mean per decade),
         ## area-weighted mean per vegetation type with 95% CI (1 x 1 deg block bootstrap, 200 draws)
         ## output: Fig_MODIS_LAI_GS_trend_bar.png / .pdf / .csv in self.outdir
-        class_list = ['All', 'Forest', 'Shrub', 'Grass', 'Savanna']
-        color_dic = {'All': '#555555', 'Forest': '#1B5E20', 'Shrub': '#B8860B', 'Grass': '#7CB342', 'Savanna': '#8D6E63'}
+        ## 2026-11-21: 7 groups as Fig 5 (Shrub and Grass split into annual / perennial)
+        color_dic = {'All': '#555555', 'Forest': '#1B5E20', 'Shrub annual': '#E0B84C', 'Shrub perennial': '#8B6508',
+                     'Grass annual': '#C5E1A5', 'Grass perennial': '#558B2F', 'Savanna': '#8D6E63'}
         years = np.arange(2003, 2025)
-        df = df[df['landcover_type'].isin(class_list[1:])]
+        df = df[df['landcover_type'].isin(['Forest', 'Shrub', 'Grass', 'Savanna'])]
         mat = df.pivot_table(index='pix', columns='year', values=var).reindex(columns=years)
         info = df.groupby('pix')[['lon', 'lat', 'area_weight', 'landcover_type']].first().loc[mat.index]
         x = years.astype(float) - years.mean()
@@ -330,8 +389,7 @@ class MODIS_LAI_time_series(Time_series_base):
         p = 2 * stats.t.sf(np.abs(slope / se), len(x) - 2)
         trend = slope * 10
         result = []
-        for lc in class_list:
-            m = (info['landcover_type'] == lc).values if lc != 'All' else np.ones(len(info), dtype=bool)
+        for lc, m in self.group_masks(info).items():
             w = info['area_weight'].values[m]
             v = trend[m]
             lo, hi = self.block_ci_bar(info['lon'].values[m], info['lat'].values[m], v, w)
@@ -342,7 +400,7 @@ class MODIS_LAI_time_series(Time_series_base):
                                             'sig_increase_area_%', 'sig_decrease_area_%'])
         tab.to_csv(self.outdir + 'Fig_MODIS_LAI_GS_trend_bar.csv', index=False)
         print(tab.round(2).to_string())
-        fig, ax = plt.subplots(figsize=(self.map_width * 0.9, self.map_height * 0.8))
+        fig, ax = plt.subplots(figsize=(self.map_width * 1.2, self.map_height * 0.8))
         xx = np.arange(len(tab))
         err = np.array([tab['trend_per_decade'] - tab['ci_low'], tab['ci_high'] - tab['trend_per_decade']])
         ax.bar(xx, tab['trend_per_decade'], color=[color_dic[c] for c in tab['class']], width=0.65,
@@ -352,7 +410,8 @@ class MODIS_LAI_time_series(Time_series_base):
                     va='bottom' if v >= 0 else 'top', fontsize=7)
         ax.axhline(0, color='k', lw=0.6)
         ax.set_xticks(xx)
-        ax.set_xticklabels([f'{c}\n(n={n})' for c, n in zip(tab['class'], tab['n_pix'])], fontsize=7)
+        ax.set_xticklabels([f'{c.replace(" ", chr(10))}\n(n={n})' for c, n in zip(tab['class'], tab['n_pix'])],
+                           fontsize=7)
         ax.set_ylabel('LAI trend (% per decade)', fontsize=9)
         ax.set_title('Growing-season LAI trend, 2003-2024', fontsize=9)
         lo_lim = min(0, tab['ci_low'].min()) * 1.25
@@ -420,13 +479,15 @@ class Daymet_time_series(Time_series_base):
 
     def run(self):
         df = self.load_df()
-        ## one figure per window (GS, Pant) and vegetation type
+        ## one figure per window (GS, Pant) and group; 2026-11-21: 7 groups as Fig 5
+        info = df.groupby('pix')[['lon', 'lat', 'area_weight', 'landcover_type']].first()
+        groups = self.group_masks(info)
         for season in ['GS', 'Pant']:
             self.season_list = [season]
-            for lc in self.class_list:
-                d = df if lc == 'All' else df[df['landcover_type'] == lc]
+            for g, mg in groups.items():
+                d = df[df['pix'].isin(set(info.index[mg]))]
                 self.plot_time_series(d, self.main_list, self.start_year, self.outdir + rf'time_series\\',
-                                      f'Fig_Daymet_{season}_{lc}')
+                                      f'Fig_Daymet_{season}_{g.replace(" ", "_")}')
             self.plot_time_series(df, self.other_list, self.start_year, self.outdir + rf'time_series\\',
                                   f'FigS_Daymet_{season}_other_All')
         self.season_list = ['GS', 'Pant']
@@ -439,8 +500,19 @@ class Daymet_time_series(Time_series_base):
         info = gs[['lon', 'lat', 'area_weight', 'landcover_type']]
         df = df.join(info, on='pix')
         df = df[(df['year'] >= 2003) & (df['year'] <= 2024)]
+        ## 2026-11-21: same pixels as the SPEI short-term / attribution figures: four vegetation types, NLCD cropland
+        ##   < 5%, complete GS LAI (= pixels of model2_annual_perennial_compare)
+        pix_now = set(T.load_df(self.herb_dff).index)
+        df = df[df['pix'].isin(pix_now)]
         print('pixels:', df['pix'].nunique())
         return df
+
+    def nice_bounds(self, tr):
+        ## symmetric discrete colour bounds: 90th percentile of |trend| rounded up to 1, 2, 2.5 or 5 x 10^k (2026-11-21)
+        v = np.nanpercentile(np.abs(tr), 90)
+        k = 10 ** np.floor(np.log10(v))
+        vlim = k * min([s for s in [1, 2, 2.5, 5, 10] if s * k >= v])
+        return [float(b) for b in np.round(vlim * np.array([-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]), 6)]
 
     def trend(self, arr):
         ## OLS slope per decade and two-sided p, per row (rows with NaN -> NaN)
@@ -487,17 +559,17 @@ class Daymet_time_series(Time_series_base):
                         mat = np.where(mean > 0, (mat / mean - 1) * 100, np.nan)
                     unit = '% per decade'
                 tr, p = self.trend(mat)
-                vlim = np.nanpercentile(np.abs(tr), 90)
                 cmap = 'RdBu_r' if var == 'CDD' else 'RdBu'   ## blue = wetter
-                for vals, fname in [(tr, f'{col}_trend_2003_2024'), (np.where(p < 0.05, tr, np.nan),
-                                                                     f'{col}_trend_sig_2003_2024')]:
-                    arr = D.pix_dic_to_spatial_arr(dict(zip(info.index, vals)))
-                    arr[arr <= -9999] = np.nan
-                    D.arr_to_tif(arr.copy(), outdir + f'{fname}.tif')
-                    ok = np.isfinite(vals)
-                    mapper.plot_map(arr, fname, cmap, -vlim, vlim, f'{col} trend ({unit})', vals[ok], w_all[ok])
-                for lc in self.class_list:
-                    m = (info['landcover_type'] == lc).values if lc != 'All' else np.ones(len(info), dtype=bool)
+                arr = D.pix_dic_to_spatial_arr(dict(zip(info.index, tr)))
+                arr[arr <= -9999] = np.nan
+                D.arr_to_tif(arr.copy(), outdir + f'{col}_trend_2003_2024.tif')
+                ## 2026-11-21: paper style as SPEI / LAI: discrete colours, dots p < 0.05, inset of 4 classes,
+                ##   + 7-group bar ({fname}_by_group) and _area.csv
+                ok = np.isfinite(tr) & np.isfinite(p)
+                self.trend_sig_map(info[ok], tr[ok], p[ok], outdir, f'{col}_trend_sig_dots_2003_2024',
+                                   f'{col} trend 2003-2024 ({unit})', self.nice_bounds(tr), cmap,
+                                   ('decrease', 'increase'), split_herb=True)
+                for lc, m in self.group_masks(info).items():   ## 7 groups (2026-11-21)
                     m = m & np.isfinite(tr)
                     if m.sum() < 30:
                         continue
@@ -509,7 +581,50 @@ class Daymet_time_series(Time_series_base):
         df_t = pd.DataFrame(result, columns=['window', 'variable', 'unit', 'class', 'n_pix', 'trend', 'ci_low',
                                              'ci_high', 'sig_decrease_area_%', 'sig_increase_area_%'])
         df_t.to_csv(self.outdir + 'Daymet_GS_trend_summary_2003_2024.csv', index=False)
-        print(df_t[df_t['class'].isin(['All', 'Grass'])].round(2).to_string())
+        print(df_t[df_t['class'].isin(['All', 'Grass perennial'])].round(2).to_string())
+        self.trend_bar_groups(df_t)
+
+    def trend_bar_groups(self, df_t):
+        ## 2026-11-21: area-weighted mean trend per group (7 groups as Fig 5) with 95% CI, one panel per variable;
+        ## one figure per window (GS, Pant) and variable list; bars faded when the CI includes 0
+        ## output: Fig_Daymet_{window}_trend_bar_{main / other}.png / .pdf in self.outdir
+        color_dic = {'All': '#555555', 'Forest': '#1B5E20', 'Shrub annual': '#E0B84C', 'Shrub perennial': '#8B6508',
+                     'Grass annual': '#C5E1A5', 'Grass perennial': '#558B2F', 'Savanna': '#8D6E63'}
+        for season in ['GS', 'Pant']:
+            for tag, var_list in [('main', self.main_list), ('other', self.other_list)]:
+                var_list = [v for v in var_list if ((df_t['window'] == season) & (df_t['variable'] == v)).any()]
+                if len(var_list) == 0:
+                    continue
+                fig, axs = plt.subplots(len(var_list), 1, sharex=True, squeeze=False,
+                                        figsize=(self.map_width * 1.2, self.map_height * 0.45 * len(var_list)))
+                axs = axs[:, 0]
+                for ax, var in zip(axs, var_list):
+                    d = df_t[(df_t['window'] == season) & (df_t['variable'] == var)].reset_index(drop=True)
+                    xx = np.arange(len(d))
+                    v, lo, hi = d['trend'].values, d['ci_low'].values, d['ci_high'].values
+                    sig = (lo > 0) | (hi < 0)
+                    ax.bar(xx, v, color=[color_dic.get(c, '#999999') for c in d['class']], width=0.65,
+                           alpha=1, edgecolor='none')
+                    ax.bar(xx[~sig], v[~sig], color='white', width=0.65, alpha=0.55, edgecolor='none')   ## fade n.s.
+                    ax.errorbar(xx, v, yerr=[v - lo, hi - v], fmt='none', ecolor='k', elinewidth=0.6, capsize=2)
+                    for xi, vi, l0, h0 in zip(xx, v, lo, hi):
+                        ax.text(xi, h0 if vi >= 0 else l0, f'{vi:+.2f}', ha='center', va='bottom' if vi >= 0 else 'top',
+                                fontsize=5.5)
+                    ax.axhline(0, color='k', lw=0.5)
+                    unit = d['unit'].iloc[0]
+                    ax.set_ylabel(f'{var}\n({unit})', fontsize=7)
+                    ax.tick_params(labelsize=6.5)
+                    ax.spines[['top', 'right']].set_visible(False)
+                    ymin, ymax = min(0, np.nanmin(lo)), max(0, np.nanmax(hi))
+                    pad = (ymax - ymin) * 0.25 + 1e-9
+                    ax.set_ylim(ymin - pad, ymax + pad)
+                axs[-1].set_xticks(xx)
+                axs[-1].set_xticklabels([c.replace(' ', '\n') for c in d['class']], fontsize=6.5)
+                axs[0].set_title(f'Daymet {season} trend 2003-2024 by group (faded: 95% CI includes 0)', fontsize=8)
+                plt.tight_layout()
+                plt.savefig(self.outdir + f'Fig_Daymet_{season}_trend_bar_{tag}.png', dpi=300, bbox_inches='tight')
+                plt.savefig(self.outdir + f'Fig_Daymet_{season}_trend_bar_{tag}.pdf', bbox_inches='tight')
+                plt.close()
 
 
 class SPEI_long_term_plot(Time_series_base):
@@ -746,7 +861,9 @@ def main():
     # MODIS_LAI_time_series().run()   ## growing-season MODIS LAI (GS.df); 2026-11-20: + trend bar per vegetation type (done, NLCD mask)
     # SPEI_long_term_plot().run()     ## growing-season SPEI 1958-2024: time series and trend maps (+ dots maps 2026-11-21) (done)
     # SPEI_time_series_MODIS().run()     ## 2026-11-21: SPEI03-12 2003-2024 time series + trend maps with dots (done)
-    MODIS_LAI_time_series().run()      ## + LAI trend map with dots (2026-11-21)
+    # SPEI_time_series_MODIS().run()     ## 2026-11-21: + 7-group bar (Shrub / Grass annual, perennial) (done)
+    # MODIS_LAI_time_series().run()      ## + LAI trend map with dots (2026-11-21); + 7-group bars (done)
+    Daymet_time_series().run()         ## 2026-11-21: same pixels, 7 groups, dots maps
 
 
 if __name__ == '__main__':

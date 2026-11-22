@@ -1545,13 +1545,14 @@ class Attribution_figures():
             g = pd.read_csv(self.resp + rf'{self.m2_dir}\model2_annual_perennial_compare_{self.tag}.csv')
         rows = []
         for lc in self.class_list:
-            r = {'class': lc, 'group': 'all', 'n_pix': s.loc[lc, 'n_pix'],
-                 'label': f'{lc}\n(n={int(s.loc[lc, "n_pix"])})'}
-            for c in cols:
-                for suf in ['', '_ci_low', '_ci_high']:
-                    r[c + suf] = s.loc[lc, c + suf]
-            rows.append(r)
-            if g is None or lc not in ('Shrub', 'Grass'):
+            split = g is not None and lc in ('Shrub', 'Grass')
+            if not split:   ## 2026-11-21: Shrub and Grass shown only as their annual / perennial groups
+                r = {'class': lc, 'group': 'all', 'n_pix': s.loc[lc, 'n_pix'],
+                     'label': f'{lc}\n(n={int(s.loc[lc, "n_pix"])})'}
+                for c in cols:
+                    for suf in ['', '_ci_low', '_ci_high']:
+                        r[c + suf] = s.loc[lc, c + suf]
+                rows.append(r)
                 continue
             for grp in self.group_list:
                 q = g[(g['class'] == lc) & (g['herb_group'] == grp)].iloc[0]
