@@ -651,13 +651,113 @@ class GS_climate_trend(Growing_season_trend):
         pass
 
 
+class GS_LAI_long_term(Growing_season_extraction):
+    ## growing-season LAI of a long monthly LAI record (2026-11-21)
+    ## pixels : the pixels of growing_season.df (same as GS.df: study box, MCD12C1 cropland <= 50%, NLCD cropland < 5%,
+    ##          US only) with a main season inside one calendar year
+    ## window : the MODIS growing season of each pixel (gs_start - gs_end of growing_season.df), the same months every
+    ##          year; the phenology is NOT redefined from the coarse long record, so long and MODIS series are comparable
+    ## per year: GS_LAI = mean of the window months (all months needed), m2/m2
+    ##           GS_LAI_rel = % difference from the pixel's mean GS_LAI over all years of the record
+    ## per pixel: lon, lat, area_weight, landcover_type, gs_start, gs_end, n_season, GS_mean_LAI (this record),
+    ##           MODIS_GS_mean_LAI (GS_mean_LAI of growing_season.df)
+    ## input  : monthly dict per pixel, Jan of first_year ... Dec of last_year
+    ## output : Result\Dataframe\growing_season\GS_{name}.df (pixel-year)
+    def __init__(self, name, fdir, first_year, last_year):
+        super().__init__()
+        self.name = name
+        self.fdir = fdir
+        self.first_year = first_year
+        self.last_year = last_year
+        self.year_list = list(range(first_year, last_year + 1))
+        self.gs_dff = self.df_dir + 'growing_season.df'
+        self.dff_out = self.df_dir + f'GS_{name}.df'
+
+    def run(self):
+        gs = T.load_df(self.gs_dff)
+        gs = gs[(gs['n_season'] > 0) & (gs['gs_start'] <= gs['gs_end'])]
+        pix_list = gs.index
+        print(self.name, '| pixels:', len(pix_list))
+        lai_month = self.load_monthly(pix_list)
+        start = gs['gs_start'].values.astype(int) - 1
+        length = (gs['gs_end'].values - gs['gs_start'].values).astype(int) + 1
+        lai = self.window_long(lai_month, start, length)
+        with np.errstate(invalid='ignore', divide='ignore'):
+            mean = np.nanmean(lai, axis=1)
+            rel = (lai / mean[:, None] - 1) * 100
+        n_year = len(self.year_list)
+        df = pd.DataFrame({'pix': [p for p in pix_list for _ in range(n_year)],
+                           'year': np.tile(self.year_list, len(pix_list)),
+                           'GS_LAI': lai.ravel(), 'GS_LAI_rel': rel.ravel()})
+        info = gs[['lon', 'lat', 'area_weight', 'landcover_type', 'gs_start', 'gs_end', 'n_season']].copy()
+        info['MODIS_GS_mean_LAI'] = gs['GS_mean_LAI'].values
+        info['GS_mean_LAI'] = mean
+        df = df.merge(info, left_on='pix', right_index=True, how='left')
+        print(self.name, '| GS_LAI non-NaN rows:', df['GS_LAI'].notna().sum(), '/', len(df),
+              '| pixels with all years:', int(np.isfinite(lai).all(axis=1).sum()))
+        T.save_df(df, self.dff_out)
+        T.df_to_excel(df.head(2000), self.df_dir + f'GS_{self.name}_head')   ## first rows only, for checking
+        pass
+
+    def load_monthly(self, pix_list):
+        ## pixel x month, Jan first_year ... Dec last_year; pixels with a different series length -> NaN
+        spatial_dic = T.load_npy_dir(self.fdir)
+        n = (self.last_year - self.first_year + 1) * 12
+        out = np.full((len(pix_list), n), np.nan)
+        n_bad = 0
+        for i, pix in enumerate(pix_list):
+            if pix not in spatial_dic:
+                continue
+            v = np.array(spatial_dic[pix], dtype=float)
+            if len(v) != n:
+                n_bad += 1
+                continue
+            out[i] = v
+        del spatial_dic
+        out[out < 0] = np.nan   ## fill values
+        print(self.fdir, '| months', n, '| pixels with another length:', n_bad)
+        return out
+
+    def window_long(self, arr, start, length):
+        ## per pixel and year: mean over the months start ... start + length - 1 (index 0 = Jan of first_year);
+        ##   NaN if any month is missing
+        import warnings
+        n_year = len(self.year_list)
+        k = np.arange(12)[None, None, :]
+        base = np.arange(n_year)[None, :] * 12 + start[:, None]
+        idx = np.clip(base[:, :, None] + k, 0, arr.shape[1] - 1)
+        in_win = k < length[:, None, None]
+        v = np.take_along_axis(arr, idx.reshape(len(arr), -1), axis=1).reshape(idx.shape)
+        v = np.where(in_win, v, np.nan)
+        complete = np.all(np.isfinite(v) | ~in_win, axis=2)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', category=RuntimeWarning)
+            out = np.nanmean(v, axis=2)
+        return np.where(complete, out, np.nan)
+
+
+class GS_LAI_GIMMS(GS_LAI_long_term):
+    ## GIMMS LAI4g, monthly (MVC of the half-month values), 1982-2020 -> GS_GIMMS.df (2026-11-21)
+    def __init__(self):
+        super().__init__('GIMMS', data_root + rf'GIMMS4g\dic\\', 1982, 2020)
+
+
+class GS_LAI_SNU(GS_LAI_long_term):
+    ## SNU LAI, monthly, 1982-2024 -> GS_SNU.df (2026-11-21)
+    def __init__(self):
+        super().__init__('SNU', data_root + rf'SNU_LAI\dic\\', 1982, 2024)
+
+
 def main():
     ## 2026-11-15: US only -> rerun everything in this order
-    Growing_season_extraction().run()   ## GS.df, growing_season.df
-    Growing_season_definition().run()   ## one / two seasons, months: maps and tables in 02_vegetation\phenology
-    GS_LAI_trend().run()                ## GS LAI trend maps and table (02_vegetation)
-    GS_SPEI_trend().run()               ## GS SPEI trend maps and table (01_drought)
-    GS_climate_trend().run()            ## GS P, VPD, Tmax trend maps and table (01_drought)
+    # Growing_season_extraction().run()   ## GS.df, growing_season.df
+    # Growing_season_definition().run()   ## one / two seasons, months: maps and tables in 02_vegetation\phenology
+    # GS_LAI_trend().run()                ## GS LAI trend maps and table (02_vegetation)
+    # GS_SPEI_trend().run()               ## GS SPEI trend maps and table (01_drought)
+    # GS_climate_trend().run()            ## GS P, VPD, Tmax trend maps and table (01_drought)
+    ## 2026-11-21: long LAI records, MODIS growing-season window
+    GS_LAI_GIMMS().run()                ## GS_GIMMS.df, 1982-2020
+    GS_LAI_SNU().run()                  ## GS_SNU.df, 1982-2024
 
 
 if __name__ == '__main__':

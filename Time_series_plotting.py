@@ -313,27 +313,167 @@ class SPEI_time_series_MODIS(Time_series_base):
         pass
 
 
-class SNU_LAI_time_series(Time_series_base):
-    def __init__(self):
+class Long_LAI_time_series(Time_series_base):
+    ## long growing-season LAI records (GIMMS LAI4g 1982-2020, SNU LAI 1982-2024) (2026-11-21)
+    ## data   : growing_season_extraction.py -> GS_LAI_GIMMS / GS_LAI_SNU -> Result\Dataframe\growing_season\GS_{name}.df
+    ##          (MODIS growing-season window of each pixel, the same months every year)
+    ## pixels : the MODIS figure pixels (model2_annual_perennial_compare: four vegetation types, NLCD cropland < 5%,
+    ##          complete MODIS GS LAI) with GS LAI in every year of the long record
+    ## periods: whole record (dotted), 1982-1999 (dashed), 2000-end (solid); 2000 = onset of the megadrought (Fig 1)
+    ## figures:
+    ##   Fig_{name}_LAI_GS          regional mean GS_LAI_rel +- 1 SD with the three trends
+    ##   Fig_{name}_vs_MODIS        overlap with MODIS (2003-end): both re-centred on the overlap mean, r, trends
+    ##   GS_LAI_trend_sig_dots_{period}  trend map (dots p < 0.05, inset) + 7-group bar, per period
+    ##   Fig_{name}_trend_bar       7 groups x 3 periods, area-weighted mean trend with 95% CI (1 deg block bootstrap)
+    ## output : Result2\02_vegetation\{name}_LAI_timeseries\
+    def __init__(self, name, first_year, last_year):
         super().__init__()
-        self.outdir = self.result2 + rf'02_vegetation\SNU_LAI_timeseries\\'
-        self.start_year = 1982
-        self.var_list = ['SNU_LAI_relative_change']
-        self.ylabel_dic = {'SNU_LAI_relative_change': 'Relative Change (%)'}
-        self.LAI_threshold = 0.3   ## drop pixels whose multi-year mean LAI < 0.3
+        self.name = name
+        self.first_year = first_year
+        self.end_year = last_year
+        self.dff = result_root + rf'\Dataframe\growing_season\GS_{name}.df'
+        self.modis_dff = result_root + rf'\Dataframe\growing_season\GS.df'
+        self.outdir = self.result2 + rf'02_vegetation\{name}_LAI_timeseries\\'
+        T.mk_dir(self.outdir, force=True)
+        self.split_year = 2000
+        self.season_list = ['growing']
+        self.color_dic = {'growing': '#2E7D32'}
+        self.period_list = [(first_year, last_year, ':'), (first_year, 1999, '--'), (2000, last_year, '-')]
+        self.trend_period_list = self.period_list
+        self.ylabel_dic = {'LAI_rel': f'{name} GS LAI (% of mean)'}
+        self.veg_colors = ['#7B3F13', '#C0692A', '#EBA14A', '#F5D38E', '#CFE3D1', '#87B8CF', '#3D7FA6', '#0B4F6C']
+        self.lai_bounds = [-20, -15, -10, -5, 0, 5, 10, 15, 20]
         pass
 
     def run(self):
-        df = self.load_df()
-        df = self.mask_low_LAI(df)
-        self.plot_time_series(df, self.var_list, self.start_year, self.outdir, 'Fig_SNU_LAI')
+        df = self.load()
+        self.plot_time_series(df, ['LAI_rel'], self.first_year, self.outdir, f'Fig_{self.name}_LAI_GS')
+        self.vs_modis(df)
+        tab_list = []
+        for t0, t1, _ in self.period_list:
+            years = np.arange(t0, t1 + 1)
+            info, tr, p = self.pixel_trend(df[(df['year'] >= t0) & (df['year'] <= t1)], 'growing_LAI_rel', years)
+            self.trend_sig_map(info, tr, p, self.outdir + 'trend_map\\', f'GS_LAI_trend_sig_dots_{t0}_{t1}',
+                               f'{self.name} growing-season LAI trend {t0}-{t1} (% per decade)', self.lai_bounds,
+                               self.veg_colors, ('browning', 'greening'), stride=4, dot_size=2.5, split_herb=True)
+            tab_list.append(self.group_trend(info, tr, p, f'{t0}-{t1}'))
+        tab = pd.concat(tab_list)
+        tab.to_csv(self.outdir + f'Fig_{self.name}_trend_bar.csv', index=False)
+        print(tab.round(2).to_string())
+        self.trend_bar_periods(tab)
         pass
 
-    def mask_low_LAI(self, df):
-        for season in self.season_list:
-            pix_mean = df.groupby('pix')[f'{season}_SNU_LAI'].transform('mean')   ## multi-year mean per pixel
-            df.loc[pix_mean < self.LAI_threshold, f'{season}_SNU_LAI_relative_change'] = np.nan
+    def load(self):
+        df = T.load_df(self.dff)
+        df = df[(df['year'] >= self.first_year) & (df['year'] <= self.end_year)]
+        pix_now = set(T.load_df(self.herb_dff).index)   ## same pixels as the MODIS figures
+        df = df[df['pix'].isin(pix_now)]
+        n_ok = df['GS_LAI'].notna().groupby(df['pix']).transform('sum')
+        df = df[n_ok == self.end_year - self.first_year + 1]
+        df = df.rename(columns={'GS_LAI_rel': 'growing_LAI_rel', 'GS_LAI': 'growing_LAI'})
+        print(self.name, '| pixels (MODIS figure pixels, all years):', df['pix'].nunique())
         return df
+
+    def wmean(self, d, col, years):
+        g = d.assign(wv=d[col] * d['area_weight'], w=d['area_weight'].where(d[col].notna()))
+        g = g.groupby('year')[['wv', 'w']].sum()
+        return (g['wv'] / g['w']).reindex(years).values
+
+    def vs_modis(self, df):
+        ## overlap with MODIS (2003 - end): GS LAI of the same pixels, each re-centred on its own overlap mean
+        ##   (% of the pixel's overlap mean), area-weighted regional mean; r of the two series and both trends
+        t0, t1 = 2003, self.end_year
+        years = np.arange(t0, t1 + 1)
+        m = T.load_df(self.modis_dff)
+        m = m[(m['year'] >= t0) & (m['year'] <= t1) & m['pix'].isin(set(df['pix']))]
+        out = {}
+        for label, d, col in [('MODIS', m, 'GS_LAI'), (self.name, df[(df['year'] >= t0) & (df['year'] <= t1)],
+                                                        'growing_LAI')]:
+            mean = d.groupby('pix')[col].transform('mean')
+            d = d.assign(rel=(d[col] / mean - 1) * 100)
+            out[label] = self.wmean(d, 'rel', years)
+        r, p_r = stats.pearsonr(out['MODIS'], out[self.name])
+        fig, ax = plt.subplots(figsize=(self.map_width * 1.2, self.map_height * 0.7))
+        text = f'r = {r:.2f} (p = {p_r:.3f})'
+        for label, color in [('MODIS', '#555555'), (self.name, '#2E7D32')]:
+            y = out[label]
+            sl, ic, _, p, _ = stats.linregress(years, y)
+            ax.plot(years, y, color=color, lw=1.5, label=label)
+            ax.plot(years, sl * years + ic, color=color, lw=1, ls='--')
+            text += f'\n{label}: {sl * 10:+.2f} % per decade (p = {p:.2f})'
+        ax.text(0.01, 0.97, text, transform=ax.transAxes, fontsize=7, va='top')
+        ax.axhline(0, color='grey', lw=0.5)
+        ax.set_ylabel('GS LAI (% of 2003-end mean)', fontsize=9)
+        ax.legend(frameon=False, fontsize=7, loc='lower right')
+        ax.spines[['top', 'right']].set_visible(False)
+        plt.tight_layout()
+        plt.savefig(self.outdir + f'Fig_{self.name}_vs_MODIS.png', dpi=300)
+        plt.savefig(self.outdir + f'Fig_{self.name}_vs_MODIS.pdf')
+        plt.close()
+        print(f'{self.name} vs MODIS {t0}-{t1}:', text.replace('\n', ' | '))
+
+    def block_ci(self, lon, lat, v, w):
+        block = (np.floor(lon) * 1000 + np.floor(lat)).astype(int)
+        ids = np.unique(block)
+        idx = {b: np.where(block == b)[0] for b in ids}
+        rng = np.random.default_rng(0)
+        boot = []
+        for _ in range(200):
+            pick = np.concatenate([idx[b] for b in rng.choice(ids, size=len(ids))])
+            boot.append(np.sum(v[pick] * w[pick]) / np.sum(w[pick]))
+        return np.percentile(boot, 2.5), np.percentile(boot, 97.5)
+
+    def group_trend(self, info, tr, p, period):
+        ## per group (7 groups): area-weighted mean trend, 95% CI, area % with sig. greening / browning
+        result = []
+        for g, m in self.group_masks(info).items():
+            m = m & np.isfinite(tr)
+            w = info['area_weight'].values[m]
+            lo, hi = self.block_ci(info['lon'].values[m], info['lat'].values[m], tr[m], w)
+            result.append([period, g, int(m.sum()), np.sum(tr[m] * w) / np.sum(w), lo, hi,
+                           np.sum(w * ((tr[m] > 0) & (p[m] < 0.05))) / np.sum(w) * 100,
+                           np.sum(w * ((tr[m] < 0) & (p[m] < 0.05))) / np.sum(w) * 100])
+        return pd.DataFrame(result, columns=['period', 'class', 'n_pix', 'trend_per_decade', 'ci_low', 'ci_high',
+                                             'sig_increase_area_%', 'sig_decrease_area_%'])
+
+    def trend_bar_periods(self, tab):
+        ## grouped bars: 7 groups x 3 periods (whole record, before 2000, 2000-end), 95% CI
+        period_list = list(dict.fromkeys(tab['period']))
+        color_list = ['#BDBDBD', '#8FB8DE', '#2E7D32']
+        groups = list(dict.fromkeys(tab['class']))
+        xx = np.arange(len(groups))
+        wd = 0.26
+        fig, ax = plt.subplots(figsize=(self.map_width * 1.4, self.map_height * 0.8))
+        for k, (per, color) in enumerate(zip(period_list, color_list)):
+            d = tab[tab['period'] == per].set_index('class').reindex(groups)
+            v = d['trend_per_decade'].values
+            err = np.array([v - d['ci_low'].values, d['ci_high'].values - v])
+            ax.bar(xx + (k - 1) * wd, v, width=wd, color=color, yerr=err, capsize=1.5, error_kw={'lw': 0.6},
+                   label=per)
+        ax.axhline(0, color='k', lw=0.6)
+        ax.set_xticks(xx)
+        ax.set_xticklabels([g.replace(' ', '\n') for g in groups], fontsize=7)
+        ax.set_ylabel('LAI trend (% per decade)', fontsize=9)
+        ax.set_title(f'{self.name} growing-season LAI trend by group', fontsize=9)
+        ax.legend(frameon=False, fontsize=7, ncol=3)
+        ax.tick_params(labelsize=7)
+        ax.spines[['top', 'right']].set_visible(False)
+        plt.tight_layout()
+        plt.savefig(self.outdir + f'Fig_{self.name}_trend_bar.png', dpi=300)
+        plt.savefig(self.outdir + f'Fig_{self.name}_trend_bar.pdf')
+        plt.close()
+
+
+class GIMMS_LAI_time_series(Long_LAI_time_series):
+    ## GIMMS LAI4g, 1982-2020 (2026-11-21)
+    def __init__(self):
+        super().__init__('GIMMS', 1982, 2020)
+
+
+class SNU_LAI_time_series(Long_LAI_time_series):
+    ## SNU LAI, 1982-2024 (2026-11-21; was the spring / summer version on SPEI.df)
+    def __init__(self):
+        super().__init__('SNU', 1982, 2024)
 
 
 class MODIS_LAI_time_series(Time_series_base):
@@ -863,7 +1003,9 @@ def main():
     # SPEI_time_series_MODIS().run()     ## 2026-11-21: SPEI03-12 2003-2024 time series + trend maps with dots (done)
     # SPEI_time_series_MODIS().run()     ## 2026-11-21: + 7-group bar (Shrub / Grass annual, perennial) (done)
     # MODIS_LAI_time_series().run()      ## + LAI trend map with dots (2026-11-21); + 7-group bars (done)
-    Daymet_time_series().run()         ## 2026-11-21: same pixels, 7 groups, dots maps
+    # Daymet_time_series().run()         ## 2026-11-21: same pixels, 7 groups, dots maps (done)
+    GIMMS_LAI_time_series().run()      ## 2026-11-21: GS LAI 1982-2020 (needs GS_GIMMS.df)
+    SNU_LAI_time_series().run()        ## 2026-11-21: GS LAI 1982-2024 (needs GS_SNU.df)
 
 
 if __name__ == '__main__':

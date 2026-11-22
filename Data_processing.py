@@ -675,7 +675,7 @@ class Data_processing_GIMMS4g:
             array[array == 65535] = np.nan
             # array[array == 249] = np.nan
             array = array * 0.01
-            array[array > 7] = np.nan
+            # array[array > 7] = np.nan
             array[array <= 0] = np.nan
             # array=array/10000
             # plt.imshow(array)
@@ -4813,12 +4813,12 @@ def main():
      # Data_processing_vegetation().run()
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
-    # Data_processing_GIMMS4g().run()
+    Data_processing_GIMMS4g().run()
     # Data_processing_Terraclimate().run()
     # calculating_mean_CV().run()
     # Data_processing_Daymet().run()
     # Data_processing_Annual_NLCD().run()
-    Data_processing_NLCD_cropland().run()   ## cropland share per 0.05 deg pixel (2026-11-21)
+    # Data_processing_NLCD_cropland().run()   ## cropland share per 0.05 deg pixel (2026-11-21)
     # Data_processing_ERA5land().run()
     # Data_processing_carbonscope().run()
     # Trend_analysis().run()
