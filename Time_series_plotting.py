@@ -205,6 +205,94 @@ class Time_series_base():
         plt.savefig(outdir + f'{fname}_by_group.pdf', bbox_inches='tight')
         plt.close()
 
+    def level_change(self, years, y, bp, n_lag=None):
+        ## level change at a break year (2026-11-21), segmented regression on one series:
+        ##   y = b0 + b1 t + b2 D + b3 t D,  t = year - bp,  D = 1 for year >= bp
+        ##   b0 = line before bp extrapolated to bp; b0 + b2 = line after bp at bp -> b2 = level change at bp
+        ##   b1 = slope before, b1 + b3 = slope after (per year)
+        ## 95% CI and p of b2 with Newey-West (HAC) standard errors (year-to-year autocorrelation),
+        ##   lag = floor(4 (n / 100) ^ (2 / 9)), Bartlett weights, small-sample factor n / (n - 4), t with n - 4 df
+        ok = np.isfinite(y)
+        x, y = years[ok].astype(float), np.asarray(y, dtype=float)[ok]
+        t = x - bp
+        D = (x >= bp).astype(float)
+        X = np.column_stack([np.ones_like(t), t, D, t * D])
+        n, k = X.shape
+        b = np.linalg.lstsq(X, y, rcond=None)[0]
+        e = y - X @ b
+        L = n_lag if n_lag is not None else int(np.floor(4 * (n / 100) ** (2 / 9)))
+        Xe = X * e[:, None]
+        S = Xe.T @ Xe
+        for l in range(1, L + 1):
+            G = Xe[l:].T @ Xe[:-l]
+            S += (1 - l / (L + 1)) * (G + G.T)
+        XtXi = np.linalg.inv(X.T @ X)
+        se = np.sqrt(np.diag(XtXi @ S @ XtXi) * n / (n - k))
+        tc = stats.t.ppf(0.975, n - k)
+        return {'b2': b[2], 'ci_low': b[2] - tc * se[2], 'ci_high': b[2] + tc * se[2],
+                'p': 2 * stats.t.sf(abs(b[2] / se[2]), n - k), 'slope_before': b[1] * 10,
+                'slope_after': (b[1] + b[3]) * 10, 'b0': b[0], 'b1': b[1], 'b3': b[3], 'n': n, 'lag': L}
+
+    def level_change_groups(self, df, col, years, bp_list, outdir, fname, ylabel):
+        ## level change b2 per group (7 groups) and break year; regional area-weighted mean series per group
+        ## figure {fname}.png: left: All series with the two lines at bp 2000 (dashed: before-line extrapolated) and
+        ##   the gap at 2000; right: b2 with 95% CI per group, one marker per break year
+        ## table {fname}.csv
+        info = df.groupby('pix')[['lon', 'lat', 'area_weight', 'landcover_type']].first()
+        series, rows = {}, []
+        for g, m in self.group_masks(info).items():
+            d = df[df['pix'].isin(set(info.index[m]))]
+            gg = d.assign(wv=d[col] * d['area_weight'], w=d['area_weight'].where(d[col].notna()))
+            gg = gg.groupby('year')[['wv', 'w']].sum()
+            y = (gg['wv'] / gg['w']).reindex(years).values
+            series[g] = y
+            for bp in bp_list:
+                r = self.level_change(years, y, bp)
+                rows.append([g, int(m.sum()), bp] + [r[k] for k in ['b2', 'ci_low', 'ci_high', 'p', 'slope_before',
+                                                                    'slope_after', 'n', 'lag']])
+        tab = pd.DataFrame(rows, columns=['class', 'n_pix', 'break_year', 'level_change', 'ci_low', 'ci_high', 'p',
+                                          'slope_before_per_decade', 'slope_after_per_decade', 'n_year', 'hac_lag'])
+        tab.to_csv(outdir + f'{fname}.csv', index=False)
+        print(fname)
+        print(tab.round(2).to_string())
+        fig, axs = plt.subplots(1, 2, figsize=(self.map_width * 2.6, self.map_height * 1.1),
+                                gridspec_kw={'width_ratios': [3, 2]})
+        ax = axs[0]
+        y = series['All']
+        r = self.level_change(years, y, 2000)
+        ax.plot(years, y, color='#555555', lw=1.2)
+        tb, ta = years[years < 2000], years[years >= 2000]
+        ax.plot(tb, r['b0'] + r['b1'] * (tb - 2000), color='#1F618D', lw=2.2, label='before 2000')
+        ax.plot([tb[-1], 2000], [r['b0'] + r['b1'] * (tb[-1] - 2000), r['b0']], color='#1F618D', lw=2.2, ls='--')
+        ax.plot(ta, r['b0'] + r['b2'] + (r['b1'] + r['b3']) * (ta - 2000), color='#C0392B', lw=2.2, label='2000 on')
+        ax.plot([2000, 2000], [r['b0'], r['b0'] + r['b2']], color='k', lw=2.5)
+        ax.text(2000.6, r['b0'] + r['b2'] / 2, f"level change {r['b2']:+.2f}\n[{r['ci_low']:.2f}, {r['ci_high']:.2f}]",
+                va='center', fontsize=11)
+        ax.axhline(0, color='grey', lw=0.5)
+        ax.set_ylabel(ylabel)
+        ax.set_xlabel('Year')
+        ax.legend(frameon=False, loc='upper left')
+        ax.spines[['top', 'right']].set_visible(False)
+        ax = axs[1]
+        groups = list(series)
+        color_list = ['#9E9E9E', '#1F618D', '#C0392B', '#E67E22']
+        for k, bp in enumerate(bp_list):
+            d = tab[tab['break_year'] == bp].set_index('class').reindex(groups)
+            yy = np.arange(len(groups))[::-1] + (k - (len(bp_list) - 1) / 2) * 0.18
+            ax.errorbar(d['level_change'], yy, xerr=[d['level_change'] - d['ci_low'], d['ci_high'] - d['level_change']],
+                        fmt='o', ms=5, color=color_list[k % 4], capsize=2, lw=1, label=str(bp))
+        ax.axvline(0, color='k', lw=0.6)
+        ax.set_yticks(np.arange(len(groups))[::-1])
+        ax.set_yticklabels(groups)
+        ax.set_xlabel('Level change at break year')
+        ax.legend(frameon=False, title='Break year', fontsize=10, loc='best')
+        ax.spines[['top', 'right']].set_visible(False)
+        plt.tight_layout()
+        plt.savefig(outdir + f'{fname}.png', dpi=300, bbox_inches='tight')
+        plt.savefig(outdir + f'{fname}.pdf', bbox_inches='tight')
+        plt.close()
+        return tab
+
     def trend_sig_map(self, info, trend, p, outdir, fname, label, bounds, cmap, cat_names, stride=3, lighten=0.,
                       dot_size=0.6, split_herb=False):
         ## trend map with discrete colours, dots = p < 0.05 (every `stride`-th pixel in both directions, so the dots
@@ -258,7 +346,7 @@ class Time_series_base():
         gl = ax.gridlines(draw_labels=True, linewidth=0)
         gl.top_labels = False
         gl.right_labels = False
-        gl.xlocator = mticker.FixedLocator(range(-125, -100, 5))
+        gl.xlocator = mticker.FixedLocator(range(-120, -100, 10))   ## every 10 deg: 5 deg labels overlapped (2026-11-21)
         gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
         gl.xlabel_style = {'size': 9.5}
         gl.ylabel_style = {'size': 9.5}
@@ -269,10 +357,10 @@ class Time_series_base():
         cb.set_label('Dots: p < 0.05', fontsize=9.5)
         ## small bar chart in the lower-left corner of the map (Pacific, no study pixels there), no axis labels:
         ##   bars left to right = sig negative, non-sig negative, non-sig positive, sig positive (explained in caption)
-        ax_b = ax.inset_axes([0.03, 0.03, 0.24, 0.17])
+        ax_b = ax.inset_axes([0.02, 0.03, 0.30, 0.17])   ## wider so the 4 labels do not overlap (2026-11-21)
         ax_b.bar(range(4), area, color=[c for _, _, c in cats], width=0.75, edgecolor='#333333', linewidth=0.25)
         for i_, a in enumerate(area):
-            ax_b.text(i_, a + max(area) * 0.04, f'{a:.0f}%', ha='center', va='bottom', fontsize=7)
+            ax_b.text(i_, a + max(area) * 0.04, f'{a:.0f}%', ha='center', va='bottom', fontsize=6)
         ax_b.set_ylim(0, max(area) * 1.3 + 1)
         ax_b.set_xticks([])
         ax_b.set_yticks([])
@@ -376,6 +464,10 @@ class Long_LAI_time_series(Time_series_base):
         df = self.load()
         self.plot_time_series(df, ['LAI_rel'], self.first_year, self.outdir, f'Fig_{self.name}_LAI_GS')
         self.vs_modis(df)
+        ## 2026-11-21: level change at the break year (1999-2002), regional mean GS_LAI_rel per group
+        self.level_change_groups(df, 'growing_LAI_rel', np.arange(self.first_year, self.end_year + 1),
+                                 [1999, 2000, 2001, 2002], self.outdir, f'Fig_{self.name}_level_change',
+                                 f'{self.name} GS LAI (% of mean)')
         tab_list = []
         for t0, t1, _ in self.period_list:
             years = np.arange(t0, t1 + 1)
@@ -1043,6 +1135,10 @@ class SPEI_1982_plot(SPEI_long_term_plot):
         df = df[df['pix'].isin(pix_now)]
         print('pixels:', df['pix'].nunique())
         self.plot_time_series(df, self.ts_list, 1982, self.outdir, 'Fig_SPEI_1982_2024')
+        ## 2026-11-21: level change of SPEI at the break year (1999-2002), regional mean per group
+        for var in ['SPEI03', 'SPEI12']:
+            self.level_change_groups(df, f'growing_{var}', np.arange(1982, 2025), [1999, 2000, 2001, 2002],
+                                     self.outdir, f'Fig_{var}_level_change', f'Growing-season {var}')
         for var in self.map_list:
             for t0, t1, _ in self.period_list:
                 years = np.arange(t0, t1 + 1)
