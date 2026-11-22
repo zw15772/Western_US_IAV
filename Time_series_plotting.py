@@ -22,7 +22,30 @@ class Time_series_base():
         self.ylabel_dic = {}   ## y-axis label per variable; default = variable name
         ## herbaceous group per pixel (annual: 2003-2024 mean RAP AFG > PFG), from Model2_annual_perennial (2026-11-21)
         self.herb_dff = self.result2 + rf'03_response\model2_annual_perennial\model2_annual_perennial_compare_2003_2024.df'
+        ## herb_years None: groups of Model 2 (RAP 2003-2024 mean); (y0, y1): RAP mean AFG > PFG over y0-y1
+        ##   (long records use (1986, 2024), the whole RAP record) (2026-11-21)
+        self.herb_years = None
+        self.rap_dff = result_root + rf'\Dataframe\RAP\RAP_cover.df'
+        self._herb_dic = None
         pass
+
+    def herb_group_dic(self):
+        ## pix -> 'annual' / 'perennial' ('' = no RAP)
+        if self._herb_dic is not None:
+            return self._herb_dic
+        if self.herb_years is None:
+            hg = T.load_df(self.herb_dff)
+            self._herb_dic = dict(zip(hg.index, hg['herb_group'].values))
+            return self._herb_dic
+        y0, y1 = self.herb_years
+        rap = T.load_df(self.rap_dff)
+        rap = rap[(rap['year'] >= y0) & (rap['year'] <= y1)]
+        m = rap.groupby('pix')[['RAP_AFG', 'RAP_PFG']].mean()
+        grp = np.where(m.isna().any(axis=1), '', np.where(m['RAP_AFG'] > m['RAP_PFG'], 'annual', 'perennial'))
+        self._herb_dic = dict(zip(m.index, grp))
+        print(f'herbaceous groups from RAP {y0}-{y1} mean: annual', int(np.sum(grp == 'annual')), '| perennial',
+              int(np.sum(grp == 'perennial')))
+        return self._herb_dic
 
     def load_df(self):
         df = T.load_df(self.dff)
@@ -134,8 +157,8 @@ class Time_series_base():
     def group_masks(self, info):
         ## 7 groups as Fig 5 (2026-11-21): All, Forest, Shrub annual / perennial, Grass annual / perennial, Savanna
         ## Shrub and Grass split by the herbaceous group of Model2_annual_perennial (mean AFG > mean PFG -> annual)
-        hg = T.load_df(self.herb_dff)
-        grp_dic = dict(zip(hg.index, hg['herb_group'].values))
+        ## 2026-11-21: or by the RAP mean over self.herb_years (long records: 1986-2024), see herb_group_dic
+        grp_dic = self.herb_group_dic()
         grp = np.array([grp_dic.get(pix, '') for pix in info.index])
         lc = info['landcover_type'].values
         out = {'All': np.ones(len(info), dtype=bool), 'Forest': lc == 'Forest'}
@@ -343,6 +366,7 @@ class Long_LAI_time_series(Time_series_base):
         self.ylabel_dic = {'LAI_rel': f'{name} GS LAI (% of mean)'}
         self.veg_colors = ['#7B3F13', '#C0692A', '#EBA14A', '#F5D38E', '#CFE3D1', '#87B8CF', '#3D7FA6', '#0B4F6C']
         self.lai_bounds = [-20, -15, -10, -5, 0, 5, 10, 15, 20]
+        self.herb_years = (1986, 2024)   ## 2026-11-21: annual / perennial from the whole RAP record, not 2003-2024
         pass
 
     def run(self):
@@ -986,6 +1010,46 @@ class SPEI_long_term_plot(Time_series_base):
         print(df_t[df_t['class'] == 'All'].round(3).to_string())
 
 
+class SPEI_1982_plot(SPEI_long_term_plot):
+    ## growing-season SPEI 1982-2024, the period of the long LAI records (GIMMS, SNU) (2026-11-21)
+    ## data   : SPEI_GS_1958_2024.df of SPEI_long_term_plot (MODIS growing-season window of each pixel)
+    ## pixels : the MODIS figure pixels (model2_annual_perennial_compare), as the GIMMS / SNU LAI figures
+    ## periods: 1982-2024 (dotted), 1982-1999 (dashed), 2000-2024 (solid), as the long LAI figures
+    ## time series: SPEI03, 06, 12, 24, area-weighted mean +- 1 SD
+    ## maps   : SPEI03 and SPEI12 trend per period, dots p < 0.05, inset of 4 classes, + 7-group bar (split_herb;
+    ##          the groups are the 2003-2024 RAP groups, as in the long LAI figures)
+    ## output : Result2\01_drought\SPEI_1982_2024\
+    def __init__(self):
+        super().__init__()
+        self.outdir = self.result2 + rf'01_drought\SPEI_1982_2024\\'
+        T.mk_dir(self.outdir, force=True)
+        self.start_year = 1982
+        self.split_year = 2000
+        self.ts_list = ['SPEI03', 'SPEI06', 'SPEI12', 'SPEI24']
+        self.map_list = ['SPEI03', 'SPEI12']
+        self.period_list = [(1982, 2024, ':'), (1982, 1999, '--'), (2000, 2024, '-')]
+        self.trend_period_list = self.period_list
+        self.herb_years = (1986, 2024)   ## 2026-11-21: annual / perennial from the whole RAP record, as the long LAI
+
+    def run(self):
+        if not os.path.isfile(self.dff_out):
+            self.build_df()
+        df = T.load_df(self.dff_out)
+        df = df[(df['year'] >= 1982) & (df['year'] <= 2024)]
+        pix_now = set(T.load_df(self.herb_dff).index)   ## same pixels as the MODIS / GIMMS / SNU LAI figures
+        df = df[df['pix'].isin(pix_now)]
+        print('pixels:', df['pix'].nunique())
+        self.plot_time_series(df, self.ts_list, 1982, self.outdir, 'Fig_SPEI_1982_2024')
+        for var in self.map_list:
+            for t0, t1, _ in self.period_list:
+                years = np.arange(t0, t1 + 1)
+                info, tr, p = self.pixel_trend(df[(df['year'] >= t0) & (df['year'] <= t1)], f'growing_{var}', years)
+                self.trend_sig_map(info, tr, p, self.outdir + 'trend_map\\', f'GS_{var}_trend_sig_dots_{t0}_{t1}',
+                                   f'Growing-season {var} trend {t0}-{t1} (per decade)', self.sig_bounds, 'RdBu',
+                                   ('drying', 'wetting'), split_herb=True)
+        pass
+
+
 ## add a new variable: copy SNU_LAI_time_series, change outdir / start_year / var_list
 
 
@@ -1004,8 +1068,10 @@ def main():
     # SPEI_time_series_MODIS().run()     ## 2026-11-21: + 7-group bar (Shrub / Grass annual, perennial) (done)
     # MODIS_LAI_time_series().run()      ## + LAI trend map with dots (2026-11-21); + 7-group bars (done)
     # Daymet_time_series().run()         ## 2026-11-21: same pixels, 7 groups, dots maps (done)
-    GIMMS_LAI_time_series().run()      ## 2026-11-21: GS LAI 1982-2020 (needs GS_GIMMS.df)
-    SNU_LAI_time_series().run()        ## 2026-11-21: GS LAI 1982-2024 (needs GS_SNU.df)
+    ## 2026-11-21: long records with annual / perennial from RAP 1986-2024
+    GIMMS_LAI_time_series().run()      ## GS LAI 1982-2020 (needs GS_GIMMS.df)
+    SNU_LAI_time_series().run()        ## GS LAI 1982-2024 (needs GS_SNU.df)
+    SPEI_1982_plot().run()             ## GS SPEI 1982-2024, three periods, dots maps
 
 
 if __name__ == '__main__':

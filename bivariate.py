@@ -386,9 +386,91 @@ class LAI_SPEI_scale_heatmap(GS_LAI_SPEI_bivariate):
         plt.close()
 
 
+class Best_scale_long(GS_LAI_SPEI_bivariate):
+    ## best SPEI scale with the long LAI records (GIMMS 1982-2020, SNU 1982-2024) (2026-11-21)
+    ## same method as GS_LAI_SPEI_bivariate.best_scale: per pixel, Pearson r between detrended GS LAI and detrended
+    ##   GS SPEI{scale}, scale = 03 ... 48; best scale = highest r (p with n - 3 df)
+    ## LAI : Result\Dataframe\growing_season\GS_{name}.df (MODIS growing-season window, growing_season_extraction.py)
+    ## SPEI: Result\Dataframe\SPEI_long_term\SPEI_GS_1958_2024.df (same window, SPEI_long_term_plot)
+    ## pixels: the MODIS figure pixels (model2_annual_perennial_compare) with GS LAI in every year of the record
+    ## groups: 7 groups; Shrub / Grass split by RAP 1986-2024 mean AFG > PFG (whole RAP record, as the long LAI figures)
+    ## output: Result2\03_response\best_scale_long\ : best_SPEI_scale_{name}_{y0}_{y1}_map.png (+ _area_by_vegetation.csv),
+    ##   best_SPEI_r_..., best_scale_long_{name}_{y0}_{y1}.df, best_scale_summary_{name}_{y0}_{y1}.csv
+    def __init__(self, name, first_year, last_year):
+        super().__init__()
+        self.name = name
+        self.year_list = list(range(first_year, last_year + 1))
+        self.tag = f'{name}_{first_year}_{last_year}'
+        self.outdir = this_root + rf'Result2\03_response\best_scale_long\\'
+        T.mk_dir(self.outdir, force=True)
+        self.mapper = Map_plotter(self.outdir)
+        self.lai_dff = result_root + rf'\Dataframe\growing_season\GS_{name}.df'
+        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024.df'
+        self.rap_dff = result_root + rf'\Dataframe\RAP\RAP_cover.df'
+        self.herb_years = (1986, 2024)
+        self._herb_dic = None
+
+    def run(self):
+        lai_df = T.load_df(self.lai_dff)
+        pix_now = set(T.load_df(self.herb_dff).index)   ## the MODIS figure pixels
+        lai_df = lai_df[lai_df['pix'].isin(pix_now)]
+        lai = lai_df.pivot(index='pix', columns='year', values='GS_LAI').reindex(columns=self.year_list)
+        lai = lai[lai.notna().all(axis=1)]
+        info = lai_df.groupby('pix')[['area_weight', 'landcover_type', 'lon', 'lat']].first().reindex(lai.index)
+        print(self.tag, '| pixels:', len(info))
+        spei = T.load_df(self.spei_dff)
+        spei = spei[spei['pix'].isin(set(info.index))]
+        spei = spei.rename(columns={c: 'GS_' + c[len('growing_'):] for c in spei.columns if c.startswith('growing_')})
+        best_scale, best_r, best_p = self.best_scale(spei, info, lai.values)
+        self.class_map(info, best_scale.astype(float), f'best_SPEI_scale_{self.tag}',
+                       [0.5, 4.5, 7.5, 10.5, 13.5, 25.5, 37.5, 49.5],
+                       ['3', '6', '9', '12', '15-24', '27-36', '39-48'],
+                       ['#D73027', '#FC8D59', '#FEE08B', '#A6D96A', '#1A9850', '#4575B4', '#313695'],
+                       'Best SPEI scale (months)')
+        self.class_map(info, best_r, f'best_SPEI_r_{self.tag}', [-1, 0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                       ['< 0', '0-0.2', '0.2-0.4', '0.4-0.6', '0.6-0.8', '> 0.8'],
+                       ['#BDBDBD', '#FFFFCC', '#A1DAB4', '#41B6C4', '#2C7FB8', '#253494'],
+                       'r (detrended LAI vs best SPEI)')
+        res = pd.DataFrame({'best_scale': best_scale, 'best_r': best_r, 'best_p': best_p}, index=info.index)
+        T.save_df(info.join(res), self.outdir + f'best_scale_long_{self.tag}.df')
+        ## per group: mean best r, area % with r > 0 and p < 0.05, median best scale
+        w_all = info['area_weight'].values
+        result = []
+        for g, m in self.group_masks(info).items():
+            m = m & np.isfinite(best_r)
+            w = w_all[m]
+            result.append([g, int(m.sum()), np.sum(best_r[m] * w) / np.sum(w),
+                           np.sum(w * ((best_r[m] > 0) & (best_p[m] < 0.05))) / np.sum(w) * 100,
+                           np.median(best_scale[m])])
+        tab = pd.DataFrame(result, columns=['class', 'n_pix', 'mean_best_r', 'r_pos_sig_area_%', 'median_best_scale'])
+        tab.to_csv(self.outdir + f'best_scale_summary_{self.tag}.csv', index=False)
+        print(tab.round(2).to_string())
+        pass
+
+    def group_masks(self, info):
+        ## 7 groups; Shrub / Grass split by RAP mean AFG > PFG over self.herb_years (2026-11-21)
+        if self._herb_dic is None:
+            y0, y1 = self.herb_years
+            rap = T.load_df(self.rap_dff)
+            rap = rap[(rap['year'] >= y0) & (rap['year'] <= y1)]
+            mm = rap.groupby('pix')[['RAP_AFG', 'RAP_PFG']].mean()
+            grp = np.where(mm.isna().any(axis=1), '', np.where(mm['RAP_AFG'] > mm['RAP_PFG'], 'annual', 'perennial'))
+            self._herb_dic = dict(zip(mm.index, grp))
+        grp = np.array([self._herb_dic.get(pix, '') for pix in info.index])
+        lc = info['landcover_type'].values
+        out = {'All': np.ones(len(info), dtype=bool), 'Forest': lc == 'Forest'}
+        for c in ['Shrub', 'Grass']:
+            for g in ['annual', 'perennial']:
+                out[f'{c} {g}'] = (lc == c) & (grp == g)
+        out['Savanna'] = lc == 'Savanna'
+        return out
+
+
 def main():
-    GS_LAI_SPEI_bivariate().run()    ## 2026-11-21: area bars of the class maps in 7 groups
+    # GS_LAI_SPEI_bivariate().run()    ## 2026-11-21: area bars of the class maps in 7 groups (done)
     # LAI_SPEI_scale_heatmap().run()   ## detrended LAI vs SPEI r by scale and vegetation type
+    Best_scale_long('GIMMS', 1982, 2020).run()   ## 2026-11-21: best SPEI scale with GIMMS LAI
+    Best_scale_long('SNU', 1982, 2024).run()     ## 2026-11-21: best SPEI scale with SNU LAI
 
 
 if __name__ == '__main__':
