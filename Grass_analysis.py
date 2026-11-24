@@ -794,6 +794,791 @@ class Observed_trend_by_herb_cover(Growing_season_trend):
         plt.close()
 
 
+class PFG_change_vs_LAI_trend(Growing_season_trend):
+    ## long-term greening of grass: perennial grass expansion or more leaf at the same cover? (2026-11-21)
+    ## years : 1986-2024 (SNU LAI and RAP overlap)
+    ## pixels: Grass pixels of the MODIS figures (model2_annual_perennial_compare; NLCD cropland < 5%) with SNU GS LAI,
+    ##         RAP PFG and growing-season SPEI12 in every year 1986-2024
+    ## per pixel (OLS, not detrended):
+    ##   LAI_trend  : SNU GS LAI (MODIS growing-season window), % of the pixel's 1986-2024 mean per decade
+    ##   PFG_trend  : RAP perennial forb & grass cover, percentage points per decade
+    ##   SPEI_trend : growing-season SPEI12 per decade (drying = negative)
+    ##   PFG_init   : mean PFG cover 1986-1990
+    ## bins of PFG_trend (pp per decade): area-weighted mean LAI_trend, 95% CI (1 x 1 deg block bootstrap)
+    ## regression LAI_trend = a + b PFG_trend (area-weighted): a = LAI trend where PFG cover did not change,
+    ##   b = extra LAI trend per 1 pp per decade of PFG increase; 95% CI by the same block bootstrap
+    ## stable cover: |PFG_trend| < 0.5 pp per decade, mean LAI trend with 95% CI
+    ## strata (similar drying and similar initial PFG): terciles of SPEI_trend x terciles of PFG_init
+    ## output: Result2\05_Grass_attribution\PFG_change_SNU\ :
+    ##   PFG_change_vs_LAI_trend_{tag}.png (all grass), _strata.png (3 x 3), .csv (bins), _fit.csv (a, b, stable), .df
+    def __init__(self):
+        super().__init__(this_root + rf'Result2\05_Grass_attribution\PFG_change_SNU\\')
+        self.year_list = list(range(1986, 2025))
+        self.tag = f'{self.year_list[0]}_{self.year_list[-1]}'
+        self.cmp_dff = this_root + \
+            rf'Result2\03_response\model2_annual_perennial\model2_annual_perennial_compare_2003_2024.df'
+        self.snu_dff = result_root + rf'\Dataframe\growing_season\GS_SNU.df'
+        self.rap_dff = result_root + rf'\Dataframe\RAP\RAP_cover.df'
+        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024.df'
+        self.bin_edges = [-100, -2, -1, -0.5, 0.5, 1, 2, 4, 100]   ## PFG trend, pp per decade
+        self.stable = 0.5   ## |PFG trend| < 0.5 pp per decade = stable cover
+        self.n_min = 30
+        ## large fonts for these figures (readable on a slide, 2026-11-21)
+        self.big_font = {'font.size': 16, 'axes.titlesize': 17, 'axes.labelsize': 17, 'xtick.labelsize': 15,
+                         'ytick.labelsize': 15, 'legend.fontsize': 15}
+
+    def run(self):
+        df = self.load()
+        tab, fit = self.bin_fit(df)
+        self.plot_all(df, tab, fit)
+        self.plot_strata(tab, fit)
+        self.plot_maps(df)   ## 2026-11-21: pixel maps of the LAI and PFG trends
+        pass
+
+    def load(self):
+        cmp = T.load_df(self.cmp_dff)
+        info = cmp[cmp['landcover_type'] == 'Grass'][['lon', 'lat', 'area_weight', 'landcover_type']]
+        pix_set = set(info.index)
+        snu = T.load_df(self.snu_dff)
+        snu = snu[snu['pix'].isin(pix_set)]
+        lai = self.matrix(snu, info, 'GS_LAI', relative=True)   ## % of the pixel's 1986-2024 mean
+        del snu
+        rap = T.load_df(self.rap_dff)
+        rap = rap[rap['pix'].isin(pix_set)]
+        pfg = self.matrix(rap, info, 'RAP_PFG')
+        del rap
+        spei = T.load_df(self.spei_dff)
+        spei = spei[spei['pix'].isin(pix_set)]
+        spei12 = self.matrix(spei, info, 'growing_SPEI12')
+        del spei
+        ok = np.isfinite(lai).all(axis=1) & np.isfinite(pfg).all(axis=1) & np.isfinite(spei12).all(axis=1)
+        print('grass pixels:', len(info), '| with all years of SNU LAI, RAP PFG and SPEI12:', int(ok.sum()))
+        df = info[ok].copy()
+        df['LAI_trend'], df['LAI_trend_p'] = self.trend(lai[ok])
+        df['PFG_trend'], df['PFG_trend_p'] = self.trend(pfg[ok])
+        df['SPEI_trend'] = self.trend(spei12[ok])[0]
+        df['PFG_init'] = np.mean(pfg[ok][:, :5], axis=1)   ## 1986-1990
+        df['PFG_mean'] = np.mean(pfg[ok], axis=1)
+        df['dry_tercile'] = pd.qcut(df['SPEI_trend'], 3, labels=['strong drying', 'medium drying', 'weak drying'])
+        df['init_tercile'] = pd.qcut(df['PFG_init'], 3, labels=['low PFG 1986-90', 'mid PFG 1986-90',
+                                                               'high PFG 1986-90'])
+        print(df[['LAI_trend', 'PFG_trend', 'SPEI_trend', 'PFG_init']].describe().round(2).to_string())
+        T.save_df(df, self.outdir + f'PFG_change_vs_LAI_trend_{self.tag}.df')
+        return df
+
+    def boot_fit(self, d, n_boot=200):
+        ## area-weighted LS of LAI_trend on PFG_trend; 95% CI by 1 x 1 deg block bootstrap
+        def wls(x, y, w):
+            X = np.column_stack([np.ones_like(x), x])
+            W = np.sqrt(w)[:, None]
+            return np.linalg.lstsq(X * W, y * W[:, 0], rcond=None)[0]
+        x, y, w = d['PFG_trend'].values, d['LAI_trend'].values, d['area_weight'].values
+        ab = wls(x, y, w)
+        block = (np.floor(d['lon'].values) * 1000 + np.floor(d['lat'].values)).astype(int)
+        ids = np.unique(block)
+        idx = {b: np.where(block == b)[0] for b in ids}
+        rng = np.random.default_rng(0)
+        boot = []
+        for _ in range(n_boot):
+            pick = np.concatenate([idx[b] for b in rng.choice(ids, size=len(ids))])
+            boot.append(wls(x[pick], y[pick], w[pick]))
+        lo, hi = np.percentile(np.array(boot), [2.5, 97.5], axis=0)
+        return ab, lo, hi
+
+    def bin_fit(self, df):
+        strata = [('All grass', np.ones(len(df), dtype=bool))]
+        for dry in df['dry_tercile'].cat.categories:
+            for ini in df['init_tercile'].cat.categories:
+                strata.append((f'{dry} | {ini}', ((df['dry_tercile'] == dry) & (df['init_tercile'] == ini)).values))
+        b = np.digitize(df['PFG_trend'].values, self.bin_edges) - 1
+        rows, fit_rows = [], []
+        for name, ms in strata:
+            for k in range(len(self.bin_edges) - 1):
+                m = ms & (b == k)
+                if m.sum() < self.n_min:
+                    continue
+                d = df[m]
+                w = d['area_weight'].values
+                v = d['LAI_trend'].values
+                lo, hi = self.block_ci(d, v, w)
+                rows.append([name, self.bin_edges[k], self.bin_edges[k + 1], int(m.sum()),
+                             np.sum(d['PFG_trend'].values * w) / np.sum(w), np.sum(v * w) / np.sum(w), lo, hi])
+            d = df[ms]
+            if len(d) < self.n_min:
+                continue
+            st = d[np.abs(d['PFG_trend'].values) < self.stable]
+            stable = [np.nan, np.nan, np.nan, len(st)]
+            if len(st) >= self.n_min:
+                w = st['area_weight'].values
+                stable = [np.sum(st['LAI_trend'].values * w) / np.sum(w)] + \
+                         list(self.block_ci(st, st['LAI_trend'].values, w)) + [len(st)]
+            (a, bb), lo, hi = self.boot_fit(d)
+            w = d['area_weight'].values
+            fit_rows.append([name, len(d), np.sum(d['PFG_trend'].values * w) / np.sum(w),
+                             np.sum(d['LAI_trend'].values * w) / np.sum(w),
+                             np.sum(d['SPEI_trend'].values * w) / np.sum(w), a, lo[0], hi[0], bb, lo[1], hi[1]]
+                            + stable)
+        tab = pd.DataFrame(rows, columns=['stratum', 'bin_low', 'bin_high', 'n_pix', 'PFG_trend_mean', 'LAI_trend',
+                                          'ci_low', 'ci_high'])
+        fit = pd.DataFrame(fit_rows, columns=['stratum', 'n_pix', 'PFG_trend_mean', 'LAI_trend_mean', 'SPEI_trend_mean',
+                                              'a_LAI_trend_at_PFG0', 'a_ci_low', 'a_ci_high',
+                                              'b_per_pp_PFG', 'b_ci_low', 'b_ci_high',
+                                              'stable_LAI_trend', 'stable_ci_low', 'stable_ci_high', 'stable_n'])
+        tab.to_csv(self.outdir + f'PFG_change_vs_LAI_trend_{self.tag}.csv', index=False)
+        fit.to_csv(self.outdir + f'PFG_change_vs_LAI_trend_{self.tag}_fit.csv', index=False)
+        print(fit.round(2).to_string())
+        return tab, fit
+
+    def draw(self, ax, d, f):
+        ## binned means with 95% CI, fitted line (dashed), grey band = stable cover
+        err = np.array([d['LAI_trend'] - d['ci_low'], d['ci_high'] - d['LAI_trend']])
+        ax.errorbar(d['PFG_trend_mean'], d['LAI_trend'], yerr=err, marker='o', ms=7, capsize=4, color='#2E7D32',
+                    lw=2.2)
+        if len(d):
+            xx = np.linspace(d['PFG_trend_mean'].min(), d['PFG_trend_mean'].max(), 10)
+            ax.plot(xx, f['a_LAI_trend_at_PFG0'] + f['b_per_pp_PFG'] * xx, color='k', lw=1, ls='--')
+        ax.axhline(0, color='grey', lw=0.5)
+        ax.axvline(0, color='grey', lw=0.5)
+        ax.axvspan(-self.stable, self.stable, color='#BDBDBD', alpha=0.3, lw=0)
+        ax.spines[['top', 'right']].set_visible(False)
+
+    def plot_all(self, df, tab, fit):
+        ## left: binned LAI trend vs PFG trend (all grass); right: area histogram of the PFG trend
+        ## 2026-11-21: compact figure, large fonts (readable on a slide)
+        with plt.rc_context(self.big_font):
+            fig, axs = plt.subplots(1, 2, figsize=(11, 4.4), gridspec_kw={'width_ratios': [3, 2]})
+            d = tab[tab['stratum'] == 'All grass']
+            f = fit[fit['stratum'] == 'All grass'].iloc[0]
+            self.draw(axs[0], d, f)
+            axs[0].text(0.02, 0.98, f"stable PFG: {f['stable_LAI_trend']:+.1f} "
+                                    f"[{f['stable_ci_low']:.1f}, {f['stable_ci_high']:.1f}]\n"
+                                    f"b = {f['b_per_pp_PFG']:+.2f} [{f['b_ci_low']:.2f}, {f['b_ci_high']:.2f}] per pp",
+                        transform=axs[0].transAxes, va='top', fontsize=15)
+            axs[0].set_xlabel('PFG cover trend (pp / decade)')
+            axs[0].set_ylabel('LAI trend (% / decade)')
+            axs[0].set_title(f'Grass, SNU 1986-2024 (n = {int(f["n_pix"])})')
+            x = np.clip(df['PFG_trend'].values, -6, 8)
+            axs[1].hist(x, bins=np.arange(-6, 8.5, 0.5),
+                        weights=df['area_weight'].values / df['area_weight'].sum() * 100, color='#8FB8DE',
+                        edgecolor='white')
+            axs[1].axvspan(-self.stable, self.stable, color='#BDBDBD', alpha=0.3, lw=0)
+            axs[1].set_xlabel('PFG cover trend (pp / decade)')
+            axs[1].set_ylabel('Area (%)')
+            axs[1].spines[['top', 'right']].set_visible(False)
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'PFG_change_vs_LAI_trend_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'PFG_change_vs_LAI_trend_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def plot_maps(self, df):
+        ## pixel-level maps, grass only (2026-11-21): a) SNU GS LAI trend (% / decade), b) RAP PFG cover trend
+        ##   (pp / decade), dots = p < 0.05 (every 3rd pixel); c) four classes from significance (p < 0.05):
+        ##   1 sig. greening + sig. PFG increase, 2 sig. greening without sig. PFG increase (stable or declining),
+        ##   3 LAI n.s., 4 sig. browning; area % of each class in the legend
+        ##   (2026-11-21: was the four sign combinations LAI +/- x PFG +/-)
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.ticker as mticker
+        import matplotlib.patches as mpatches
+        from matplotlib.colors import ListedColormap, BoundaryNorm
+        rows = np.array([q[0] for q in df.index])
+        cols = np.array([q[1] for q in df.index])
+        w = df['area_weight'].values
+
+        def grid(v):
+            arr = np.full((468, 449), np.nan)
+            arr[rows, cols] = v
+            return arr
+
+        lai_sig = df['LAI_trend_p'].values < 0.05
+        green = lai_sig & (df['LAI_trend'].values > 0)
+        brown = lai_sig & (df['LAI_trend'].values < 0)
+        pfg_up = (df['PFG_trend_p'].values < 0.05) & (df['PFG_trend'].values > 0)
+        pfg_down = (df['PFG_trend_p'].values < 0.05) & (df['PFG_trend'].values < 0)
+        quad = np.where(green & pfg_up, 1, np.where(green, 2, np.where(brown, 4, 3))).astype(float)
+        q_labels = ['Sig. greening, sig. PFG increase', 'Sig. greening, no sig. PFG increase', 'LAI n.s.',
+                    'Sig. browning']
+        q_colors = ['#0B4F6C', '#5FB3C4', '#E0E0E0', '#A0522D']
+        q_area = [np.sum(w[quad == k]) / np.sum(w) * 100 for k in [1, 2, 3, 4]]
+        print('grass area %: sig. greening with sig. PFG decrease:',
+              round(np.sum(w[green & pfg_down]) / np.sum(w) * 100, 1))
+        panels = [('LAI_trend', 'a) SNU LAI trend (% / decade)', [-20, -15, -10, -5, 0, 5, 10, 15, 20],
+                   ['#7B3F13', '#C0692A', '#EBA14A', '#F5D38E', '#CFE3D1', '#87B8CF', '#3D7FA6', '#0B4F6C']),
+                  ('PFG_trend', 'b) RAP PFG cover trend (pp / decade)', [-4, -3, -2, -1, 0, 1, 2, 3, 4],
+                   ['#8C510A', '#BF812D', '#DFC27D', '#F6E8C3', '#C7EAE5', '#80CDC1', '#35978F', '#01665E']),
+                  ('quad', 'c) LAI trend vs PFG trend (p < 0.05)', None, q_colors)]
+        with plt.rc_context(self.big_font):
+            fig = plt.figure(figsize=(18, 6.8))
+            for k, (col, title, bounds, colors) in enumerate(panels):
+                ax = fig.add_axes([0.01 + k * 0.33, 0.22, 0.31, 0.70], projection=ccrs.PlateCarree())
+                if col == 'quad':
+                    im = ax.imshow(grid(quad), cmap=ListedColormap(colors), norm=BoundaryNorm([0.5, 1.5, 2.5, 3.5, 4.5], 4),
+                                   extent=[-124.529, -102.079, 25.579, 48.979], transform=ccrs.PlateCarree(),
+                                   interpolation='nearest')
+                else:
+                    cmap = ListedColormap(colors)
+                    cmap.set_under(colors[0])
+                    cmap.set_over(colors[-1])
+                    im = ax.imshow(grid(df[col].values), cmap=cmap, norm=BoundaryNorm(bounds, cmap.N),
+                                   extent=[-124.529, -102.079, 25.579, 48.979], transform=ccrs.PlateCarree(),
+                                   interpolation='nearest')
+                    sig = (df[f'{col}_p'].values < 0.05) & (rows % 3 == 0) & (cols % 3 == 0)
+                    ax.scatter(df['lon'].values[sig], df['lat'].values[sig], s=1.5, c='k', marker='.', lw=0,
+                               transform=ccrs.PlateCarree(), zorder=5)
+                    cax = fig.add_axes([0.03 + k * 0.33, 0.14, 0.27, 0.025])
+                    cb = plt.colorbar(im, cax=cax, orientation='horizontal', ticks=bounds, extend='both')
+                    cb.set_label('dots: p < 0.05')
+                ax.add_feature(cfeature.STATES, linewidth=0.3)
+                ax.add_feature(cfeature.LAND, facecolor='none', edgecolor='black', linewidth=0.4)
+                ax.set_extent([-125, -102, 30, 46], crs=ccrs.PlateCarree())
+                gl = ax.gridlines(draw_labels=True, linewidth=0)
+                gl.top_labels = False
+                gl.right_labels = False
+                gl.xlocator = mticker.FixedLocator(range(-120, -100, 10))
+                gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
+                gl.xlabel_style = {'size': 14}
+                gl.ylabel_style = {'size': 14}
+                ax.set_title(title)
+            handles = [mpatches.Patch(color=c, label=f'{l} ({a:.0f}%)') for l, c, a in zip(q_labels, q_colors, q_area)]
+            fig.legend(handles=handles, loc='upper left', bbox_to_anchor=(0.69, 0.20), ncol=1, frameon=False,
+                       fontsize=14)
+            plt.savefig(self.outdir + f'PFG_LAI_trend_maps_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'PFG_LAI_trend_maps_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+        print('grass area % by sign class:', dict(zip(q_labels, np.round(q_area, 1))))
+
+    def light_blue_pfg(self):
+        ## PFG cover trend of the light-blue class of plot_maps c) (2026-11-22): sig. LAI greening (p < 0.05) without
+        ##   a sig. PFG increase. "No sig. PFG increase" mixes ecologically different cases, so split it:
+        ##   sig. PFG decline (p < 0.05, < 0), n.s. decline, n.s. increase
+        ## figure: area-weighted histogram of the PFG trend (pp / decade), stacked by the three cases; zero line,
+        ##   weighted median (solid) and quartiles (dashed); grey band = |trend| < 0.5 (stable, as Fig 10)
+        ## input : PFG_change_vs_LAI_trend_{tag}.df (written by run / load; needs LAI_trend_p and PFG_trend_p)
+        ## output: light_blue_PFG_trend_{tag}.png / .pdf / .csv
+        df = T.load_df(self.outdir + f'PFG_change_vs_LAI_trend_{self.tag}.df')
+        green = (df['LAI_trend_p'] < 0.05) & (df['LAI_trend'] > 0)
+        pfg_up = (df['PFG_trend_p'] < 0.05) & (df['PFG_trend'] > 0)
+        d = df[green & ~pfg_up]
+        x = d['PFG_trend'].values
+        w = d['area_weight'].values
+        p = d['PFG_trend_p'].values
+        cases = [('Sig. PFG decline', (p < 0.05) & (x < 0), '#8C510A'),
+                 ('n.s. PFG decline', (p >= 0.05) & (x < 0), '#DFC27D'),
+                 ('n.s. PFG increase', (p >= 0.05) & (x >= 0), '#80CDC1')]
+
+        def wq(q):
+            o = np.argsort(x)
+            cw = np.cumsum(w[o]) / np.sum(w)
+            return x[o][np.searchsorted(cw, q)]
+
+        q1, med, q3 = wq(0.25), wq(0.5), wq(0.75)
+        all_w = df['area_weight'].sum()
+        rows = [['light blue (all)', len(d), np.sum(w) / all_w * 100, 100.0]]
+        for name, m, _ in cases:
+            rows.append([name, int(m.sum()), np.sum(w[m]) / all_w * 100, np.sum(w[m]) / np.sum(w) * 100])
+        stable = np.abs(x) < self.stable
+        rows.append([f'|PFG trend| < {self.stable}', int(stable.sum()), np.sum(w[stable]) / all_w * 100,
+                     np.sum(w[stable]) / np.sum(w) * 100])
+        tab = pd.DataFrame(rows, columns=['case', 'n_pix', 'area_%_of_grass', 'area_%_of_light_blue'])
+        tab['PFG_q1'], tab['PFG_median'], tab['PFG_q3'] = q1, med, q3
+        tab.to_csv(self.outdir + f'light_blue_PFG_trend_{self.tag}.csv', index=False)
+        print(tab.round(2).to_string())
+        bins = np.arange(-6, 4.25, 0.25)
+        xc = np.clip(x, bins[0] + 1e-6, bins[-1] - 1e-6)
+        with plt.rc_context(self.big_font):
+            fig, ax = plt.subplots(figsize=(11, 5))
+            bottom = np.zeros(len(bins) - 1)
+            for name, m, color in cases:
+                h = np.histogram(xc[m], bins=bins, weights=w[m] / np.sum(w) * 100)[0]
+                share = np.sum(w[m]) / np.sum(w) * 100
+                ax.bar(bins[:-1], h, width=0.25, align='edge', bottom=bottom, color=color, edgecolor='white',
+                       linewidth=0.4, label=f'{name} ({share:.0f}%)')
+                bottom += h
+            ax.axvspan(-self.stable, self.stable, color='#BDBDBD', alpha=0.3, lw=0)
+            ax.axvline(0, color='k', lw=1.5)
+            ax.axvline(med, color='#C0392B', lw=2.5)
+            for q in [q1, q3]:
+                ax.axvline(q, color='#C0392B', lw=1.8, ls='--')
+            ax.text(0.02, 0.97, f'median {med:+.2f}\nIQR [{q1:+.2f}, {q3:+.2f}] pp / decade',
+                    transform=ax.transAxes, va='top', fontsize=15, color='#C0392B')
+            ax.set_xlabel('PFG cover trend 1986-2024 (pp / decade)')
+            ax.set_ylabel('Area (% of light-blue class)')
+            ax.set_title(f'Sig. greening without sig. PFG increase ({np.sum(w) / all_w * 100:.0f}% of grassland)')
+            ax.legend(frameon=False, loc='upper right')
+            ax.spines[['top', 'right']].set_visible(False)
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'light_blue_PFG_trend_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'light_blue_PFG_trend_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def plot_strata(self, tab, fit):
+        ## 3 x 3: rows = drying tercile (SPEI12 trend), columns = initial PFG tercile (1986-1990)
+        ## 2026-11-21: compact figure, large fonts; column titles on top, row labels on the left
+        rows = ['strong drying', 'medium drying', 'weak drying']
+        cols = ['low PFG 1986-90', 'mid PFG 1986-90', 'high PFG 1986-90']
+        with plt.rc_context(self.big_font):
+            fig, axs = plt.subplots(3, 3, figsize=(11, 9.5), sharex=True, sharey=True)
+            for i, r in enumerate(rows):
+                for j, c in enumerate(cols):
+                    ax = axs[i, j]
+                    name = f'{r} | {c}'
+                    ff = fit[fit['stratum'] == name]
+                    if len(ff) == 0:
+                        continue
+                    f = ff.iloc[0]
+                    self.draw(ax, tab[tab['stratum'] == name], f)
+                    ax.text(0.03, 0.97, f"stable {f['stable_LAI_trend']:+.1f}\nb {f['b_per_pp_PFG']:+.2f}",
+                            transform=ax.transAxes, va='top', fontsize=15)
+                    if i == 0:
+                        ax.set_title(c.replace(' 1986-90', ''))
+                axs[i, 0].set_ylabel(f'{r}\nLAI trend')
+            for j in range(3):
+                axs[-1, j].set_xlabel('PFG trend')
+            fig.text(0.5, 1.0, 'Initial perennial cover (1986-1990)', ha='center', va='bottom', fontsize=17)
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'PFG_change_vs_LAI_trend_{self.tag}_strata.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'PFG_change_vs_LAI_trend_{self.tag}_strata.pdf', bbox_inches='tight')
+            plt.close()
+
+
+class Greening_cover_change(PFG_change_vs_LAI_trend):
+    ## inside the pixels that green (SNU LAI 1986-2024, p < 0.05): did RAP bare ground decline, and which cover
+    ##   changed? (2026-11-23)
+    ## years : 1986-2024 (SNU LAI and RAP overlap)
+    ## pixels: Grass, Shrub and Savanna pixels of the MODIS figures (model2_annual_perennial_compare; NLCD cropland
+    ##         < 5%) with SNU GS LAI and all six RAP covers in every year 1986-2024; Forest left out (SNU forest trend
+    ##         not robust, Fig 8c; RAP least reliable in closed forest)
+    ## groups: Grass / Shrub x annual / perennial (annual = mean RAP AFG > PFG over 1986-2024, as the long records),
+    ##         Savanna
+    ## status: 'greening' = SNU LAI trend > 0 and p < 0.05; 'control' = LAI trend n.s. (p >= 0.05);
+    ##         'browning' = LAI trend < 0 and p < 0.05 (kept out of the comparison, counts printed) (2026-11-23)
+    ## per pixel (OLS, per decade): LAI_trend (% of the pixel's mean), {AFG, PFG, SHR, TRE, LTR, BGR}_trend (pp) and _p
+    ## figures (output in Result2\05_Grass_attribution\Greening_cover_SNU\):
+    ##   Fig10c_greening_cover_{tag}  : a) mean BGR trend, greening vs control, 95% CI (1 x 1 deg block bootstrap)
+    ##                                  b) heat map, rows = groups, columns = AFG, PFG, SHR, TRE; colour = greening trend,
+    ##                                     text = greening trend and (greening - control), bold if |difference| >= 0.3
+    ##   LAI_vs_cover_regression_{tag}: per group, area-weighted OLS over all pixels of the group
+    ##                                  LAI_trend = a + sum b_c * cover_trend_c (c = AFG, PFG, SHR, TRE);
+    ##                                  b_c = % LAI per decade per 1 pp per decade of cover c; 95% CI block bootstrap
+    ##   RAP_cover_timeseries_{tag}   : area-weighted yearly mean RAP cover per group (BGR, AFG, PFG, SHR, TRE);
+    ##                                  dotted lines at the Landsat 7 (1999) and Landsat 8 (2013) starts: check for steps
+    ##   (earlier figures, not run any more: bare_ground, cover_trend, who_increased)
+    ##   csv of each figure, and the pixel table Greening_cover_{tag}.df
+    def __init__(self):
+        super().__init__()
+        self.outdir = this_root + rf'Result2\05_Grass_attribution\Greening_cover_SNU\\'
+        T.mk_dir(self.outdir, force=True)
+        self.cover_list = ['AFG', 'PFG', 'SHR', 'TRE', 'LTR', 'BGR']
+        self.cover_color = {'AFG': '#E6A23C', 'PFG': '#4C9A2A', 'SHR': '#8E5A2B', 'TRE': '#1F5F3A', 'LTR': '#B8A07E',
+                            'BGR': '#9E9E9E'}
+        self.group_list = ['Grass annual', 'Grass perennial', 'Shrub annual', 'Shrub perennial', 'Savanna']
+        self.status_color = {'greening': '#0B4F6C', 'control': '#BDBDBD'}
+        self.bold_diff = 0.3   ## pp per decade, |greening - control| shown in bold in the heat map
+        self.veg_min = 5.   ## % total vegetation cover (AFG + PFG + SHR + TRE) below which LAI per cover is not computed
+        self.co2_range = (2.9, 5.8)   ## CO2 fertilisation expectation, % per decade (Donohue et al. 2013)
+
+    def run(self):
+        df, ts = self.load()
+        self.fig10c(df)
+        self.lai_regression(df)
+        self.rap_timeseries(ts)
+        self.lai_per_cover(df)
+
+    def run_lai_per_cover(self):
+        ## 2026-11-23: only the LAI-per-cover figure (load is needed for the new columns)
+        df, _ = self.load()
+        self.lai_per_cover(df)
+
+    def lai_per_cover(self, df):
+        ## does each unit of vegetation cover hold more leaf? (2026-11-23)
+        ## per group, greening vs control (LAI n.s.): area-weighted mean trend (% per decade, 95% CI, 1 deg block
+        ##   bootstrap) of a) GS LAI, b) LAI per unit vegetation cover (LAI / (AFG + PFG + SHR + TRE)),
+        ##   plus total vegetation cover trend (pp per decade) in the csv; grey band = CO2 expectation
+        ## output: LAI_per_cover_{tag}.png / .pdf / .csv
+        cols = [('LAI_trend', 'GS LAI'), ('LAIc_trend', 'LAI per unit cover'), ('VEG_trend', 'total cover (pp)')]
+        rows = []
+        for g in self.group_list:
+            for st in ['greening', 'control']:
+                d = df[(df['group'] == g) & (df['status'] == st)]
+                d = d[np.isfinite(d['LAIc_trend'])]
+                if len(d) < self.n_min:
+                    continue
+                for col, name in cols:
+                    m, lo, hi = self.wmean_ci(d, col)
+                    rows.append([g, st, len(d), name, m, lo, hi])
+        tab = pd.DataFrame(rows, columns=['group', 'status', 'n_pix', 'variable', 'trend', 'ci_low', 'ci_high'])
+        tab.to_csv(self.outdir + f'LAI_per_cover_{self.tag}.csv', index=False)
+        print(tab.pivot_table(index=['group', 'status'], columns='variable', values='trend').round(2).to_string())
+        x = np.arange(len(self.group_list))
+        with plt.rc_context(self.big_font):
+            fig, axs = plt.subplots(1, 2, figsize=(19, 7), sharey=True)
+            for ax, (col, name) in zip(axs, cols[:2]):
+                ax.axhspan(*self.co2_range, color='#FDEBD0', zorder=0, label='CO$_2$ expectation')
+                for k, st in enumerate(['greening', 'control']):
+                    t = tab[(tab['status'] == st) & (tab['variable'] == name)].set_index('group').reindex(self.group_list)
+                    v = t['trend'].values
+                    ax.bar(x + (k - 0.5) * 0.38, v, width=0.38, color=self.status_color[st],
+                           label='sig. greening' if st == 'greening' else 'LAI n.s.',
+                           yerr=[v - t['ci_low'].values, t['ci_high'].values - v], capsize=4)
+                    for xx, vv in zip(x + (k - 0.5) * 0.38, v):
+                        if np.isfinite(vv):
+                            ax.text(xx, vv + (0.3 if vv >= 0 else -0.3), f'{vv:+.1f}', ha='center',
+                                    va='bottom' if vv >= 0 else 'top', fontsize=13)
+                ax.axhline(0, color='k', lw=1)
+                ax.set_xticks(x)
+                ax.set_xticklabels([g.replace(' ', '\n') for g in self.group_list])
+                ax.set_title(f'{"a" if col == "LAI_trend" else "b"}) {name} trend')
+                ax.spines[['top', 'right']].set_visible(False)
+            axs[0].set_ylabel('Trend 1986-2024 (% of mean / decade)')
+            h, l = axs[0].get_legend_handles_labels()
+            plt.tight_layout()
+            fig.legend(h, l, loc='upper center', bbox_to_anchor=(0.5, 0.0), ncol=3, frameon=False)
+            plt.savefig(self.outdir + f'LAI_per_cover_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'LAI_per_cover_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def load(self):
+        cmp = T.load_df(self.cmp_dff)
+        info = cmp[cmp['landcover_type'].isin(['Grass', 'Shrub', 'Savanna'])][['lon', 'lat', 'area_weight',
+                                                                               'landcover_type']]
+        pix_set = set(info.index)
+        snu = T.load_df(self.snu_dff)
+        snu = snu[snu['pix'].isin(pix_set)]
+        lai = self.matrix(snu, info, 'GS_LAI', relative=True)
+        lai_abs = self.matrix(snu, info, 'GS_LAI')   ## 2026-11-23: for LAI per unit vegetation cover
+        del snu
+        rap = T.load_df(self.rap_dff)
+        rap = rap[rap['pix'].isin(pix_set)]
+        cov = {c: self.matrix(rap, info, f'RAP_{c}') for c in self.cover_list}
+        del rap
+        ok = np.isfinite(lai).all(axis=1)
+        for c in self.cover_list:
+            ok &= np.isfinite(cov[c]).all(axis=1)
+        print('grass + shrub + savanna pixels:', len(info), '| with all years of SNU LAI and the six RAP covers:',
+              int(ok.sum()))
+        df = info[ok].copy()
+        df['LAI_trend'], df['LAI_trend_p'] = self.trend(lai[ok])
+        for c in self.cover_list:
+            df[f'{c}_trend'], df[f'{c}_trend_p'] = self.trend(cov[c][ok])
+            df[f'{c}_mean'] = np.mean(cov[c][ok], axis=1)
+        ## 2026-11-23: LAI per unit vegetation cover = GS LAI / ((AFG + PFG + SHR + TRE) / 100), per year;
+        ##   years with total cover < self.veg_min (%) -> NaN, pixel then has no trend
+        veg = sum(cov[c][ok] for c in ['AFG', 'PFG', 'SHR', 'TRE'])
+        with np.errstate(divide='ignore', invalid='ignore'):
+            lai_c = np.where(veg >= self.veg_min, lai_abs[ok] / (veg / 100.), np.nan)
+            lai_c = (lai_c / np.nanmean(lai_c, axis=1, keepdims=True) - 1) * 100   ## % of the pixel's mean
+        df['VEG_mean'] = np.mean(veg, axis=1)
+        df['VEG_trend'], df['VEG_trend_p'] = self.trend(veg)
+        df['LAIc_trend'], df['LAIc_trend_p'] = self.trend(lai_c)
+        print('pixels with LAI per cover in every year (total cover >=', self.veg_min, '%):',
+              int(np.isfinite(df['LAIc_trend']).sum()), 'of', len(df))
+        herb = np.where(df['AFG_mean'] > df['PFG_mean'], 'annual', 'perennial')
+        df['group'] = np.where(df['landcover_type'] == 'Savanna', 'Savanna', df['landcover_type'].values + ' ' + herb)
+        sig = df['LAI_trend_p'] < 0.05
+        df['status'] = np.where(sig & (df['LAI_trend'] > 0), 'greening',
+                                np.where(sig & (df['LAI_trend'] < 0), 'browning', 'control'))
+        cnt = df.groupby(['group', 'status'])['area_weight'].agg(['size', 'sum']).unstack()
+        print('pixels per group and status:\n', cnt['size'].to_string())
+        area = cnt['sum'].div(cnt['sum'].sum(axis=1), axis=0) * 100
+        print('area % per group (browning is left out of the comparison):\n', area.round(1).to_string())
+        area.to_csv(self.outdir + f'status_area_{self.tag}.csv')
+        T.save_df(df, self.outdir + f'Greening_cover_{self.tag}.df')
+        ## yearly area-weighted mean cover per group (all pixels of the group), for the RAP consistency check
+        w = df['area_weight'].values
+        rows = []
+        for g in self.group_list:
+            m = (df['group'] == g).values
+            for c in ['BGR', 'AFG', 'PFG', 'SHR', 'TRE']:
+                y = np.sum(cov[c][ok][m] * w[m, None], axis=0) / np.sum(w[m])
+                rows += [[g, c, yr, v] for yr, v in zip(self.year_list, y)]
+        ts = pd.DataFrame(rows, columns=['group', 'cover', 'year', 'cover_%'])
+        ts.to_csv(self.outdir + f'RAP_cover_timeseries_{self.tag}.csv', index=False)
+        return df, ts
+
+    def fig10c(self, df):
+        from matplotlib.colors import TwoSlopeNorm
+        covers = ['AFG', 'PFG', 'SHR', 'TRE']
+        rows = []
+        for g in self.group_list:
+            for st in ['greening', 'control']:
+                d = df[(df['group'] == g) & (df['status'] == st)]
+                if len(d) < self.n_min:
+                    continue
+                for c in covers + ['BGR']:
+                    m, lo, hi = self.wmean_ci(d, f'{c}_trend')
+                    rows.append([g, st, len(d), c, m, lo, hi])
+        tab = pd.DataFrame(rows, columns=['group', 'status', 'n_pix', 'cover', 'trend', 'ci_low', 'ci_high'])
+        tab.to_csv(self.outdir + f'Fig10c_greening_cover_{self.tag}.csv', index=False)
+        print(tab.pivot_table(index=['group', 'status'], columns='cover', values='trend')[covers + ['BGR']]
+              .round(2).to_string())
+
+        def get(g, st, c, k='trend'):
+            t = tab[(tab['group'] == g) & (tab['status'] == st) & (tab['cover'] == c)]
+            return t[k].iloc[0] if len(t) else np.nan
+
+        x = np.arange(len(self.group_list))
+        with plt.rc_context(self.big_font):
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(19, 7.5), gridspec_kw={'width_ratios': [1, 1.15]})
+            for k, st in enumerate(['greening', 'control']):
+                v = np.array([get(g, st, 'BGR') for g in self.group_list])
+                lo = np.array([get(g, st, 'BGR', 'ci_low') for g in self.group_list])
+                hi = np.array([get(g, st, 'BGR', 'ci_high') for g in self.group_list])
+                ax1.bar(x + (k - 0.5) * 0.38, v, width=0.38, color=self.status_color[st],
+                        label='sig. greening' if st == 'greening' else 'LAI n.s.', yerr=[v - lo, hi - v], capsize=4)
+            ax1.axhline(0, color='k', lw=1)
+            ax1.set_xticks(x)
+            ax1.set_xticklabels([g.replace(' ', '\n') for g in self.group_list])
+            ax1.set_ylabel('Bare-ground trend (pp / decade)')
+            ax1.set_title('a) Did bare ground decline?')
+            ax1.legend(frameon=False, loc='lower left')
+            ax1.spines[['top', 'right']].set_visible(False)
+            G = np.array([[get(g, 'greening', c) for c in covers] for g in self.group_list])
+            C = np.array([[get(g, 'control', c) for c in covers] for g in self.group_list])
+            vmax = max(np.nanmax(np.abs(G)), 1)
+            im = ax2.imshow(G, cmap='BrBG', norm=TwoSlopeNorm(0, -vmax / 2, vmax), aspect='auto')
+            for i in range(len(self.group_list)):
+                for j in range(len(covers)):
+                    if not np.isfinite(G[i, j]):
+                        continue
+                    dd = G[i, j] - C[i, j]
+                    ax2.text(j, i, f'{G[i, j]:+.1f}\n({dd:+.1f})', ha='center', va='center', fontsize=16,
+                             fontweight='bold' if abs(dd) >= self.bold_diff else 'normal',
+                             color='white' if abs(G[i, j]) > 0.65 * vmax else 'k')
+            ax2.set_xticks(range(len(covers)))
+            ax2.set_xticklabels(covers)
+            ax2.set_yticks(range(len(self.group_list)))
+            ax2.set_yticklabels(self.group_list)
+            ax2.set_title(f'b) Cover trend in greening pixels\n(greening - LAI n.s.); bold |diff| >= {self.bold_diff}')
+            cb = plt.colorbar(im, ax=ax2, fraction=0.045)
+            cb.set_label('Cover trend (pp / decade)')
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'Fig10c_greening_cover_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'Fig10c_greening_cover_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def lai_regression(self, df, n_boot=200):
+        ## per group: area-weighted OLS of LAI_trend on the four cover trends, all pixels of the group
+        covers = ['AFG', 'PFG', 'SHR', 'TRE']
+
+        def fit(d):
+            X = np.column_stack([np.ones(len(d))] + [d[f'{c}_trend'].values for c in covers])
+            sw = np.sqrt(d['area_weight'].values)
+            return np.linalg.lstsq(X * sw[:, None], d['LAI_trend'].values * sw, rcond=None)[0][1:]
+
+        rows = []
+        rng = np.random.default_rng(0)
+        for g in self.group_list:
+            d = df[df['group'] == g]
+            b = fit(d)
+            block = (np.floor(d['lon'].values) * 1000 + np.floor(d['lat'].values)).astype(int)
+            ids = np.unique(block)
+            idx = {bb: np.where(block == bb)[0] for bb in ids}
+            boot = np.array([fit(d.iloc[np.concatenate([idx[bb] for bb in rng.choice(ids, size=len(ids))])])
+                             for _ in range(n_boot)])
+            for k, c in enumerate(covers):
+                rows.append([g, len(d), c, b[k], np.percentile(boot[:, k], 2.5), np.percentile(boot[:, k], 97.5)])
+        tab = pd.DataFrame(rows, columns=['group', 'n_pix', 'cover', 'b_LAI_per_pp', 'ci_low', 'ci_high'])
+        tab.to_csv(self.outdir + f'LAI_vs_cover_regression_{self.tag}.csv', index=False)
+        print(tab.round(3).to_string())
+        x = np.arange(len(self.group_list))
+        wd = 0.2
+        with plt.rc_context(self.big_font):
+            fig, ax = plt.subplots(figsize=(15, 6.5))
+            for k, c in enumerate(covers):
+                t = tab[tab['cover'] == c].set_index('group').reindex(self.group_list)
+                v = t['b_LAI_per_pp'].values
+                ax.bar(x + (k - 1.5) * wd, v, width=wd, color=self.cover_color[c], label=c,
+                       yerr=[v - t['ci_low'].values, t['ci_high'].values - v], capsize=3)
+            ax.axhline(0, color='k', lw=1)
+            ax.set_xticks(x)
+            ax.set_xticklabels([g.replace(' ', '\n') for g in self.group_list])
+            ax.set_ylabel('LAI trend per 1 pp cover trend\n(% / decade per pp / decade)')
+            ax.set_title('Which cover gain turns into LAI? (multiple regression, 95% CI)')
+            ax.legend(frameon=False, ncol=4, loc='upper right')
+            ax.spines[['top', 'right']].set_visible(False)
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'LAI_vs_cover_regression_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'LAI_vs_cover_regression_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def rap_timeseries(self, ts):
+        with plt.rc_context(self.big_font):
+            fig, axs = plt.subplots(2, 3, figsize=(19, 10), sharex=True)
+            for ax, g in zip(axs.ravel(), self.group_list):
+                for c in ['BGR', 'AFG', 'PFG', 'SHR', 'TRE']:
+                    t = ts[(ts['group'] == g) & (ts['cover'] == c)]
+                    ax.plot(t['year'], t['cover_%'], color=self.cover_color[c], lw=2.2, label=c)
+                for yr in [1999, 2013]:
+                    ax.axvline(yr, color='grey', lw=1.2, ls=':')
+                ax.set_title(g)
+                ax.spines[['top', 'right']].set_visible(False)
+            for ax in axs[:, 0]:
+                ax.set_ylabel('RAP cover (%)')
+            axs.ravel()[-1].set_visible(False)
+            h, l = axs[0, 0].get_legend_handles_labels()
+            fig.legend(h, l, loc='center', bbox_to_anchor=(0.83, 0.27), frameon=False, fontsize=17,
+                       title='dotted: Landsat 7 (1999), 8 (2013)', title_fontsize=14)
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'RAP_cover_timeseries_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'RAP_cover_timeseries_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def wmean_ci(self, d, col):
+        v = d[col].values
+        w = d['area_weight'].values
+        lo, hi = self.block_ci(d, v, w)
+        return np.sum(v * w) / np.sum(w), lo, hi
+
+    def bare_ground(self, df):
+        cls = [('Sig. decline', '#5D4037'), ('n.s. decline', '#BCAAA4'), ('n.s. increase', '#C7E9F1'),
+               ('Sig. increase', '#2C7FB8')]
+        rows = []
+        for g in self.group_list:
+            for st in ['greening', 'control']:
+                d = df[(df['group'] == g) & (df['status'] == st)]
+                if len(d) < self.n_min:
+                    continue
+                x, p, w = d['BGR_trend'].values, d['BGR_trend_p'].values, d['area_weight'].values
+                masks = [(p < 0.05) & (x < 0), (p >= 0.05) & (x < 0), (p >= 0.05) & (x >= 0), (p < 0.05) & (x >= 0)]
+                m, lo, hi = self.wmean_ci(d, 'BGR_trend')
+                row = [g, st, len(d), np.sum(w) / df.loc[df['group'] == g, 'area_weight'].sum() * 100, m, lo, hi]
+                row += [np.sum(w[k]) / np.sum(w) * 100 for k in masks]
+                rows.append(row)
+        tab = pd.DataFrame(rows, columns=['group', 'status', 'n_pix', 'area_%_of_group', 'BGR_trend', 'ci_low',
+                                          'ci_high'] + [f'{c}_%' for c, _ in cls])
+        tab.to_csv(self.outdir + f'BGR_trend_greening_{self.tag}.csv', index=False)
+        print(tab.round(2).to_string())
+        with plt.rc_context(self.big_font):
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7), gridspec_kw={'width_ratios': [1.4, 1]})
+            labels = [f"{r['group']}\n{r['status']} ({r['area_%_of_group']:.0f}%)" for _, r in tab.iterrows()]
+            y = np.arange(len(tab))[::-1]
+            left = np.zeros(len(tab))
+            for c, color in cls:
+                ax1.barh(y, tab[f'{c}_%'], left=left, color=color, edgecolor='white', label=c)
+                for yy, l, v in zip(y, left, tab[f'{c}_%']):
+                    if v >= 8:
+                        ax1.text(l + v / 2, yy, f'{v:.0f}', ha='center', va='center', fontsize=14,
+                                 color='white' if c in ['Sig. decline', 'Sig. increase'] else 'k')
+                left += tab[f'{c}_%'].values
+            ax1.set_yticks(y)
+            ax1.set_yticklabels(labels)
+            ax1.set_xlim(0, 100)
+            ax1.set_xlabel('Area (%)')
+            ax1.set_title('a) RAP bare-ground trend class, 1986-2024')
+            ax1.legend(frameon=False, ncol=4, loc='upper center', bbox_to_anchor=(0.45, -0.1))
+            ax1.spines[['top', 'right']].set_visible(False)
+            xg = np.arange(len(self.group_list))
+            for k, st in enumerate(['greening', 'control']):
+                t = tab[tab['status'] == st].set_index('group').reindex(self.group_list)
+                ax2.bar(xg + (k - 0.5) * 0.38, t['BGR_trend'], width=0.38, color=self.status_color[st], label=st,
+                        yerr=[t['BGR_trend'] - t['ci_low'], t['ci_high'] - t['BGR_trend']], capsize=4)
+            ax2.axhline(0, color='k', lw=1)
+            ax2.set_xticks(xg)
+            ax2.set_xticklabels([g.replace(' ', '\n') for g in self.group_list])
+            ax2.set_ylabel('BGR trend (pp / decade)')
+            ax2.set_title('b) Mean bare-ground trend, 95% CI')
+            ax2.legend(frameon=False)
+            ax2.spines[['top', 'right']].set_visible(False)
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'BGR_trend_greening_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'BGR_trend_greening_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def cover_trend(self, df):
+        rows = []
+        for g in self.group_list:
+            for st in ['greening', 'control']:
+                d = df[(df['group'] == g) & (df['status'] == st)]
+                if len(d) < self.n_min:
+                    continue
+                for c in self.cover_list:
+                    m, lo, hi = self.wmean_ci(d, f'{c}_trend')
+                    w = d['area_weight'].values
+                    rows.append([g, st, len(d), c, m, lo, hi, np.sum(w * d[f'{c}_mean']) / np.sum(w)])
+        tab = pd.DataFrame(rows, columns=['group', 'status', 'n_pix', 'cover', 'trend', 'ci_low', 'ci_high',
+                                          'mean_cover_%'])
+        tab.to_csv(self.outdir + f'cover_trend_greening_{self.tag}.csv', index=False)
+        print(tab.pivot_table(index=['group', 'status'], columns='cover', values='trend')[self.cover_list]
+              .round(2).to_string())
+        x = np.arange(len(self.cover_list))
+        with plt.rc_context(self.big_font):
+            fig, axs = plt.subplots(2, 2, figsize=(16, 10), sharey=True)
+            for ax, g in zip(axs.ravel(), self.group_list):
+                for k, st in enumerate(['greening', 'control']):
+                    t = tab[(tab['group'] == g) & (tab['status'] == st)].set_index('cover').reindex(self.cover_list)
+                    if t['trend'].isna().all():
+                        continue
+                    ax.bar(x + (k - 0.5) * 0.38, t['trend'], width=0.38, color=self.status_color[st],
+                           label=f"{st} (n={int(t['n_pix'].iloc[0])})",
+                           yerr=[t['trend'] - t['ci_low'], t['ci_high'] - t['trend']], capsize=3)
+                ax.axhline(0, color='k', lw=1)
+                ax.set_xticks(x)
+                ax.set_xticklabels(self.cover_list)
+                ax.set_title(g)
+                ax.legend(frameon=False, loc='lower left')
+                ax.spines[['top', 'right']].set_visible(False)
+            for ax in axs[:, 0]:
+                ax.set_ylabel('Cover trend (pp / decade)')
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'cover_trend_greening_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'cover_trend_greening_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def who_increased(self, df):
+        up = {c: ((df[f'{c}_trend_p'] < 0.05) & (df[f'{c}_trend'] > 0)).values for c in ['AFG', 'PFG', 'SHR', 'TRE']}
+        woody = up['SHR'] | up['TRE']
+        herb = up['AFG'] | up['PFG']
+        cat = np.select([~woody & ~herb, ~woody & up['AFG'] & ~up['PFG'], ~woody & up['PFG'] & ~up['AFG'],
+                         ~woody & up['AFG'] & up['PFG'], woody & ~herb, woody & herb],
+                        ['none', 'AFG only', 'PFG only', 'AFG + PFG', 'woody only', 'woody + herbaceous'], default='none')
+        cats = [('none', '#E0E0E0'), ('AFG only', '#E6A23C'), ('PFG only', '#4C9A2A'), ('AFG + PFG', '#A3C95A'),
+                ('woody only', '#8E5A2B'), ('woody + herbaceous', '#C99A6B')]
+        df = df.assign(increase=cat)
+        rows = []
+        for g in self.group_list:
+            for st in ['greening', 'control']:
+                d = df[(df['group'] == g) & (df['status'] == st)]
+                if len(d) < self.n_min:
+                    continue
+                w = d['area_weight'].values
+                rows.append([g, st, len(d)] + [np.sum(w[d['increase'].values == c]) / np.sum(w) * 100 for c, _ in cats])
+        tab = pd.DataFrame(rows, columns=['group', 'status', 'n_pix'] + [f'{c}_%' for c, _ in cats])
+        tab.to_csv(self.outdir + f'who_increased_greening_{self.tag}.csv', index=False)
+        print(tab.round(1).to_string())
+        with plt.rc_context(self.big_font):
+            fig, ax = plt.subplots(figsize=(15, 7))
+            xs = []
+            for i, g in enumerate(self.group_list):
+                for k, st in enumerate(['greening', 'control']):
+                    xs.append((i * 2.6 + k, g, st))
+            bottom = np.zeros(len(xs))
+            for c, color in cats:
+                vals = []
+                for _, g, st in xs:
+                    t = tab[(tab['group'] == g) & (tab['status'] == st)]
+                    vals.append(t[f'{c}_%'].iloc[0] if len(t) else np.nan)
+                vals = np.nan_to_num(np.array(vals))
+                ax.bar([p for p, _, _ in xs], vals, bottom=bottom, width=0.85, color=color, edgecolor='white',
+                       label=c)
+                for (p, _, _), b, v in zip(xs, bottom, vals):
+                    if v >= 7:
+                        ax.text(p, b + v / 2, f'{v:.0f}', ha='center', va='center', fontsize=14)
+                bottom += vals
+            ax.set_xticks([p for p, _, _ in xs])
+            ax.set_xticklabels([st for _, _, st in xs], rotation=0, fontsize=14)
+            for i, g in enumerate(self.group_list):
+                ax.text(i * 2.6 + 0.5, -16, g, ha='center', va='top', fontsize=17, transform=ax.transData)
+            ax.set_ylim(0, 100)
+            ax.set_ylabel('Area (%)')
+            ax.set_title('Which RAP cover increased significantly (p < 0.05), 1986-2024')
+            ax.legend(frameon=False, loc='upper left', bbox_to_anchor=(1.0, 1.0))
+            ax.spines[['top', 'right']].set_visible(False)
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'who_increased_greening_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'who_increased_greening_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+
 def main():
     ## step 1: where grass greens beyond climate and composition
     # Grass_smooth_trend().run()   ## 1a: raw vs smoothed (0.25 deg) unexplained trend maps (done)
@@ -804,7 +1589,14 @@ def main():
     # Cropland_threshold_C().run()  ## 3a: C under stricter cropland masks, all vegetation types
     ## step 4: trend components along the herbaceous composition (needs Model2_annual_perennial output)
     # C_by_herb_cover().run()       ## 4a: observed, A, B, C by annual share and by PFG cover, Grass and Shrub (done)
-    Observed_trend_by_herb_cover().run()   ## 4b: observed trend by cover of 2003-2006 and of 2021-2024
+    # Observed_trend_by_herb_cover().run()   ## 4b: observed trend by cover of 2003-2006 and of 2021-2024 (done)
+    ## step 5: long-term (SNU 1986-2024): perennial grass expansion vs more leaf at the same cover
+    # PFG_change_vs_LAI_trend().run()   ## 5a: LAI trend along the PFG cover trend, all grass and 3 x 3 strata (done)
+    # PFG_change_vs_LAI_trend().light_blue_pfg()   ## 5b: PFG trend of sig. greening without sig. PFG increase (done)
+    ## step 6: inside the greening pixels (SNU 1986-2024): did bare ground decline, which RAP cover increased
+    # Greening_cover_change().run()   ## 6a: grass / shrub x annual / perennial + savanna; greening vs LAI n.s.;
+    ##                                   LAI vs cover regression; RAP time series check (done 2026-11-23)
+    Greening_cover_change().run_lai_per_cover()   ## 6b: LAI per unit vegetation cover, greening vs LAI n.s. (2026-11-23)
 
 
 if __name__ == '__main__':

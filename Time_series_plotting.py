@@ -157,6 +157,73 @@ class Time_series_base():
             p = 2 * stats.t.sf(np.abs(slope / se), len(x) - 2)
         return info, slope * 10, p
 
+    def step_change(self, df, var, years, split, outdir, fname, label, bounds, cmap, cat_names, ylabel, **kw):
+        ## step change at the drought shift (2026-11-22): per pixel mean(split ... end) - mean(start ... split - 1)
+        ##   of df[var]; p of Welch t test (unequal variances) between the two periods; pixels with all years only
+        ## outputs: map with dots p < 0.05 + inset + 7-group area bar (trend_sig_map, fname), and
+        ##   {fname}_group_mean.png / .csv: area-weighted mean difference per group with 95% CI (1 deg block bootstrap)
+        mat = df.pivot_table(index='pix', columns='year', values=var).reindex(columns=years)
+        info = df.groupby('pix')[['lon', 'lat', 'area_weight', 'landcover_type']].first().loc[mat.index]
+        y = mat.values
+        ok = np.isfinite(y).all(axis=1)
+        y, info = y[ok], info[ok]
+        a, b = y[:, years < split], y[:, years >= split]
+        diff = b.mean(axis=1) - a.mean(axis=1)
+        va, vb = a.var(axis=1, ddof=1) / a.shape[1], b.var(axis=1, ddof=1) / b.shape[1]
+        with np.errstate(divide='ignore', invalid='ignore'):
+            t = diff / np.sqrt(va + vb)
+            dof = (va + vb) ** 2 / (va ** 2 / (a.shape[1] - 1) + vb ** 2 / (b.shape[1] - 1))
+            p = 2 * stats.t.sf(np.abs(t), dof)
+        self.trend_sig_map(info, diff, p, outdir, fname, label, bounds, cmap, cat_names, split_herb=True, **kw)
+        self.group_mean_bar(info, diff, p, outdir, f'{fname}_group_mean', ylabel)
+        return info, diff, p
+
+    def block_ci_xy(self, lon, lat, v, w, n_boot=200):
+        block = (np.floor(lon) * 1000 + np.floor(lat)).astype(int)
+        ids = np.unique(block)
+        idx = {bb: np.where(block == bb)[0] for bb in ids}
+        rng = np.random.default_rng(0)
+        boot = []
+        for _ in range(n_boot):
+            pick = np.concatenate([idx[bb] for bb in rng.choice(ids, size=len(ids))])
+            boot.append(np.sum(v[pick] * w[pick]) / np.sum(w[pick]))
+        return np.percentile(boot, 2.5), np.percentile(boot, 97.5)
+
+    def group_mean_bar(self, info, v, p, outdir, fname, ylabel):
+        ## area-weighted mean of v per group (7 groups) with 95% CI; csv also has the area % with p < 0.05 by sign
+        color_dic = {'All': '#555555', 'Forest': '#1B5E20', 'Shrub annual': '#E0B84C', 'Shrub perennial': '#8B6508',
+                     'Grass annual': '#C5E1A5', 'Grass perennial': '#558B2F', 'Savanna': '#8D6E63'}
+        w_all = info['area_weight'].values
+        rows = []
+        for g, m in self.group_masks(info).items():
+            m = m & np.isfinite(v)
+            w = w_all[m]
+            lo, hi = self.block_ci_xy(info['lon'].values[m], info['lat'].values[m], v[m], w)
+            rows.append([g, int(m.sum()), np.sum(v[m] * w) / np.sum(w), lo, hi,
+                         np.sum(w * ((v[m] > 0) & (p[m] < 0.05))) / np.sum(w) * 100,
+                         np.sum(w * ((v[m] < 0) & (p[m] < 0.05))) / np.sum(w) * 100])
+        tab = pd.DataFrame(rows, columns=['class', 'n_pix', 'mean', 'ci_low', 'ci_high', 'sig_increase_area_%',
+                                          'sig_decrease_area_%'])
+        tab.to_csv(outdir + f'{fname}.csv', index=False)
+        print(fname)
+        print(tab.round(2).to_string())
+        with plt.rc_context({'font.size': 16, 'axes.labelsize': 17, 'xtick.labelsize': 14, 'ytick.labelsize': 15}):
+            fig, ax = plt.subplots(figsize=(10, 4.4))
+            xx = np.arange(len(tab))
+            vv = tab['mean'].values
+            ax.bar(xx, vv, color=[color_dic[c] for c in tab['class']], width=0.65,
+                   yerr=[vv - tab['ci_low'].values, tab['ci_high'].values - vv], capsize=4, error_kw={'lw': 1.2})
+            ax.axhline(0, color='k', lw=0.8)
+            ax.set_xticks(xx)
+            ax.set_xticklabels([c.replace(' ', '\n') for c in tab['class']])
+            ax.set_ylabel(ylabel)
+            ax.spines[['top', 'right']].set_visible(False)
+            plt.tight_layout()
+            plt.savefig(outdir + f'{fname}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(outdir + f'{fname}.pdf', bbox_inches='tight')
+            plt.close()
+        return tab
+
     def group_masks(self, info):
         ## 7 groups as Fig 5 (2026-11-21): All, Forest, Shrub annual / perennial, Grass annual / perennial, Savanna
         ## Shrub and Grass split by the herbaceous group of Model2_annual_perennial (mean AFG > mean PFG -> annual)
@@ -285,7 +352,7 @@ class Time_series_base():
         ax.set_yticks(np.arange(len(groups))[::-1])
         ax.set_yticklabels(groups)
         ax.set_xlabel('Level change at break year')
-        ax.legend(frameon=False, title='Break year', fontsize=10, loc='best')
+        ax.legend(frameon=False, title='Break year', fontsize=10, loc='upper left', bbox_to_anchor=(1.01, 1.0))
         ax.spines[['top', 'right']].set_visible(False)
         plt.tight_layout()
         plt.savefig(outdir + f'{fname}.png', dpi=300, bbox_inches='tight')
@@ -468,6 +535,12 @@ class Long_LAI_time_series(Time_series_base):
         self.level_change_groups(df, 'growing_LAI_rel', np.arange(self.first_year, self.end_year + 1),
                                  [1999, 2000, 2001, 2002], self.outdir, f'Fig_{self.name}_level_change',
                                  f'{self.name} GS LAI (% of mean)')
+        ## 2026-11-22: step change at 2000: mean 2000-end - mean 1982-1999 of GS_LAI_rel (% of the pixel's mean)
+        self.step_change(df, 'growing_LAI_rel', np.arange(self.first_year, self.end_year + 1), 2000,
+                         self.outdir + 'step_change\\', f'GS_LAI_step_2000',
+                         f'{self.name} LAI: mean 2000-{self.end_year} - mean 1982-1999 (% of mean)', self.lai_bounds,
+                         self.veg_colors, ('lower', 'higher'), f'{self.name} LAI step (% of mean)', stride=4,
+                         dot_size=2.5)
         tab_list = []
         for t0, t1, _ in self.period_list:
             years = np.arange(t0, t1 + 1)
@@ -593,6 +666,124 @@ class SNU_LAI_time_series(Long_LAI_time_series):
     ## SNU LAI, 1982-2024 (2026-11-21; was the spring / summer version on SPEI.df)
     def __init__(self):
         super().__init__('SNU', 1982, 2024)
+
+
+class Best_scale_SPEI_1982(Long_LAI_time_series):
+    ## growing-season SPEI at each pixel's best scale, 1982-2024, three periods as the SNU LAI figures (2026-11-23)
+    ## best scale: Best_scale_long('SNU', 1982, 2024) (bivariate.py): scale (3-48 months) with the highest r between
+    ##   detrended SNU GS LAI and detrended GS SPEI -> best_scale_long_SNU_1982_2024.df
+    ## SPEI : SPEI_GS_1958_2024.df (MODIS growing-season window of each pixel), column growing_SPEI{best scale}
+    ## pixels: pixels of best_scale_long_SNU_1982_2024.df (= SNU LAI pixels) with SPEI in every year 1982-2024
+    ## groups: RAP 1986-2024 (as the long LAI figures)
+    ## figures (Result2\01_drought\SPEI_best_scale_1982_2024\):
+    ##   Fig_SPEI_best_GS       regional mean +- 1 SD, trends 1982-2024 (dotted), 1982-1999 (dashed), 2000-2024 (solid)
+    ##   Fig_SPEI_best_trend_bar 7 groups x 3 periods, area-weighted mean trend with 95% CI (1 deg block bootstrap)
+    ##   trend_map\GS_SPEI_best_trend_sig_dots_{t0}_{t1}  per period, dots p < 0.05 + 7-group area bar
+    ##   csv of each figure
+    def __init__(self):
+        super().__init__('SNU', 1982, 2024)
+        self.name = 'SPEI_best'
+        self.outdir = self.result2 + rf'01_drought\SPEI_best_scale_1982_2024\\'
+        T.mk_dir(self.outdir, force=True)
+        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024.df'
+        self.best_dff = self.result2 + rf'03_response\best_scale_long\best_scale_long_SNU_1982_2024.df'
+        self.spei_bounds = [-0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8]
+        self.big_font = {'font.size': 16, 'axes.titlesize': 17, 'axes.labelsize': 17, 'xtick.labelsize': 15,
+                         'ytick.labelsize': 15, 'legend.fontsize': 15}
+
+    def run(self):
+        df = self.load()
+        self.plot_ts(df)
+        tab_list = []
+        for t0, t1, _ in self.period_list:
+            years = np.arange(t0, t1 + 1)
+            info, tr, p = self.pixel_trend(df[(df['year'] >= t0) & (df['year'] <= t1)], 'growing_SPEI_best', years)
+            self.trend_sig_map(info, tr, p, self.outdir + 'trend_map\\', f'GS_SPEI_best_trend_sig_dots_{t0}_{t1}',
+                               f'Growing-season SPEI (best scale) trend {t0}-{t1} (per decade)', self.spei_bounds,
+                               'RdBu', ('drying', 'wetting'), split_herb=True)
+            tab_list.append(self.group_trend(info, tr, p, f'{t0}-{t1}'))
+        tab = pd.concat(tab_list)
+        tab.to_csv(self.outdir + 'Fig_SPEI_best_trend_bar.csv', index=False)
+        print(tab.round(2).to_string())
+        self.plot_bar(tab)
+
+    def load(self):
+        best = T.load_df(self.best_dff)
+        best = best[np.isfinite(best['best_scale'])]
+        df = T.load_df(self.spei_dff)
+        df = df[(df['year'] >= self.first_year) & (df['year'] <= self.end_year) & df['pix'].isin(set(best.index))]
+        scale = df['pix'].map(best['best_scale']).astype(int).values
+        val = np.full(len(df), np.nan)
+        for sc in np.unique(scale):
+            col = f'growing_SPEI{sc:02d}'
+            if col not in df.columns:
+                print('missing column', col)
+                continue
+            m = scale == sc
+            val[m] = df[col].values[m]
+        df = df.assign(growing_SPEI_best=val, best_scale=scale)
+        n_ok = df['growing_SPEI_best'].notna().groupby(df['pix']).transform('sum')
+        df = df[n_ok == self.end_year - self.first_year + 1]
+        print('best-scale SPEI pixels:', df['pix'].nunique(), '| median best scale:',
+              np.median(df.groupby('pix')['best_scale'].first()))
+        return df
+
+    def plot_ts(self, df):
+        years = np.arange(self.first_year, self.end_year + 1)
+        mean = self.wmean(df, 'growing_SPEI_best', years)
+        d = df.assign(dev2=(df['growing_SPEI_best'] - df['year'].map(dict(zip(years, mean)))) ** 2)
+        sd = np.sqrt(self.wmean(d, 'dev2', years))
+        rows = []
+        color = '#D84315'
+        with plt.rc_context(self.big_font):
+            fig, ax = plt.subplots(figsize=(13, 5))
+            ax.plot(years, mean, color=color, lw=2)
+            ax.fill_between(years, mean - sd, mean + sd, color=color, alpha=0.15, lw=0)
+            text = []
+            for t0, t1, ls in self.period_list:
+                m = (years >= t0) & (years <= t1)
+                sl, ic, _, p, _ = stats.linregress(years[m], mean[m])
+                ax.plot(years[m], sl * years[m] + ic, color=color, lw=2.5, ls=ls)
+                text.append(f'{t0}-{t1}: {sl * 10:+.2f} / decade (p = {p:.2f})')
+                rows.append([f'{t0}-{t1}', sl * 10, p])
+            ax.text(0.01, 0.03, '\n'.join(text), transform=ax.transAxes, va='bottom', fontsize=15, color=color)
+            ax.axhline(0, color='grey', lw=0.8)
+            ax.axvline(2000, color='grey', lw=1, ls=':')
+            ax.set_xlim(years[0], years[-1])
+            ax.set_ylabel('SPEI (best scale)')
+            ax.spines[['top', 'right']].set_visible(False)
+            plt.tight_layout()
+            plt.savefig(self.outdir + 'Fig_SPEI_best_GS.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + 'Fig_SPEI_best_GS.pdf', bbox_inches='tight')
+            plt.close()
+        out = pd.DataFrame(rows, columns=['period', 'slope_per_decade', 'p_value'])
+        out.to_csv(self.outdir + 'Fig_SPEI_best_GS_trend.csv', index=False)
+        pd.DataFrame({'year': years, 'mean': mean, 'sd': sd}).to_csv(self.outdir + 'Fig_SPEI_best_GS.csv', index=False)
+        print(out.round(3).to_string())
+
+    def plot_bar(self, tab):
+        period_list = list(dict.fromkeys(tab['period']))
+        color_list = ['#BDBDBD', '#F4A582', '#B2182B']
+        groups = list(dict.fromkeys(tab['class']))
+        xx = np.arange(len(groups))
+        wd = 0.26
+        with plt.rc_context(self.big_font):
+            fig, ax = plt.subplots(figsize=(13, 5))
+            for k, (per, color) in enumerate(zip(period_list, color_list)):
+                d = tab[tab['period'] == per].set_index('class').reindex(groups)
+                v = d['trend_per_decade'].values
+                err = np.array([v - d['ci_low'].values, d['ci_high'].values - v])
+                ax.bar(xx + (k - 1) * wd, v, width=wd, color=color, yerr=err, capsize=3, label=per)
+            ax.axhline(0, color='k', lw=0.8)
+            ax.set_xticks(xx)
+            ax.set_xticklabels([g.replace(' ', '\n') for g in groups])
+            ax.set_ylabel('SPEI trend (per decade)')
+            ax.legend(frameon=False, ncol=3, loc='lower left')
+            ax.spines[['top', 'right']].set_visible(False)
+            plt.tight_layout()
+            plt.savefig(self.outdir + 'Fig_SPEI_best_trend_bar.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + 'Fig_SPEI_best_trend_bar.pdf', bbox_inches='tight')
+            plt.close()
 
 
 class MODIS_LAI_time_series(Time_series_base):
@@ -1120,8 +1311,8 @@ class SPEI_1982_plot(SPEI_long_term_plot):
         T.mk_dir(self.outdir, force=True)
         self.start_year = 1982
         self.split_year = 2000
-        self.ts_list = ['SPEI03', 'SPEI06', 'SPEI12', 'SPEI24']
-        self.map_list = ['SPEI03', 'SPEI12']
+        self.ts_list = ['SPEI03', 'SPEI06', 'SPEI12', 'SPEI24', 'SPEI36']   ## 2026-11-23: main-line scales
+        self.map_list = ['SPEI03', 'SPEI06', 'SPEI12', 'SPEI24', 'SPEI36']   ## 2026-11-23: all five mapped
         self.period_list = [(1982, 2024, ':'), (1982, 1999, '--'), (2000, 2024, '-')]
         self.trend_period_list = self.period_list
         self.herb_years = (1986, 2024)   ## 2026-11-21: annual / perennial from the whole RAP record, as the long LAI
@@ -1146,7 +1337,361 @@ class SPEI_1982_plot(SPEI_long_term_plot):
                 self.trend_sig_map(info, tr, p, self.outdir + 'trend_map\\', f'GS_{var}_trend_sig_dots_{t0}_{t1}',
                                    f'Growing-season {var} trend {t0}-{t1} (per decade)', self.sig_bounds, 'RdBu',
                                    ('drying', 'wetting'), split_herb=True)
+        ## 2026-11-22: step change at 2000: mean 2000-2024 - mean 1982-1999, Welch t, map + 7-group means
+        for var in self.map_list:
+            self.step_change(df, f'growing_{var}', np.arange(1982, 2025), 2000, self.outdir + 'step_change\\',
+                             f'GS_{var}_step_2000', f'{var}: mean 2000-2024 - mean 1982-1999',
+                             [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1], 'RdBu', ('drier', 'wetter'),
+                             f'{var} step (2000-2024 - 1982-1999)')
         pass
+
+
+class LAI_same_period_compare(Time_series_base):
+    ## GIMMS vs SNU over the same years 2000-2020 (2026-11-21)
+    ## question: do the two long records agree after 2000 (forest, annual shrub, level change at 2000)?
+    ## data  : GS_GIMMS.df, GS_SNU.df: GS_LAI in the MODIS growing-season window of each pixel
+    ## pixels: the MODIS figure pixels (model2_annual_perennial_compare) with GS LAI in every year 2000-2020 in both
+    ##         records (same pixels for the two)
+    ## trend : per pixel OLS of GS LAI in % of the pixel's own 2000-2020 mean, per decade
+    ## groups: 7 groups, Shrub / Grass split by RAP 1986-2024 (as the long LAI figures)
+    ## table : per group and record: area-weighted mean trend, 95% CI (1 deg block bootstrap), area % sig. greening /
+    ##         browning; r of the pixel trends between GIMMS and SNU (spatial agreement)
+    ## output: Result2\02_vegetation\LAI_same_period_compare\ : LAI_same_period_2000_2020.csv / _bar.png / _r.csv
+    def __init__(self, y0=2000, y1=2020):   ## 2026-11-22: period as parameters
+        super().__init__()
+        self.outdir = self.result2 + rf'02_vegetation\LAI_same_period_compare\\'
+        T.mk_dir(self.outdir, force=True)
+        self.years = np.arange(y0, y1 + 1)
+        self.tag = f'{self.years[0]}_{self.years[-1]}'
+        self.data_dic = {'GIMMS': result_root + rf'\Dataframe\growing_season\GS_GIMMS.df',
+                         'SNU': result_root + rf'\Dataframe\growing_season\GS_SNU.df'}
+        self.color_dic = {'GIMMS': '#8FB8DE', 'SNU': '#2E7D32'}
+        self.herb_years = (1986, 2024)   ## groups as the long LAI figures
+
+    def run(self):
+        pix_now = set(T.load_df(self.herb_dff).index)
+        x = self.years.astype(float) - self.years.mean()
+        tr_dic, p_dic, info = {}, {}, None
+        for name, f in self.data_dic.items():
+            df = T.load_df(f)
+            df = df[df['pix'].isin(pix_now) & (df['year'] >= self.years[0]) & (df['year'] <= self.years[-1])]
+            mat = df.pivot_table(index='pix', columns='year', values='GS_LAI').reindex(columns=self.years)
+            mat = mat[mat.notna().all(axis=1) & (mat.mean(axis=1) > 0)]
+            y = (mat.values / mat.values.mean(axis=1, keepdims=True) - 1) * 100
+            ym = y - y.mean(axis=1, keepdims=True)
+            slope = ym @ x / np.sum(x ** 2)
+            resid = ym - slope[:, None] * x[None, :]
+            se = np.sqrt(np.sum(resid ** 2, axis=1) / (len(x) - 2) / np.sum(x ** 2))
+            tr_dic[name] = pd.Series(slope * 10, index=mat.index)
+            p_dic[name] = pd.Series(2 * stats.t.sf(np.abs(slope / se), len(x) - 2), index=mat.index)
+            if info is None:
+                info = df.groupby('pix')[['lon', 'lat', 'area_weight', 'landcover_type']].first()
+            print(name, '| pixels with all years:', len(mat))
+        common = set.intersection(*[set(s.index) for s in tr_dic.values()])
+        info = info[np.array([pix in common for pix in info.index])]
+        print('pixels in all three records:', len(info))
+        tr = {n: s.reindex(info.index).values for n, s in tr_dic.items()}
+        pv = {n: s.reindex(info.index).values for n, s in p_dic.items()}
+        w_all = info['area_weight'].values
+        rows, r_rows = [], []
+        for g, m in self.group_masks(info).items():
+            w = w_all[m]
+            for name in self.data_dic:
+                v = tr[name][m]
+                lo, hi = self.block_ci(info['lon'].values[m], info['lat'].values[m], v, w)
+                rows.append([g, name, int(m.sum()), np.sum(v * w) / np.sum(w), lo, hi,
+                             np.sum(w * ((v > 0) & (pv[name][m] < 0.05))) / np.sum(w) * 100,
+                             np.sum(w * ((v < 0) & (pv[name][m] < 0.05))) / np.sum(w) * 100])
+            r_rows.append([g, int(m.sum()), np.corrcoef(tr['GIMMS'][m], tr['SNU'][m])[0, 1]])
+        tab = pd.DataFrame(rows, columns=['class', 'record', 'n_pix', 'trend_per_decade', 'ci_low', 'ci_high',
+                                          'sig_increase_area_%', 'sig_decrease_area_%'])
+        tab.to_csv(self.outdir + f'LAI_same_period_{self.tag}.csv', index=False)
+        r_tab = pd.DataFrame(r_rows, columns=['class', 'n_pix', 'r_GIMMS_SNU'])
+        r_tab.to_csv(self.outdir + f'LAI_same_period_{self.tag}_r.csv', index=False)
+        print(tab.pivot(index='class', columns='record', values='trend_per_decade').round(2).to_string())
+        print(r_tab.round(2).to_string())
+        self.bar(tab)
+        self.agreement_map(info, tr['GIMMS'], tr['SNU'])   ## 2026-11-21: sign agreement map
+        self.bivariate_4x4(info, tr['GIMMS'], pv['GIMMS'], tr['SNU'], pv['SNU'])   ## 2026-11-22: 4 x 4 classes
+        pass
+
+    def agreement_map(self, info, tr_a, tr_b, name_a='GIMMS', name_b='SNU'):
+        ## sign agreement of the pixel LAI trends of two records (2026-11-21):
+        ##   ++ both greening, +- only name_a greening, -+ only name_b greening, -- both browning
+        ## left: map; right: area % of the four classes per group (7 groups); legend below
+        ## output: LAI_sign_agreement_{tag}_map.png / .pdf / .csv
+        with plt.rc_context({'font.size': 16, 'axes.titlesize': 17, 'axes.labelsize': 17, 'xtick.labelsize': 15, 'ytick.labelsize': 15, 'legend.fontsize': 15}):   ## large fonts (2026-11-21)
+            import cartopy.crs as ccrs
+            import cartopy.feature as cfeature
+            import matplotlib.patches as mpatches
+            import matplotlib.ticker as mticker
+            from matplotlib.colors import ListedColormap, BoundaryNorm
+            labels = [f'++ both greening', f'+- {name_a} greening, {name_b} browning',
+                      f'-+ {name_a} browning, {name_b} greening', '-- both browning']
+            colors = ['#3D7FA6', '#B39DDB', '#A5D6A7', '#C0692A']
+            k = np.where(tr_a >= 0, np.where(tr_b >= 0, 1, 2), np.where(tr_b >= 0, 3, 4)).astype(float)
+            k[~(np.isfinite(tr_a) & np.isfinite(tr_b))] = np.nan
+            ny, nx = 468, 449
+            arr = np.full((ny, nx), np.nan)
+            rows = np.array([q[0] for q in info.index])
+            cols = np.array([q[1] for q in info.index])
+            arr[rows, cols] = k
+            w = info['area_weight'].values
+            groups = self.group_masks(info)
+            share = np.array([[np.sum(w[mg & (k == c)]) / np.sum(w[mg & np.isfinite(k)]) * 100 for c in [1, 2, 3, 4]]
+                              for mg in groups.values()])
+            pd.DataFrame(share, index=list(groups), columns=['++', '+-', '-+', '--']).round(1).to_csv(
+                self.outdir + f'LAI_sign_agreement_{self.tag}.csv')
+            print(pd.DataFrame(share, index=list(groups), columns=['++', '+-', '-+', '--']).round(1).to_string())
+            fig = plt.figure(figsize=(12, 5.6))
+            ax = fig.add_axes([0.02, 0.16, 0.50, 0.78], projection=ccrs.PlateCarree())
+            ax.imshow(arr, cmap=ListedColormap(colors), norm=BoundaryNorm([0.5, 1.5, 2.5, 3.5, 4.5], 4),
+                      extent=[-124.529, -102.079, 25.579, 48.979], transform=ccrs.PlateCarree(), interpolation='nearest')
+            ax.add_feature(cfeature.STATES, linewidth=0.3)
+            ax.add_feature(cfeature.LAND, facecolor='none', edgecolor='black', linewidth=0.4)
+            ax.set_extent([-125, -102, 28, 49], crs=ccrs.PlateCarree())
+            gl = ax.gridlines(draw_labels=True, linewidth=0)
+            gl.top_labels = False
+            gl.right_labels = False
+            gl.xlocator = mticker.FixedLocator(range(-120, -100, 10))
+            gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
+            gl.xlabel_style = {'size': 15}
+            gl.ylabel_style = {'size': 15}
+            ax.set_title(f'LAI trend sign {self.years[0]}-{self.years[-1]}: {name_a} / {name_b}')
+            ax2 = fig.add_axes([0.66, 0.22, 0.31, 0.66])
+            y = np.arange(len(groups))[::-1]
+            left = np.zeros(len(groups))
+            for c in range(4):
+                ax2.barh(y, share[:, c], left=left, color=colors[c], height=0.7, edgecolor='white', linewidth=0.5)
+                for yy, l0, v in zip(y, left, share[:, c]):
+                    if v >= 8:
+                        ax2.text(l0 + v / 2, yy, f'{v:.0f}', ha='center', va='center', fontsize=14,
+                                 color='white' if c in (0, 3) else 'black')
+                left += share[:, c]
+            ax2.set_yticks(y)
+            ax2.set_yticklabels(list(groups))
+            ax2.set_xlim(0, 100)
+            ax2.set_xlabel('Area (%)')
+            ax2.spines[['top', 'right']].set_visible(False)
+            handles = [mpatches.Patch(color=c, label=l) for l, c in zip(labels, colors)]
+            fig.legend(handles=handles, loc='lower center', ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.0))
+            plt.savefig(self.outdir + f'LAI_sign_agreement_{self.tag}_map.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'LAI_sign_agreement_{self.tag}_map.pdf', bbox_inches='tight')
+            plt.close()
+
+    def bivariate_4x4(self, info, tr_a, p_a, tr_b, p_b, name_a='GIMMS', name_b='SNU'):
+        ## 2026-11-22: each record in 4 classes (sig. browning, n.s. browning, n.s. greening, sig. greening; p < 0.05)
+        ##   -> 4 x 4 bivariate map; colour: hue from the mean class of the two records (brown -> blue), greyed with
+        ##   their disagreement; right: area % matrix (rows name_a, columns name_b) = agreement table
+        ## output: LAI_bivariate4x4_{tag}_map.png / .pdf, LAI_bivariate4x4_{tag}.csv (All) and _by_group.csv
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.ticker as mticker
+        from matplotlib.colors import ListedColormap, BoundaryNorm, to_rgb
+        names = ['sig. browning', 'n.s. browning', 'n.s. greening', 'sig. greening']
+        score = [-2, -1, 1, 2]
+
+        def cls(tr, p):
+            sig = p < 0.05
+            return np.where(tr < 0, np.where(sig, 0, 1), np.where(sig, 3, 2))
+
+        ca, cb = cls(tr_a, p_a), cls(tr_b, p_b)
+        k = ca * 4 + cb   ## 0 ... 15
+        base = {-2: '#7B3F13', -1.5: '#C0692A', -1: '#EBA14A', -0.5: '#F5D38E', 0: '#BDBDBD', 0.5: '#CFE3D1',
+                1: '#87B8CF', 1.5: '#3D7FA6', 2: '#0B4F6C'}
+        colors = []
+        for i in range(4):
+            for j in range(4):
+                m = (score[i] + score[j]) / 2
+                d = abs(score[i] - score[j]) / 4   ## 0 (same class) ... 1 (opposite significant)
+                c = np.array(to_rgb(base[m]))
+                colors.append(tuple(c * (1 - 0.6 * d) + np.array(to_rgb('#BDBDBD')) * 0.6 * d))
+        w = info['area_weight'].values
+        mat = np.array([[np.sum(w[(ca == i) & (cb == j)]) for j in range(4)] for i in range(4)]) / np.sum(w) * 100
+        pd.DataFrame(mat, index=[f'{name_a} {n}' for n in names], columns=[f'{name_b} {n}' for n in names]).round(
+            1).to_csv(self.outdir + f'LAI_bivariate4x4_{self.tag}.csv')
+        rows = []
+        for g, mg in self.group_masks(info).items():
+            wg = w[mg]
+            rows.append([g, int(mg.sum()),
+                         np.sum(wg[ca[mg] == cb[mg]]) / np.sum(wg) * 100,
+                         np.sum(wg[(ca[mg] == 3) & (cb[mg] == 3)]) / np.sum(wg) * 100,
+                         np.sum(wg[(ca[mg] == 0) & (cb[mg] == 0)]) / np.sum(wg) * 100,
+                         np.sum(wg[((ca[mg] == 3) & (cb[mg] <= 1)) | ((ca[mg] == 0) & (cb[mg] >= 2))]) / np.sum(wg) * 100,
+                         np.sum(wg[((cb[mg] == 3) & (ca[mg] <= 1)) | ((cb[mg] == 0) & (ca[mg] >= 2))]) / np.sum(wg) * 100])
+        gtab = pd.DataFrame(rows, columns=['class', 'n_pix', 'same_class_%', 'both_sig_greening_%',
+                                           'both_sig_browning_%', f'{name_a}_sig_opposite_to_{name_b}_%',
+                                           f'{name_b}_sig_opposite_to_{name_a}_%'])
+        gtab.to_csv(self.outdir + f'LAI_bivariate4x4_{self.tag}_by_group.csv', index=False)
+        print(pd.DataFrame(mat, index=names, columns=names).round(1).to_string())
+        print(gtab.round(1).to_string())
+        rows_i = np.array([q[0] for q in info.index])
+        cols_i = np.array([q[1] for q in info.index])
+        arr = np.full((468, 449), np.nan)
+        arr[rows_i, cols_i] = k
+        with plt.rc_context({'font.size': 15, 'axes.titlesize': 16, 'axes.labelsize': 15, 'xtick.labelsize': 13,
+                             'ytick.labelsize': 13}):
+            fig = plt.figure(figsize=(14, 6.2))
+            ax = fig.add_axes([0.0, 0.06, 0.55, 0.86], projection=ccrs.PlateCarree())
+            ax.imshow(arr, cmap=ListedColormap(colors), norm=BoundaryNorm(np.arange(-0.5, 16.5, 1), 16),
+                      extent=[-124.529, -102.079, 25.579, 48.979], transform=ccrs.PlateCarree(),
+                      interpolation='nearest')
+            ax.add_feature(cfeature.STATES, linewidth=0.3)
+            ax.add_feature(cfeature.LAND, facecolor='none', edgecolor='black', linewidth=0.4)
+            ax.set_extent([-125, -102, 30, 46], crs=ccrs.PlateCarree())
+            gl = ax.gridlines(draw_labels=True, linewidth=0)
+            gl.top_labels = False
+            gl.right_labels = False
+            gl.xlocator = mticker.FixedLocator(range(-120, -100, 10))
+            gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
+            gl.xlabel_style = {'size': 13}
+            gl.ylabel_style = {'size': 13}
+            ax.set_title(f'LAI trend {self.years[0]}-{self.years[-1]}: {name_a} x {name_b}')
+            ## legend = area matrix, cells coloured as on the map
+            ax2 = fig.add_axes([0.66, 0.20, 0.30, 0.62])
+            for i in range(4):
+                for j in range(4):
+                    ax2.add_patch(plt.Rectangle((j, 3 - i), 1, 1, color=colors[i * 4 + j], ec='white', lw=1.5))
+                    ax2.text(j + 0.5, 3 - i + 0.5, f'{mat[i, j]:.0f}', ha='center', va='center', fontsize=14,
+                             color='white' if (i * 4 + j) in (0, 15) else 'black')
+            ax2.set_xlim(0, 4)
+            ax2.set_ylim(0, 4)
+            short = ['sig. -', 'n.s. -', 'n.s. +', 'sig. +']
+            ax2.set_xticks(np.arange(4) + 0.5)
+            ax2.set_xticklabels(short)
+            ax2.set_yticks(np.arange(4) + 0.5)
+            ax2.set_yticklabels(short[::-1])
+            ax2.set_xlabel(f'{name_b} LAI trend')
+            ax2.set_ylabel(f'{name_a} LAI trend')
+            ax2.set_title('Area (%)')
+            for sp in ax2.spines.values():
+                sp.set_visible(False)
+            ax2.tick_params(length=0)
+            plt.savefig(self.outdir + f'LAI_bivariate4x4_{self.tag}_map.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'LAI_bivariate4x4_{self.tag}_map.pdf', bbox_inches='tight')
+            plt.close()
+
+    def ts_overlay(self):
+        ## 2026-11-23: robustness of the time series: SNU vs GIMMS over self.years (1982-2020), same pixels
+        ## per record: GS LAI in % of each pixel's own mean over self.years, area-weighted mean per group (7 groups)
+        ## each panel: both series, their OLS trends (% per decade, p) and r of the detrended series
+        ## output: LAI_ts_overlay_{tag}.png / .pdf / .csv (yearly series)
+        pix_now = set(T.load_df(self.herb_dff).index)
+        mats, info = {}, None
+        for name, f in self.data_dic.items():
+            df = T.load_df(f)
+            df = df[df['pix'].isin(pix_now) & (df['year'] >= self.years[0]) & (df['year'] <= self.years[-1])]
+            mat = df.pivot_table(index='pix', columns='year', values='GS_LAI').reindex(columns=self.years)
+            mats[name] = mat[mat.notna().all(axis=1) & (mat.mean(axis=1) > 0)]
+            if info is None:
+                info = df.groupby('pix')[['lon', 'lat', 'area_weight', 'landcover_type']].first()
+        common = set.intersection(*[set(m.index) for m in mats.values()])
+        info = info[np.array([pix in common for pix in info.index])]
+        rel = {}
+        for name, mat in mats.items():
+            y = mat.reindex(info.index).values
+            rel[name] = (y / y.mean(axis=1, keepdims=True) - 1) * 100
+        w = info['area_weight'].values
+        groups = self.group_masks(info)
+        out = {}
+        for g, m in groups.items():
+            for name in self.data_dic:
+                out[f'{g} | {name}'] = np.sum(rel[name][m] * w[m, None], axis=0) / np.sum(w[m])
+        pd.DataFrame(out, index=self.years).to_csv(self.outdir + f'LAI_ts_overlay_{self.tag}.csv')
+        x = self.years.astype(float)
+        with plt.rc_context({'font.size': 14, 'axes.titlesize': 15, 'axes.labelsize': 14, 'xtick.labelsize': 12,
+                             'ytick.labelsize': 12, 'legend.fontsize': 13}):
+            fig, axs = plt.subplots(2, 4, figsize=(18, 8), sharex=True)
+            for ax, g in zip(axs.ravel(), groups):
+                text = []
+                det = {}
+                for name in self.data_dic:
+                    y = out[f'{g} | {name}']
+                    sl, ic, _, p, _ = stats.linregress(x, y)
+                    det[name] = y - (sl * x + ic)
+                    ax.plot(self.years, y, color=self.color_dic[name], lw=2, label=name)
+                    ax.plot(self.years, sl * x + ic, color=self.color_dic[name], lw=1.2, ls='--')
+                    text.append(f'{name} {sl * 10:+.1f} (p={p:.2f})')
+                names = list(self.data_dic)
+                r = np.corrcoef(det[names[0]], det[names[1]])[0, 1]
+                text.append(f'r detrended = {r:.2f}')
+                ax.text(0.02, 0.98, '\n'.join(text), transform=ax.transAxes, va='top', fontsize=11)
+                ax.axhline(0, color='grey', lw=0.5)
+                ax.set_title(f'{g} (n={int(groups[g].sum())})')
+                ax.spines[['top', 'right']].set_visible(False)
+            for ax in axs[:, 0]:
+                ax.set_ylabel('GS LAI (% of mean)')
+            axs[0, 0].legend(frameon=False, loc='lower right')
+            for ax in axs.ravel()[len(groups):]:
+                ax.set_visible(False)
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'LAI_ts_overlay_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'LAI_ts_overlay_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def bar_two_periods(self, tag_list=('1982_2020', '2000_2020')):
+        ## 2026-11-22: 7-group trend with 95% CI, GIMMS and SNU, one panel per period (reads the csv of run())
+        ## output: LAI_same_period_two_periods_bar.png / .pdf
+        with plt.rc_context({'font.size': 15, 'axes.titlesize': 16, 'axes.labelsize': 16, 'xtick.labelsize': 13,
+                             'ytick.labelsize': 14, 'legend.fontsize': 14}):
+            fig, axs = plt.subplots(len(tag_list), 1, figsize=(11, 4.0 * len(tag_list)), sharex=True)
+            for ax, tag in zip(np.atleast_1d(axs), tag_list):
+                tab = pd.read_csv(self.outdir + f'LAI_same_period_{tag}.csv')
+                groups = list(dict.fromkeys(tab['class']))
+                xx = np.arange(len(groups))
+                for k, name in enumerate(self.data_dic):
+                    d = tab[tab['record'] == name].set_index('class').reindex(groups)
+                    v = d['trend_per_decade'].values
+                    err = np.array([v - d['ci_low'].values, d['ci_high'].values - v])
+                    ax.bar(xx + (k - (len(self.data_dic) - 1) / 2) * 0.36, v, width=0.36, color=self.color_dic[name],
+                           yerr=err, capsize=3, error_kw={'lw': 1}, label=name)
+                ax.axhline(0, color='k', lw=0.6)
+                ax.set_title(tag.replace('_', '-'))
+                ax.set_ylabel('LAI trend (% / decade)')
+                ax.spines[['top', 'right']].set_visible(False)
+            ax.set_xticks(xx)
+            ax.set_xticklabels([g.replace(' ', '\n') for g in groups])
+            np.atleast_1d(axs)[0].legend(frameon=False, ncol=2)
+            plt.tight_layout()
+            plt.savefig(self.outdir + 'LAI_same_period_two_periods_bar.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + 'LAI_same_period_two_periods_bar.pdf', bbox_inches='tight')
+            plt.close()
+
+    def block_ci(self, lon, lat, v, w):
+        block = (np.floor(lon) * 1000 + np.floor(lat)).astype(int)
+        ids = np.unique(block)
+        idx = {b: np.where(block == b)[0] for b in ids}
+        rng = np.random.default_rng(0)
+        boot = []
+        for _ in range(200):
+            pick = np.concatenate([idx[b] for b in rng.choice(ids, size=len(ids))])
+            boot.append(np.sum(v[pick] * w[pick]) / np.sum(w[pick]))
+        return np.percentile(boot, 2.5), np.percentile(boot, 97.5)
+
+    def bar(self, tab):
+        ## grouped bars: 7 groups x records, 95% CI
+        with plt.rc_context({'font.size': 16, 'axes.titlesize': 17, 'axes.labelsize': 17, 'xtick.labelsize': 15, 'ytick.labelsize': 15, 'legend.fontsize': 15}):   ## large fonts (2026-11-21)
+            groups = list(dict.fromkeys(tab['class']))
+            xx = np.arange(len(groups))
+            wd = 0.36
+            fig, ax = plt.subplots(figsize=(11, 4.4))
+            for k, name in enumerate(self.data_dic):
+                d = tab[tab['record'] == name].set_index('class').reindex(groups)
+                v = d['trend_per_decade'].values
+                err = np.array([v - d['ci_low'].values, d['ci_high'].values - v])
+                ax.bar(xx + (k - (len(self.data_dic) - 1) / 2) * wd, v, width=wd, color=self.color_dic[name], yerr=err,
+                       capsize=2, error_kw={'lw': 0.8}, label=name)
+            ax.axhline(0, color='k', lw=0.6)
+            ax.set_xticks(xx)
+            ax.set_xticklabels([g.replace(' ', '\n') for g in groups])
+            ax.set_ylabel('LAI trend (% per decade)')
+            ax.set_title(f'Growing-season LAI trend {self.years[0]}-{self.years[-1]}, same pixels')
+            ax.legend(frameon=False, ncol=3)
+            ax.spines[['top', 'right']].set_visible(False)
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'LAI_same_period_{self.tag}_bar.png', dpi=300)
+            plt.savefig(self.outdir + f'LAI_same_period_{self.tag}_bar.pdf')
+            plt.close()
 
 
 ## add a new variable: copy SNU_LAI_time_series, change outdir / start_year / var_list
@@ -1168,9 +1713,21 @@ def main():
     # MODIS_LAI_time_series().run()      ## + LAI trend map with dots (2026-11-21); + 7-group bars (done)
     # Daymet_time_series().run()         ## 2026-11-21: same pixels, 7 groups, dots maps (done)
     ## 2026-11-21: long records with annual / perennial from RAP 1986-2024
-    GIMMS_LAI_time_series().run()      ## GS LAI 1982-2020 (needs GS_GIMMS.df)
-    SNU_LAI_time_series().run()        ## GS LAI 1982-2024 (needs GS_SNU.df)
-    SPEI_1982_plot().run()             ## GS SPEI 1982-2024, three periods, dots maps
+    # GIMMS_LAI_time_series().run()      ## GS LAI 1982-2020 (needs GS_GIMMS.df) (done)
+    # SNU_LAI_time_series().run()        ## GS LAI 1982-2024 (needs GS_SNU.df) (done)
+    # SPEI_1982_plot().run()             ## GS SPEI 1982-2024, three periods, dots maps (done)
+    ## 2026-11-22: main line SNU 1982-2024, steps 1-3 (GIMMS = robustness)
+    # SPEI_1982_plot().run()                        ## 1: SPEI03-12 time series, trend maps, step change at 2000 (done)
+    # SNU_LAI_time_series().run()                   ## 2: SNU LAI trend maps / bars, step change at 2000 (done)
+    # GIMMS_LAI_time_series().run()                 ## 3: GIMMS, same figures (robustness) (done)
+    ## 2026-11-23: main line SNU LAI + SPEI03, 06, 12, 24, 36 (1982-2024); GIMMS = robustness
+    # SPEI_1982_plot().run()                               ## SPEI03, 06, 12, 24, 36: time series, maps, step (done)
+    # LAI_same_period_compare(1982, 2020).ts_overlay()     ## robustness 1: SNU vs GIMMS time series 1982-2020 (done)
+    # LAI_same_period_compare(2000, 2020).run()            ## robustness 2: spatial consistency 2000-2020, 4 x 4 map (done)
+    Best_scale_SPEI_1982().run()   ## 2026-11-23: best-scale SPEI (SNU), three periods, for the SNU LAI page (Fig 8)
+    # LAI_same_period_compare(1982, 2020).run()            ## (done 2026-11-22)
+    # LAI_same_period_compare(1982, 1999).run()            ## (done 2026-11-22)
+    # LAI_same_period_compare().bar_two_periods(('1982_2020', '2000_2020'))   ## (done in-session 2026-11-22)
 
 
 if __name__ == '__main__':

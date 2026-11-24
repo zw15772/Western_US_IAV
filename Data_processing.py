@@ -4190,20 +4190,146 @@ class Data_processing_ERA5land:
         pass
 
     def run(self):
+        # self.download_data()
+        # self.unzip()
+        # self.nc_to_tif_time_series_fast()
 
-        # self.raster_align()
 
         # self.extract_tif_from_shp()
-        # self.tif_to_dic()
+        # self.raster_align()
+        self.tif_to_dic()
         # self.winter_SWE()
         # self.spring_season_SM_mean()
-        self.growing_season()
+        # self.growing_season()
 
         pass
+    def download_data(self):
+
+        import cdsapi
+        client = cdsapi.Client()
+
+        yearlist = list(range(1982, 2025))
+        monthlist = list(range(1, 13))
+        outdir = rf'D:\Western_US_IAV\Data\\SM\\'
+        T.mk_dir(outdir,force=True)
+
+        for year in yearlist:
+            for month in monthlist:
+                outfile = os.path.join(
+                    outdir,
+                    f'ERA5_{year}_{month:02d}.zip'
+                )
+                print(year, month)
+                dataset = "reanalysis-era5-land-monthly-means"
+                request = {
+                    "product_type": ["monthly_averaged_reanalysis"],
+                    "variable": [
+                        # "2m_temperature",
+                        # "total_precipitation",
+                        # 'snow_depth_water_equivalent',
+                "volumetric_soil_water_layer_1",
+                "volumetric_soil_water_layer_2",
+                "volumetric_soil_water_layer_3",
+                "volumetric_soil_water_layer_4",
+
+
+                    ],
+                    "year": [f"{year}"],
+                    "month": [
+                        f"{month:02d}"
+                    ],
+                    "time": ["00:00"],
+                    "data_format": "netcdf",
+                    "download_format": "zip"
+                }
+
+                client.retrieve(
+                    dataset,
+                    request
+                ).download(outfile)
+        pass
+
+    def unzip(self):
+        fdir = rf'D:\Western_US_IAV\Data\SM\\zip\\'
+        outdir = rf'D:\Western_US_IAV\Data\SM\\unzip\\'
+        T.mk_dir(outdir)
+        # for folder in T.listdir(fdir):
+        #     print(folder)
+        #
+        #     fdir_i = join(fdir,folder)
+        #     print(fdir_i)
+        #
+        #
+        #     outdir_i = join(outdir,folder)
+        #     if isdir(outdir_i):
+        #         continue
+        # T.unzip(fdir_i,outdir_i)
+        T.unzip(fdir, outdir)
+        pass
+
+    def nc_to_tif_time_series_fast(self):
+
+
+        fdir_all = rf'D:\Western_US_IAV\Data\SM\unzip\\'
+        outdir = rf'D:\Western_US_IAV\Data\SM\tif_swvl2\\'
+
+        Tools().mk_dir(outdir, force=True)
+        for fdir in tqdm(os.listdir(fdir_all)):
+            for f in tqdm(os.listdir(join(fdir_all, fdir))):
+
+
+                if not f.endswith('.nc'):
+                    continue
+                outdir_name = fdir.split('.')[0]
+                print(outdir_name)
+
+                fpath = join(fdir_all, fdir, f)
+                nc_in = xarray.open_dataset(fpath)
+                print(nc_in)
+                print(nc_in)
+                # print(nc_in['t2m'].shape)
+                # print(nc_in['t2m'].dims);exit()
+
+                outf = join(outdir, outdir_name + '.tif')
+                array = nc_in['swvl2'].values[0]
+
+                half_width = array.shape[1] // 2
+                array = np.roll(array, shift=half_width, axis=1)
+
+                # 因为已经平移了矩阵，最左侧的起点必然是 -180°
+                longitude_start = -180.0
+                latitude_start = nc_in['latitude'].values[0]  # 保持原样 (比如 90 或 89.95)
+                pixelWidth = nc_in['longitude'].values[1] - nc_in['longitude'].values[0]
+
+                pixelHeight = nc_in['latitude'].values[1] - nc_in['latitude'].values[0]
+
+                # CRITICAL CHECK: In standard GeoTIFF transformations, pixelHeight MUST be negative
+                # because moving down rows means decreasing latitude.
+                if pixelHeight > 0:
+                    # If the array is inverted (S -> N), flip the data vertically to match standard rasters
+                    array = np.flipud(array)
+                    latitude_start = nc_in['latitude'].values[-1]
+                    pixelHeight = -pixelHeight
+
+                # Preview the fixed data visually
+                plt.imshow(array, extent=[nc_in['longitude'].min(), nc_in['longitude'].max(),
+                                          nc_in['latitude'].min(), nc_in['latitude'].max()])
+                # plt.title("Corrected Projection Preview")
+                # plt.show()
+                # array=array-273.15
+                Days=T.number_of_days_in_month(int(outdir_name.split('_')[1]),int(outdir_name.split('_')[2]))
+                # array=array*1000*Days
+                array = array * 1000
+                ToRaster().array2raster(outf, longitude_start, latitude_start,
+                                        pixelWidth, pixelHeight, array, ndv=-999999)
+                # exit()
+
+
+
 
     def raster_align(self):  ## 这个函数包括了resample and align
-        fdir = join(data_root, 'SWE', 'tiff_unify')
-        outdir = join(data_root, 'SWE', 'raster_align')
+        fdir = join(data_root, 'SM', 'L4','swvl4_extract_tif')
+        outdir = join(data_root, 'SM','L4', 'raster_align')
         T.mk_dir(outdir,force=True)
         reference_path=data_root+rf'\basedata\\template_align.tif'
         for f in tqdm(os.listdir(fdir)):
@@ -4216,8 +4342,9 @@ class Data_processing_ERA5land:
 
     def extract_tif_from_shp(self):
         shp_f=data_root + 'basedata/Western_US_bountry/merged_western_US.shp'
-        fdir=join(data_root, 'SWE',  'raster_align')
-        outdir=join(data_root, 'SWE',  'extract_tif')
+        fdir=join(data_root, 'SM',  'L4','tif_swvl4')
+        outdir=join(data_root, 'SM', 'L4', 'swvl4_extract_tif',)
+
         T.mk_dir(outdir,force=True)
         for f in tqdm(os.listdir(fdir)):
 
@@ -4237,11 +4364,11 @@ class Data_processing_ERA5land:
 
     def tif_to_dic(self):
 
-        fdir_all = join(data_root, 'SWE',   'extract_tif')
-        outdir = join(data_root, 'SWE',   'dic')
+        fdir_all = join(data_root, 'SM', 'L4',  'raster_align')
+        outdir = join(data_root, 'SM', 'L4',  'dic')
         T.mk_dir(outdir, force=True)
 
-        year_list = list(range(2002, 2025))
+        year_list = list(range(1982, 2025))
         # 作为筛选条件
 
         all_array = []  #### so important  it should be go with T.mk_dic
@@ -4813,13 +4940,13 @@ def main():
      # Data_processing_vegetation().run()
     # area_weighted_average().run()
     # Data_processing_MODIS_LAI().run()
-    Data_processing_GIMMS4g().run()
+    # Data_processing_GIMMS4g().run()
     # Data_processing_Terraclimate().run()
     # calculating_mean_CV().run()
     # Data_processing_Daymet().run()
     # Data_processing_Annual_NLCD().run()
     # Data_processing_NLCD_cropland().run()   ## cropland share per 0.05 deg pixel (2026-11-21)
-    # Data_processing_ERA5land().run()
+    Data_processing_ERA5land().run()
     # Data_processing_carbonscope().run()
     # Trend_analysis().run()
     # general_anaysis().run()
