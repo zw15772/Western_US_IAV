@@ -687,7 +687,7 @@ class Best_scale_SPEI_1982(Long_LAI_time_series):
         T.mk_dir(self.outdir, force=True)
         self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024.df'
         self.best_dff = self.result2 + rf'03_response\best_scale_long\best_scale_long_SNU_1982_2024.df'
-        self.spei_bounds = [-0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8]
+        self.spei_bounds = [-1.5, -1, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 1, 1.5]   ## 2026-11-23: +-1.5, finer near 0 (was +-0.8)
         self.big_font = {'font.size': 16, 'axes.titlesize': 17, 'axes.labelsize': 17, 'xtick.labelsize': 15,
                          'ytick.labelsize': 15, 'legend.fontsize': 15}
 
@@ -1316,6 +1316,7 @@ class SPEI_1982_plot(SPEI_long_term_plot):
         self.period_list = [(1982, 2024, ':'), (1982, 1999, '--'), (2000, 2024, '-')]
         self.trend_period_list = self.period_list
         self.herb_years = (1986, 2024)   ## 2026-11-21: annual / perennial from the whole RAP record, as the long LAI
+        self.sig_bounds = [-1.5, -1, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 1, 1.5]   ## 2026-11-23: +-1.5 as the best-scale maps (was +-0.6)
 
     def run(self):
         if not os.path.isfile(self.dff_out):
@@ -1724,7 +1725,9 @@ def main():
     # SPEI_1982_plot().run()                               ## SPEI03, 06, 12, 24, 36: time series, maps, step (done)
     # LAI_same_period_compare(1982, 2020).ts_overlay()     ## robustness 1: SNU vs GIMMS time series 1982-2020 (done)
     # LAI_same_period_compare(2000, 2020).run()            ## robustness 2: spatial consistency 2000-2020, 4 x 4 map (done)
-    Best_scale_SPEI_1982().run()   ## 2026-11-23: best-scale SPEI (SNU), three periods, for the SNU LAI page (Fig 8)
+    ## 2026-11-23: SPEI trend maps with the +-1.5 colour bar (Fig 1 and Fig 4 of the slides)
+    Best_scale_SPEI_1982().run()   ## best-scale SPEI (SNU), three periods
+    SPEI_1982_plot().run()         ## SPEI03-36 time series, trend maps, step change
     # LAI_same_period_compare(1982, 2020).run()            ## (done 2026-11-22)
     # LAI_same_period_compare(1982, 1999).run()            ## (done 2026-11-22)
     # LAI_same_period_compare().bar_two_periods(('1982_2020', '2000_2020'))   ## (done in-session 2026-11-22)

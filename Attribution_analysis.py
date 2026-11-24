@@ -1764,11 +1764,341 @@ class Attribution_figures():
         plt.close()
 
 
+class Long_attribution(Attribution_model2):
+    ## Long-record attribution, SNU LAI 1986-2024 (RAP overlap); Model 2 structure with soil moisture and VPD
+    ##   (2026-11-23)
+    ## groups : Forest, Shrub annual / perennial, Grass annual / perennial, Savanna (RAP 1986-2024 AFG > PFG, as the
+    ##          long records); pixels and groups from SM_sufficiency (GS_SM_v3_1982_2024.df)
+    ## layer 1 (water and air, year to year, detrended, pooled per group):
+    ##     LAI_rel' = b1 * SMgs' + b2 * SMpre' (+ b3 * VPD') + e        (' = detrended over the years)
+    ##     SMgs  = GS mean root-zone (0-100 cm) ERA5-Land soil moisture, percentile of the pixel's own years (0-100)
+    ##     SMpre = the same for the 3 months before the season (water stored before the season)
+    ##     VPD   = GS mean TerraClimate VPD (kPa), MODIS growing-season window
+    ##     A_k = b_k x trend_k (not detrended), A = sum A_k: the LAI trend expected from the water / air trends
+    ##     SPEI  = GS SPEI at the pixel's best scale (best_scale_long_SNU_1982_2024.df, as Fig 8)
+    ##     four versions: 'SM' (SMgs, SMpre), 'SM_VPD' (+ VPD), 'SPEI' (SPEI), 'SPEI_VPD' (+ VPD); VIF and R2 per
+    ##     group. SPEI already contains PET, so part of the VPD signal is in SPEI: in 'SPEI_VPD', A_VPD is the air
+    ##     dryness beyond what SPEI carries
+    ## layer 2 (cover, across pixels within a group, area-weighted):
+    ##     observed - A = g0 + g1 * dAFG + g2 * dPFG + g3 * dSHR + g4 * dTRE + u     (RAP cover trends, pp per decade)
+    ##     B = sum g_k * dX_k (cover effect);  C = observed - A - B (= g0 + u): LAI change per unit cover,
+    ##     compared with the CO2 expectation 2.9-5.8 % per decade (Donohue et al. 2013)
+    ## observed = A + B + C for every pixel; CI: 1 x 1 deg block bootstrap
+    ## output : Result2\03_response\long_attribution_{y0}_{y1}\
+    def __init__(self, first_year=1986, last_year=2024):
+        Growing_season_trend.__init__(self, this_root + rf'Result2\03_response\long_attribution_{first_year}_{last_year}\\')
+        self.year_list = list(range(first_year, last_year + 1))
+        self.tag = f'{first_year}_{last_year}'
+        self.sm_dff = this_root + rf'Result2\01_drought\SM_sufficiency_1982_2024\GS_SM_v3_1982_2024.df'
+        self.snu_dff = result_root + rf'\Dataframe\growing_season\GS_SNU.df'
+        self.rap_dff = result_root + rf'\Dataframe\RAP\RAP_cover.df'
+        self.vpd_fdir = data_root + rf'TerraClimate\vpd\dic\\'
+        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024.df'
+        self.best_dff = this_root + rf'Result2\03_response\best_scale_long\best_scale_long_SNU_1982_2024.df'
+        self.data_dff = self.outdir + f'long_attribution_data_v2_{self.tag}.df'   ## v2: + SPEI_best
+        self.group_list = ['Forest', 'Shrub annual', 'Shrub perennial', 'Grass annual', 'Grass perennial', 'Savanna']
+        self.rap_list = ['RAP_AFG', 'RAP_PFG', 'RAP_SHR', 'RAP_TRE']
+        self.rap_min_year = len(self.year_list) - 4
+        self.version_dic = {'SM': ['SMgs', 'SMpre'], 'SM_VPD': ['SMgs', 'SMpre', 'VPD'],
+                            'SPEI': ['SPEI'], 'SPEI_VPD': ['SPEI', 'VPD']}
+        self.var_col = {'SMgs': 'GS_P', 'SMpre': 'PRE_P', 'VPD': 'GS_VPD', 'SPEI': 'SPEI_best'}
+        self.co2_range = (2.9, 5.8)
+        self.color_dic = {'observed': '#2E7D32', 'A_SMgs': '#5DADE2', 'A_SMpre': '#1F618D', 'A_VPD': '#C0392B',
+                          'A_SPEI': '#E67E22',
+                          'B': '#8E44AD', 'C': '#7F8C8D'}
+        self.big_font = {'font.size': 16, 'axes.titlesize': 17, 'axes.labelsize': 17, 'xtick.labelsize': 15,
+                         'ytick.labelsize': 15, 'legend.fontsize': 15}
+
+    def run(self):
+        info, lai, X, rap = self.load_all()
+        for version, names in self.version_dic.items():
+            res = pd.DataFrame(index=info.index)
+            res['observed'], res['LAI_trend_p'] = self.trend(lai)
+            coef = self.layer1_group(info, lai, {k: X[k] for k in names}, res)
+            for c in self.rap_list:
+                res[f'{c}_trend'] = self.trend_nan(rap[c])
+            gamma = self.layer2_group(info, res)
+            res['C'] = res['observed'] - res['A'] - res['B']
+            T.save_df(info.join(res), self.outdir + f'long_attribution_{version}_{self.tag}.df')
+            coef.to_csv(self.outdir + f'long_attribution_{version}_coef_{self.tag}.csv', index=False)
+            gamma.to_csv(self.outdir + f'long_attribution_{version}_gamma_{self.tag}.csv', index=False)
+            print(version)
+            print(coef.round(3).to_string())
+            print(gamma.round(3).to_string())
+            comp = ['observed'] + [f'A_{k}' for k in names] + ['A', 'B', 'C']
+            tab = self.table_group(info, res, comp, version)
+            self.bar_group(tab, comp, version)
+
+    ## ---------- data ----------
+    def load_all(self):
+        if os.path.isfile(self.data_dff):
+            df = T.load_df(self.data_dff)
+        else:
+            df = self.build()
+        info = df.groupby('pix')[['lon', 'lat', 'area_weight', 'landcover_type', 'group']].first()
+        info = info[info['group'].isin(self.group_list)]
+        lai = self.pivot(df, info, 'GS_LAI_rel')
+        X = {k: self.pivot(df, info, col) for k, col in self.var_col.items()}
+        rap = {c: self.pivot(df, info, c) for c in self.rap_list}
+        ok = np.isfinite(lai).all(axis=1)
+        print('pixels in the six groups:', len(info))
+        print('  incomplete LAI:', (~np.isfinite(lai).all(axis=1)).sum())
+        for k, arr in X.items():
+            print(f'  incomplete {k}:', (~np.isfinite(arr).all(axis=1)).sum())
+            ok &= np.isfinite(arr).all(axis=1)
+        for c, arr in rap.items():
+            print(f'  {c} < {self.rap_min_year} years:', (np.isfinite(arr).sum(axis=1) < self.rap_min_year).sum())
+            ok &= np.isfinite(arr).sum(axis=1) >= self.rap_min_year
+        print('  kept:', ok.sum())
+        print(info[ok].groupby('group').size().to_string())
+        return info[ok], lai[ok], {k: v[ok] for k, v in X.items()}, {k: v[ok] for k, v in rap.items()}
+
+    def pivot(self, df, info, col):
+        return df.pivot(index='pix', columns='year', values=col).reindex(index=info.index,
+                                                                         columns=self.year_list).values
+
+    def build(self):
+        ## one pixel-year table: SM percentiles and groups (SM_sufficiency), SNU LAI, GS VPD, RAP covers
+        sm = T.load_df(self.sm_dff)
+        sm = sm[(sm['year'] >= self.year_list[0]) & (sm['year'] <= self.year_list[-1])]
+        cols = ['pix', 'year', 'GS_P', 'PRE_P', 'lon', 'lat', 'area_weight', 'landcover_type', 'group', 'gs_start',
+                'gs_end']
+        df = sm[cols].copy()
+        del sm
+        snu = T.load_df(self.snu_dff)[['pix', 'year', 'GS_LAI_rel']]
+        df = df.merge(snu, on=['pix', 'year'], how='left')
+        del snu
+        ## GS VPD from the monthly TerraClimate dic (1982-2024), MODIS growing-season window
+        pix_info = df.groupby('pix')[['gs_start', 'gs_end']].first()
+        loader = GS_LAI_long_term('VPD', self.vpd_fdir, 1982, 2024)
+        mon = loader.load_monthly(list(pix_info.index))
+        start = pix_info['gs_start'].values.astype(int) - 1
+        length = (pix_info['gs_end'].values - pix_info['gs_start'].values).astype(int) + 1
+        vpd = loader.window_long(mon, start, length)[:, self.year_list[0] - 1982:self.year_list[-1] - 1982 + 1]
+        ny = len(self.year_list)
+        vdf = pd.DataFrame({'pix': [p for p in pix_info.index for _ in range(ny)],
+                            'year': np.tile(self.year_list, len(pix_info)), 'GS_VPD': vpd.ravel()})
+        df = df.merge(vdf, on=['pix', 'year'], how='left')
+        rap = T.load_df(self.rap_dff)
+        rap = rap[(rap['year'] >= self.year_list[0]) & (rap['year'] <= self.year_list[-1])][['pix', 'year'] +
+                                                                                             self.rap_list]
+        df = df.merge(rap, on=['pix', 'year'], how='left')
+        del rap
+        ## GS SPEI at the pixel's best scale (SNU 1982-2024)
+        best = T.load_df(self.best_dff)['best_scale']
+        spei = T.load_df(self.spei_dff)
+        spei = spei[(spei['year'] >= self.year_list[0]) & (spei['year'] <= self.year_list[-1]) &
+                    spei['pix'].isin(set(pix_info.index))]
+        sc = spei['pix'].map(best).values
+        val = np.full(len(spei), np.nan)
+        for k in np.unique(sc[np.isfinite(sc)]).astype(int):
+            col = f'growing_SPEI{k:02d}'
+            if col in spei.columns:
+                m = sc == k
+                val[m] = spei[col].values[m]
+        spei = pd.DataFrame({'pix': spei['pix'].values, 'year': spei['year'].values, 'SPEI_best': val})
+        df = df.merge(spei, on=['pix', 'year'], how='left')
+        T.save_df(df, self.data_dff)
+        return df
+
+    ## ---------- layer 1 ----------
+    def layer1_group(self, info, lai, X, res):
+        lai_d = detrend(lai, axis=1)
+        X_d = {k: detrend(v, axis=1) for k, v in X.items()}
+        X_tr = {k: self.trend(v)[0] for k, v in X.items()}
+        names = list(X.keys())
+        for k in names:
+            res[f'{k}_trend'] = X_tr[k]
+        A = {k: np.full(len(info), np.nan) for k in names}
+        result = []
+        for g in self.group_list:
+            m = (info['group'] == g).values
+            if m.sum() < 30:
+                continue
+            y = lai_d[m].ravel()
+            M = np.column_stack([X_d[k][m].ravel() for k in names])
+            b, *_ = np.linalg.lstsq(M, y, rcond=None)
+            r2 = 1 - np.sum((y - M @ b) ** 2) / np.sum(y ** 2)
+            vif = []
+            for j in range(len(names)):
+                if len(names) == 1:
+                    vif.append(1.)
+                    continue
+                others = np.delete(M, j, axis=1)
+                gg, *_ = np.linalg.lstsq(others, M[:, j], rcond=None)
+                r2_j = 1 - np.sum((M[:, j] - others @ gg) ** 2) / np.sum(M[:, j] ** 2)
+                vif.append(1 / (1 - r2_j))
+            corr = np.corrcoef(M.T)[0, 1:] if len(names) > 1 else []
+            for j, k in enumerate(names):
+                A[k][m] = b[j] * X_tr[k][m]
+            result.append([g, m.sum(), r2] + list(b) + vif + list(corr))
+        for k in names:
+            res[f'A_{k}'] = A[k]
+        res['A'] = sum(A[k] for k in names)
+        return pd.DataFrame(result, columns=['group', 'n_pix', 'R2'] + [f'beta_{k}' for k in names] +
+                                            [f'VIF_{k}' for k in names] +
+                                            [f'r_{names[0]}_{k}' for k in names[1:]])
+
+    ## ---------- layer 2 ----------
+    def layer2_group(self, info, res):
+        res['B'] = np.nan
+        cols = [f'{c}_trend' for c in self.rap_list]
+        rng = np.random.default_rng(0)
+        result = []
+        for g in self.group_list:
+            m = (info['group'] == g).values
+            if m.sum() < 30:
+                continue
+            Z = res.loc[m, cols].values
+            y = (res['observed'] - res['A']).values[m]
+            w = info['area_weight'].values[m]
+            gm = self.wls(Z, y, w)
+            res.loc[m, 'B'] = Z @ gm[1:]
+            block = (np.floor(info['lon'].values[m]) * 1000 + np.floor(info['lat'].values[m])).astype(int)
+            ids = np.unique(block)
+            idx = {bk: np.where(block == bk)[0] for bk in ids}
+            boot = []
+            for _ in range(200):
+                pick = np.concatenate([idx[bk] for bk in rng.choice(ids, size=len(ids))])
+                boot.append(self.wls(Z[pick], y[pick], w[pick]))
+            lo, hi = np.percentile(boot, 2.5, axis=0), np.percentile(boot, 97.5, axis=0)
+            for j, name in enumerate(['intercept'] + self.rap_list):
+                result.append([g, name, gm[j], lo[j], hi[j]])
+        return pd.DataFrame(result, columns=['group', 'term', 'gamma', 'ci_low', 'ci_high'])
+
+    ## ---------- maps (2026-11-23) ----------
+    def run_maps(self, version_list=('SM_VPD', 'SPEI_VPD')):
+        ## maps from the saved pixel tables (no refit): one 2 x 3 panel figure per version and GeoTIFFs
+        for version in version_list:
+            df = T.load_df(self.outdir + f'long_attribution_{version}_{self.tag}.df')
+            self.maps_panel(df, version)
+
+    def maps_panel(self, df, version):
+        ## panels: observed, water supply (A of the soil-moisture / SPEI terms), air dryness (A_VPD), B (cover),
+        ##   C (per-unit-cover residual), C class vs the CO2 expectation; same colour range for the first five
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.ticker as mticker
+        from matplotlib.colors import ListedColormap, BoundaryNorm
+        water = [c for c in ['A_SMgs', 'A_SMpre', 'A_SPEI'] if c in df.columns]
+        df = df.copy()
+        df['A_water'] = df[water].sum(axis=1, min_count=1)
+        panels = [('observed', 'Observed LAI trend'), ('A_water', 'Water supply (' + ' + '.join(water) + ')'),
+                  ('A_VPD', 'Air dryness (A_VPD)'), ('B', 'Cover change (B)'), ('C', 'Per unit cover (C)')]
+        panels = [(c, t) for c, t in panels if c in df.columns]
+        vlim = np.nanpercentile(np.abs(df['observed']), 90)
+        w = df['area_weight'].values
+        extent = [-124.529, -102.079, 25.579, 48.979]
+        with plt.rc_context(self.big_font):
+            fig, axs = plt.subplots(2, 3, figsize=(24, 15), subplot_kw={'projection': ccrs.PlateCarree()})
+            for ax, (col, title) in zip(axs.ravel(), panels):
+                vals = df[col].values
+                arr = D.pix_dic_to_spatial_arr(dict(zip(df.index, vals)))
+                arr[arr <= -9999] = np.nan
+                D.arr_to_tif(arr.copy(), self.outdir + f'long_attribution_{version}_{col}_{self.tag}.tif')
+                im = ax.imshow(arr, cmap='RdBu', vmin=-vlim, vmax=vlim, extent=extent, transform=ccrs.PlateCarree(),
+                               interpolation='nearest')
+                ok = np.isfinite(vals)
+                m = np.sum(vals[ok] * w[ok]) / np.sum(w[ok])
+                self.map_base(ax, ccrs, cfeature, mticker)
+                ax.set_title(f'{title}\nmean {m:+.2f} % / decade')
+                cb = plt.colorbar(im, ax=ax, shrink=0.75, extend='both')
+                cb.set_label('% per decade')
+            ## last panel: C relative to the CO2 expectation
+            ax = axs.ravel()[len(panels)]
+            lo, hi = self.co2_range
+            c = df['C'].values
+            cls = np.where(c < 0, 0, np.where(c < lo, 1, np.where(c <= hi, 2, 3))).astype(float)
+            cls[~np.isfinite(c)] = np.nan
+            arr = D.pix_dic_to_spatial_arr(dict(zip(df.index, cls)))
+            arr[arr <= -9999] = np.nan
+            names = ['C < 0', f'0-{lo}', f'{lo}-{hi} (CO$_2$)', f'> {hi}']
+            cmap = ListedColormap(['#B2182B', '#FDDBC7', '#92C5DE', '#2166AC'])
+            im = ax.imshow(arr, cmap=cmap, norm=BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5], 4), extent=extent,
+                           transform=ccrs.PlateCarree(), interpolation='nearest')
+            self.map_base(ax, ccrs, cfeature, mticker)
+            share = [np.sum(w[cls == k]) / np.sum(w[np.isfinite(cls)]) * 100 for k in range(4)]
+            ax.set_title('C vs CO$_2$ expectation (% per decade)')
+            cb = plt.colorbar(im, ax=ax, shrink=0.75, ticks=[0, 1, 2, 3])
+            cb.ax.set_yticklabels([f'{n}: {v:.0f}%' for n, v in zip(names, share)], fontsize=14)
+            for ax in axs.ravel()[len(panels) + 1:]:
+                ax.set_visible(False)
+            fig.suptitle(f'SNU LAI {self.year_list[0]}-{self.year_list[-1]} attribution [{version}]', fontsize=20)
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'long_attribution_{version}_maps_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'long_attribution_{version}_maps_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+        print(version, 'C class area %:', dict(zip(names, np.round(share, 1))))
+
+    def map_base(self, ax, ccrs, cfeature, mticker):
+        ax.add_feature(cfeature.STATES, linewidth=0.4)
+        ax.add_feature(cfeature.COASTLINE, linewidth=0.6)
+        gl = ax.gridlines(draw_labels=True, linewidth=0)
+        gl.top_labels = False
+        gl.right_labels = False
+        gl.xlocator = mticker.FixedLocator(range(-125, -100, 10))
+        gl.ylocator = mticker.FixedLocator(range(25, 50, 5))
+        gl.xlabel_style = {'size': 14}
+        gl.ylabel_style = {'size': 14}
+
+
+    ## ---------- summary ----------
+    def table_group(self, info, res, comp, version):
+        w_all = info['area_weight'].values
+        result = []
+        for g in ['All'] + self.group_list:
+            m = np.ones(len(info), dtype=bool) if g == 'All' else (info['group'] == g).values
+            if m.sum() < 30:
+                continue
+            w = w_all[m]
+            row = [g, m.sum()]
+            for name in comp:
+                v = res[name].values[m]
+                lo, hi = self.block_ci(info[m], v, w)
+                row += [np.sum(v * w) / np.sum(w), lo, hi]
+            result.append(row)
+        cols = ['group', 'n_pix']
+        for name in comp:
+            cols += [name, f'{name}_ci_low', f'{name}_ci_high']
+        tab = pd.DataFrame(result, columns=cols)
+        tab.to_csv(self.outdir + f'long_attribution_{version}_summary_{self.tag}.csv', index=False)
+        print(tab[['group', 'n_pix'] + comp].round(2).to_string())
+        return tab
+
+    def bar_group(self, tab, comp, version):
+        ## per group: observed and its components, 95% CI; band = CO2 expectation for C
+        name_list = [n for n in comp if n != 'A']
+        x = np.arange(len(tab))
+        width = 0.8 / len(name_list)
+        with plt.rc_context(self.big_font):
+            fig, ax = plt.subplots(figsize=(20, 7.5))
+            ax.axhspan(*self.co2_range, color='#FDEBD0', zorder=0, label='CO$_2$ expectation (for C)')
+            for k, name in enumerate(name_list):
+                v = tab[name].values
+                err = np.array([v - tab[f'{name}_ci_low'].values, tab[f'{name}_ci_high'].values - v])
+                ax.bar(x + (k - (len(name_list) - 1) / 2) * width, v, width=width, color=self.color_dic[name],
+                       yerr=err, capsize=2, error_kw={'lw': 0.8}, label=name)
+            ax.axhline(0, color='k', lw=0.8)
+            ax.set_xticks(x)
+            ax.set_xticklabels([g.replace(' ', '\n') for g in tab['group']])
+            ax.set_ylabel('LAI trend (% per decade)')
+            ax.set_title(f'SNU LAI {self.year_list[0]}-{self.year_list[-1]}: observed = A (water / air) + B (cover) + C'
+                         f'  [{version}]')
+            ax.legend(frameon=False, ncol=4, loc='upper center', bbox_to_anchor=(0.5, -0.12))
+            ax.spines[['top', 'right']].set_visible(False)
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'long_attribution_{version}_bar_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'long_attribution_{version}_bar_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+
 def main():
     # Attribution_model1().run()   ## needs bivariate.py first (best SPEI scale)
     # Attribution_model2().run()
     # Model2_annual_perennial().run()  ## main Model 2: beta per annual / perennial for Grass and Shrub (needs Model 2)
-    Attribution_figures().run()      ## paper figures from saved results (reads Model2_annual_perennial)
+    # Attribution_figures().run()    ## paper figures from saved results (reads Model2_annual_perennial)
+    # Long_attribution(1986, 2024).run()   ## 2026-11-23: SNU 1986-2024, ERA5 SM (GS + pre-season) + VPD, RAP cover (done)
+    Long_attribution(1986, 2024).run_maps()   ## 2026-11-23: maps of observed, water, VPD, B, C (from the saved tables)
     # Phenology_C().run()            ## needs Model 2 output
     # Dry_wet_trend().run()          ## needs bivariate.py output (best SPEI scale)
     # Water_threshold().run()        ## needs bivariate.py and SPEI_long_term_plot outputs

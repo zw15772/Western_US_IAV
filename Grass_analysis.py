@@ -593,104 +593,6 @@ class Cropland_threshold_C(Growing_season_trend):
         print(s[['site', 'group', 'observed', 'C_raw', 'cropland_%']].round(1).to_string())
 
 
-class C_by_herb_cover(Growing_season_trend):
-    ## step 4: LAI trend and its components along the herbaceous composition, before calling the greening
-    ##   "perennial" (2026-11-21); descriptive, no annual / perennial threshold
-    ## pixels: Grass and Shrub of Model2_annual_perennial (NLCD cropland < 5% mask)
-    ## x axes (RAP, 2003-2024 mean cover of the pixel):
-    ##   annual share = AFG / (AFG + PFG)   (0 = all perennial, 1 = all annual), bins 0-0.1-0.2-0.35-0.5-0.65-1
-    ##   PFG cover (%)                     bins 0-5-10-20-30-45-100
-    ## per bin: area-weighted mean of observed (model-free), A, B, C of the model with beta per annual / perennial
-    ##   (C_new) and of the standard Model 2 (C_standard), 95% CI by 1 x 1 deg block bootstrap, area share
-    ## note: C_new uses a different beta below / above annual share 0.5, so it can jump there; observed and
-    ##   C_standard do not depend on the split
-    ## output: Result2\05_Grass_attribution\herb_cover\
-    def __init__(self):
-        super().__init__(this_root + rf'Result2\05_Grass_attribution\herb_cover\\')
-        self.cmp_dff = this_root + \
-            rf'Result2\03_response\model2_annual_perennial\model2_annual_perennial_compare_{self.tag}.df'
-        self.lc_list = ['Grass', 'Shrub']
-        self.axis_dic = {'annual_share': ([0, 0.1, 0.2, 0.35, 0.5, 0.65, 1.0001],
-                                          'Annual share of herbaceous cover, AFG / (AFG + PFG)'),
-                         'PFG_mean': ([0, 5, 10, 20, 30, 45, 100], 'Perennial forb & grass cover, RAP mean (%)')}
-        self.var_dic = {'observed': ('Observed', '#2E7D32', '-'), 'A_new': ('A climate', '#C0392B', '-'),
-                        'B_new': ('B composition', '#8E44AD', '-'), 'C_new': ('C unexplained', '#1F2A33', '-'),
-                        'C_standard': ('C, standard Model 2', '#9E9E9E', '--')}
-
-    def run(self):
-        df = self.load()
-        tab = self.bin_table(df)
-        self.plot(tab)
-        pass
-
-    def load(self):
-        df = T.load_df(self.cmp_dff)
-        df = df[df['landcover_type'].isin(self.lc_list)].copy()
-        with np.errstate(invalid='ignore', divide='ignore'):
-            df['annual_share'] = df['AFG_mean'] / (df['AFG_mean'] + df['PFG_mean'])
-        print('pixels:', len(df), '| no herbaceous cover:', int(df['annual_share'].isna().sum()))
-        return df
-
-    def bin_table(self, df):
-        result = []
-        for lc in self.lc_list:
-            m_lc = (df['landcover_type'] == lc).values
-            w_lc = df['area_weight'].values[m_lc].sum()
-            for xname, (edges, _) in self.axis_dic.items():
-                b = np.digitize(df[xname].values, edges) - 1
-                for k in range(len(edges) - 1):
-                    m = m_lc & (b == k)
-                    if m.sum() < 30:
-                        continue
-                    w = df['area_weight'].values[m]
-                    row = [lc, xname, edges[k], min(edges[k + 1], edges[-1]), int(m.sum()),
-                           np.sum(w) / w_lc * 100, np.sum(df[xname].values[m] * w) / np.sum(w)]
-                    for var in self.var_dic:
-                        v = df[var].values[m]
-                        lo, hi = self.block_ci(df[m], v, w)
-                        row += [np.sum(v * w) / np.sum(w), lo, hi]
-                    result.append(row)
-        cols = ['class', 'x', 'x_low', 'x_high', 'n_pix', 'area_%_of_class', 'x_mean']
-        for var in self.var_dic:
-            cols += [var, f'{var}_ci_low', f'{var}_ci_high']
-        tab = pd.DataFrame(result, columns=cols)
-        tab.to_csv(self.outdir + f'LAI_trend_by_herb_cover_{self.tag}.csv', index=False)
-        print(tab[['class', 'x', 'x_low', 'x_high', 'n_pix', 'area_%_of_class'] + list(self.var_dic)]
-              .round(2).to_string())
-        return tab
-
-    def plot(self, tab):
-        ## rows: Grass, Shrub; columns: annual share, PFG cover; bars below = area share of the bin
-        fig, axs = plt.subplots(2, 2, figsize=(18 * centimeter_factor, 13 * centimeter_factor), sharey='row')
-        for i, lc in enumerate(self.lc_list):
-            for j, (xname, (_, xlabel)) in enumerate(self.axis_dic.items()):
-                ax = axs[i, j]
-                d = tab[(tab['class'] == lc) & (tab['x'] == xname)]
-                for var, (label, color, ls) in self.var_dic.items():
-                    err = np.array([d[var] - d[f'{var}_ci_low'], d[f'{var}_ci_high'] - d[var]])
-                    ax.errorbar(d['x_mean'], d[var], yerr=err, marker='o', ms=2.5, capsize=1.5, color=color,
-                                ls=ls, lw=1.6 if var in ('observed', 'C_new') else 1, label=label)
-                ax.axhline(0, color='grey', lw=0.5)
-                if xname == 'annual_share':
-                    ax.axvline(0.5, color='grey', lw=0.5, ls=':')
-                ax2 = ax.twinx()
-                ax2.bar(d['x_mean'], d['area_%_of_class'], width=(d['x_high'] - d['x_low']) * 0.8,
-                        color='#D9D9D9', alpha=0.5, zorder=0)
-                ax2.set_ylim(0, 100)
-                ax2.tick_params(labelsize=9.5)
-                if j == 1:
-                    ax2.set_ylabel('Area (% of class)', fontsize=11)
-                ax.set_zorder(ax2.get_zorder() + 1)
-                ax.patch.set_visible(False)
-                ax.set_title(lc, fontsize=13)
-                ax.set_xlabel(xlabel, fontsize=11)
-                ax.tick_params(labelsize=11)
-            axs[i, 0].set_ylabel('LAI trend (% per decade)', fontsize=13)
-        axs[0, 0].legend(fontsize=9.5, frameon=False, ncol=2)
-        plt.tight_layout()
-        plt.savefig(self.outdir + f'LAI_trend_by_herb_cover_{self.tag}.png', dpi=300, bbox_inches='tight')
-        plt.savefig(self.outdir + f'LAI_trend_by_herb_cover_{self.tag}.pdf', bbox_inches='tight')
-        plt.close()
 
 
 class Observed_trend_by_herb_cover(Growing_season_trend):
@@ -1189,6 +1091,146 @@ class Greening_cover_change(PFG_change_vs_LAI_trend):
         df, _ = self.load()
         self.lai_per_cover(df)
 
+    def run_decomposition(self):
+        ## 2026-11-23: decomposition figure from the saved pixel table (run run_lai_per_cover first)
+        df = T.load_df(self.outdir + f'Greening_cover_{self.tag}.df')
+        self.decomposition_figure(df)
+
+    def decomposition_figure(self, df, res=0.25, n_min_cell=3):
+        ## LAI trend (% of mean per decade) ~= cover gain (% of mean) + LAI per unit cover trend (2026-11-23)
+        ##   cover gain = trend of total cover AFG + PFG + SHR + TRE (pp per decade) / its pixel mean x 100
+        ## a) map, sig. greening pixels: share of the LAI trend from per-unit-cover greening = LAIc_trend / LAI_trend,
+        ##    median per res-degree cell (cells with >= n_min_cell greening pixels); 0 = all cover gain, 1 = all per unit
+        ## b) decomposition plane: per group, x = cover gain, y = per-unit-cover trend, area-weighted mean with 95% CI
+        ##    (1 deg block bootstrap); open = LAI n.s., filled = sig. greening, arrow n.s. -> greening; dotted lines =
+        ##    equal LAI trend (x + y), band = CO2 expectation
+        ##    2026-11-23: + diamond = all pixels of the group (greening, n.s. and browning): the mean without selecting
+        ##    pixels on their LAI trend (greening pixels are biased up, n.s. pixels down); also in the csv (status 'all')
+        ## c) stacked split per group: cover gain + per-unit-cover trend, greening (solid) and LAI n.s. (pale);
+        ##    dot = observed LAI trend
+        ## output: Fig_decomposition_{tag}.png / .pdf / .csv, Fig_decomposition_map_{tag}.csv (cell values)
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.ticker as mticker
+        from matplotlib.colors import TwoSlopeNorm
+        df = df[np.isfinite(df['LAIc_trend']) & (df['VEG_mean'] > 0)].copy()
+        df['COV_rel_trend'] = df['VEG_trend'] / df['VEG_mean'] * 100
+        df['resid'] = df['LAI_trend'] - df['COV_rel_trend'] - df['LAIc_trend']
+        print('identity check, area-weighted mean of LAI - cover gain - per unit (should be near 0):',
+              round(np.average(df['resid'], weights=df['area_weight']), 3))
+        ## table
+        rows = []
+        for g in self.group_list:
+            for st in ['greening', 'control', 'all']:   ## 2026-11-23: + all pixels of the group (no selection on LAI)
+                d = df[df['group'] == g] if st == 'all' else df[(df['group'] == g) & (df['status'] == st)]
+                if len(d) < self.n_min:
+                    continue
+                row = [g, st, len(d)]
+                for col in ['LAI_trend', 'COV_rel_trend', 'LAIc_trend']:
+                    row += list(self.wmean_ci(d, col))
+                rows.append(row)
+        cols = ['group', 'status', 'n_pix']
+        for col in ['LAI', 'cover_gain', 'per_unit']:
+            cols += [col, f'{col}_ci_low', f'{col}_ci_high']
+        tab = pd.DataFrame(rows, columns=cols)
+        tab.to_csv(self.outdir + f'Fig_decomposition_{self.tag}.csv', index=False)
+        print(tab[['group', 'status', 'n_pix', 'LAI', 'cover_gain', 'per_unit']].round(2).to_string())
+        ## map cells
+        gr = df[df['status'] == 'greening'].copy()
+        gr['share'] = gr['LAIc_trend'] / gr['LAI_trend']
+        gr['cx'] = np.floor(gr['lon'] / res) * res
+        gr['cy'] = np.floor(gr['lat'] / res) * res
+        cell = gr.groupby(['cx', 'cy'])['share'].agg(['median', 'size']).reset_index()
+        cell = cell[cell['size'] >= n_min_cell]
+        cell.to_csv(self.outdir + f'Fig_decomposition_map_{self.tag}.csv', index=False)
+        xe = np.arange(np.floor(df['lon'].min() / res) * res, df['lon'].max() + res, res)
+        ye = np.arange(np.floor(df['lat'].min() / res) * res, df['lat'].max() + res, res)
+        grid = np.full((len(ye) - 1, len(xe) - 1), np.nan)
+        ix = np.clip(np.round((cell['cx'].values - xe[0]) / res).astype(int), 0, len(xe) - 2)
+        iy = np.clip(np.round((cell['cy'].values - ye[0]) / res).astype(int), 0, len(ye) - 2)
+        grid[iy, ix] = cell['median'].values
+        col_g = {'Grass annual': '#E6A23C', 'Grass perennial': '#4C9A2A', 'Shrub annual': '#B07A4A',
+                 'Shrub perennial': '#6B3E1E', 'Savanna': '#1F77B4'}
+        with plt.rc_context(self.big_font):
+            fig = plt.figure(figsize=(27, 9))
+            ## a
+            ax = fig.add_axes([0.0, 0.08, 0.27, 0.78], projection=ccrs.PlateCarree())
+            im = ax.pcolormesh(xe, ye, grid, cmap='BrBG', norm=TwoSlopeNorm(0.5, 0, 1), transform=ccrs.PlateCarree(),
+                               shading='flat')
+            ax.add_feature(cfeature.STATES, linewidth=0.4)
+            ax.add_feature(cfeature.COASTLINE, linewidth=0.6)
+            ax.set_extent([-124.6, -102, 31, 46], crs=ccrs.PlateCarree())
+            gl = ax.gridlines(draw_labels=True, linewidth=0)
+            gl.top_labels = False
+            gl.right_labels = False
+            gl.xlocator = mticker.FixedLocator(range(-125, -100, 10))
+            gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
+            gl.xlabel_style = {'size': 14}
+            gl.ylabel_style = {'size': 14}
+            cb = plt.colorbar(im, ax=ax, fraction=0.04, extend='both')
+            cb.set_ticks([0, 0.5, 1])
+            cb.set_ticklabels(['cover gain', 'both', 'per unit cover'])
+            ax.set_title(f'a) Sig. greening: share from per-unit-cover\ngreening ({res}° median)')
+            ## b
+            ax = fig.add_axes([0.35, 0.12, 0.30, 0.72])
+            ax.axhspan(*self.co2_range, color='#FDEBD0', zorder=0, label='CO$_2$ expectation')
+            xs_line = np.linspace(-3, 10, 20)
+            for L in range(-2, 11, 2):
+                ax.plot(xs_line, L - xs_line, ls=':', color='grey', lw=1)
+            for g in self.group_list:
+                d = tab[tab['group'] == g].set_index('status')
+                if not {'greening', 'control'} <= set(d.index):
+                    continue
+                G, C = d.loc['greening'], d.loc['control']
+                ax.annotate('', xy=(G['cover_gain'], G['per_unit']), xytext=(C['cover_gain'], C['per_unit']),
+                            arrowprops=dict(arrowstyle='->', color=col_g[g], lw=1.8))
+                if 'all' in d.index:
+                    A = d.loc['all']
+                    ax.errorbar(A['cover_gain'], A['per_unit'],
+                                xerr=[[A['cover_gain'] - A['cover_gain_ci_low']], [A['cover_gain_ci_high'] - A['cover_gain']]],
+                                yerr=[[A['per_unit'] - A['per_unit_ci_low']], [A['per_unit_ci_high'] - A['per_unit']]],
+                                fmt='D', ms=11, color=col_g[g], mfc=col_g[g], mec='k', mew=1.5, capsize=3, zorder=4)
+                for r, filled in [(C, False), (G, True)]:
+                    ax.errorbar(r['cover_gain'], r['per_unit'],
+                                xerr=[[r['cover_gain'] - r['cover_gain_ci_low']], [r['cover_gain_ci_high'] - r['cover_gain']]],
+                                yerr=[[r['per_unit'] - r['per_unit_ci_low']], [r['per_unit_ci_high'] - r['per_unit']]],
+                                fmt='o', ms=13, color=col_g[g], mfc=col_g[g] if filled else 'white', mew=2.5,
+                                capsize=3, label=g if filled else None, zorder=3)
+            ax.axhline(0, color='k', lw=0.8)
+            ax.axvline(0, color='k', lw=0.8)
+            vals = np.concatenate([tab['cover_gain'], tab['per_unit']])
+            lo, hi = np.nanmin(vals) - 1.5, np.nanmax(vals) + 1.5
+            ax.set_xlim(min(lo, -1.5), hi)
+            ax.set_ylim(min(lo, -1.5), max(hi, self.co2_range[1] + 0.5))
+            ax.set_xlabel('Cover gain (% of mean per decade)')
+            ax.set_ylabel('LAI per unit cover trend\n(% per decade)')
+            ax.errorbar([], [], fmt='D', ms=11, color='grey', mec='k', label='all pixels of the group')
+            ax.set_title('b) open = LAI n.s., filled = sig. greening,\ndiamond = all pixels; dotted = equal LAI trend')
+            ax.legend(frameon=False, fontsize=14, loc='upper left', bbox_to_anchor=(1.0, 1.0))
+            ax.spines[['top', 'right']].set_visible(False)
+            ## c
+            ax = fig.add_axes([0.81, 0.12, 0.19, 0.72])
+            xs = np.arange(len(self.group_list))
+            for k, st in enumerate(['greening', 'control']):
+                d = tab[tab['status'] == st].set_index('group').reindex(self.group_list)
+                cov, unit = d['cover_gain'].values, d['per_unit'].values
+                xx = xs + (k - 0.5) * 0.38
+                a = 1 if st == 'greening' else 0.45
+                ax.bar(xx, cov, 0.38, color='#8E5A2B', alpha=a, label='cover gain' if k == 0 else None)
+                ax.bar(xx, unit, 0.38, bottom=np.where(unit >= 0, np.where(cov > 0, cov, 0), np.where(cov < 0, cov, 0)),
+                       color='#2E8B57', alpha=a, label='per unit cover' if k == 0 else None)
+                ax.scatter(xx, d['LAI'].values, color='k', s=35, zorder=3, label='LAI trend' if k == 0 else None)
+            ax.axhline(0, color='k', lw=0.8)
+            ax.set_xticks(xs)
+            ax.set_xticklabels([g.replace(' ', '\n') for g in self.group_list], fontsize=13)
+            ax.set_ylabel('% per decade')
+            ax.set_title('c) solid = sig. greening\npale = LAI n.s.')
+            ax.legend(frameon=False, fontsize=13, loc='upper right')
+            ax.spines[['top', 'right']].set_visible(False)
+            plt.savefig(self.outdir + f'Fig_decomposition_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'Fig_decomposition_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
     def lai_per_cover(self, df):
         ## does each unit of vegetation cover hold more leaf? (2026-11-23)
         ## per group, greening vs control (LAI n.s.): area-weighted mean trend (% per decade, 95% CI, 1 deg block
@@ -1579,6 +1621,375 @@ class Greening_cover_change(PFG_change_vs_LAI_trend):
             plt.close()
 
 
+class Composition_sensitivity(Growing_season_trend):
+    ## after the cover composition of a pixel changed: does LAI gain more in equally wet years and lose less in
+    ##   equally dry years? (2026-11-23)
+    ## years  : P1 = 1986-2004, P2 = 2005-2024 (SNU LAI and RAP overlap)
+    ## pixels : Grass / Shrub x annual / perennial and Savanna of the long attribution table
+    ##          (long_attribution_data_v2_1986_2024.df, MODIS growing-season window), complete LAI and x in every year;
+    ##          Forest left out
+    ## x      : 'SPEI' = GS SPEI at the pixel's best scale; 'SM' = GS root-zone soil moisture percentile, as z-score of
+    ##          the pixel's 1986-2024 years (same bins as SPEI)
+    ## LAI anomaly: GS_LAI_rel detrended over 1986-2024 (removes the long greening), then in % of the period's mean LAI
+    ##          (P2 LAI is higher, so absolute responses would grow by themselves)
+    ## composition: share of AFG, PFG, woody (SHR + TRE) in total cover (AFG + PFG + SHR + TRE), mean P2 - mean P1 (pp);
+    ##          period means, not yearly values (RAP uses Landsat greenness, so yearly cover follows the LAI anomaly)
+    ##          class = the share that rose most if it rose >= up_thr; 'stable' if every |share change| < stable_thr;
+    ##          the rest ('other') is left out
+    ## per pixel and period:
+    ##   bins   : mean anomaly in each x bin; wet gain = mean anomaly of years x > 0.5, dry loss = - mean anomaly of
+    ##            years x < -0.5
+    ##   hinge  : LAI' = a + b_wet max(x, 0) + b_dry min(x, 0); wet gain per unit x = b_wet, dry loss per unit = b_dry
+    ##            (>= n_side_min years on each side of 0)
+    ##   change = P2 - P1: wet gain > 0 -> LAI rises more in wet years; dry loss < 0 -> LAI drops less in dry years
+    ## difference-in-differences: change of a class - change of 'stable' pixels; this removes what all pixels share
+    ##   (CO2, background climate, AVHRR -> MODIS sensor change in SNU); 95% CI by joint 1 x 1 deg block bootstrap
+    ## output: Result2\05_Grass_attribution\Composition_sensitivity_SNU\ :
+    ##   Comp_sens_{x}_bins_{tag}.png/pdf/csv : LAI anomaly per x bin, P1 vs P2, per class (pixels with the bin in both
+    ##                                          periods)
+    ##   Comp_sens_{x}_did_{tag}.png/pdf/csv  : DiD of dry loss (x) and wet gain (y), a) hinge, b) bins; csv also per group
+    ##   Comp_sens_{x}_pixels_{tag}.df        : pixel table (for maps later)
+    ## run_cover_change (2026-11-23): per pixel, change of the sensitivity (P2 - P1) against the change of total cover
+    ##   dVEG = mean (AFG + PFG + SHR + TRE) P2 - P1 (pp); sensitivity = OLS slope of the LAI anomaly on x (% per unit x),
+    ##   dry side = b_dry, wet side = b_wet of the hinge fit; bins of dVEG per group, area-weighted mean and 95% CI
+    ##   (1 x 1 deg block bootstrap); slope of the change of sensitivity on dVEG (area-weighted LS, same bootstrap)
+    ##   the dVEG ~ 0 bin = change shared by pixels whose cover did not change (sensor, drier P2)
+    ##   output: Comp_sens_{x}_cover_change_{tag}.png / .pdf / .csv, _slope.csv
+    def __init__(self, x_var='SPEI'):
+        Growing_season_trend.__init__(self, this_root + rf'Result2\05_Grass_attribution\Composition_sensitivity_SNU\\')
+        self.year_list = list(range(1986, 2025))
+        self.tag = f'{self.year_list[0]}_{self.year_list[-1]}'
+        self.period_dic = {'P1': (1986, 2004), 'P2': (2005, 2024)}
+        self.data_dff = this_root + \
+            rf'Result2\03_response\long_attribution_1986_2024\long_attribution_data_v2_1986_2024.df'
+        self.x_var = x_var
+        self.x_col = {'SPEI': 'SPEI_best', 'SM': 'GS_P'}[x_var]
+        self.x_label = {'SPEI': 'best-scale GS SPEI', 'SM': 'GS root-zone SM (z of percentile)'}[x_var]
+        self.group_list = ['Grass annual', 'Grass perennial', 'Shrub annual', 'Shrub perennial', 'Savanna']
+        self.rap_list = ['RAP_AFG', 'RAP_PFG', 'RAP_SHR', 'RAP_TRE']
+        self.class_list = ['AFG share up', 'PFG share up', 'woody share up', 'stable']
+        self.class_color = {'AFG share up': '#E6A23C', 'PFG share up': '#4C9A2A', 'woody share up': '#8E5A2B',
+                            'stable': '#616161'}
+        self.up_thr = 4.   ## pp of share, P2 - P1
+        self.stable_thr = 2.   ## pp of share
+        self.veg_min = 5.   ## % total cover, both periods
+        self.bin_edges = [-np.inf, -1, -0.5, 0.5, 1, np.inf]
+        self.bin_labels = ['< -1', '-1 to\n-0.5', '-0.5 to\n0.5', '0.5 to\n1', '> 1']
+        self.n_side_min = 3
+        self.n_min = 30
+        self.dveg_edges = [-np.inf, -10, -5, -2, 2, 5, 10, np.inf]   ## pp, P2 - P1 total cover
+        self.dveg_labels = ['< -10', '-10 to -5', '-5 to -2', '-2 to 2', '2 to 5', '5 to 10', '> 10']
+        self.group_color = {'Grass annual': '#E6A23C', 'Grass perennial': '#4C9A2A', 'Shrub annual': '#C8A165',
+                            'Shrub perennial': '#8E5A2B', 'Savanna': '#1F77B4'}
+        self.big_font = {'font.size': 16, 'axes.titlesize': 17, 'axes.labelsize': 17, 'xtick.labelsize': 15,
+                         'ytick.labelsize': 15, 'legend.fontsize': 15}
+
+    def run(self):
+        res = self.load()
+        curves = self.bin_curves(res)
+        tab = self.summary(res)
+        self.fig_bins(curves)
+        self.fig_did(tab)
+
+    def load(self):
+        from scipy.signal import detrend
+        df = T.load_df(self.data_dff)
+        df = df[df['group'].isin(self.group_list) & (df['year'] >= self.year_list[0]) &
+                (df['year'] <= self.year_list[-1])]
+        info = df.groupby('pix')[['lon', 'lat', 'area_weight', 'landcover_type', 'group']].first()
+
+        def piv(col):
+            return df.pivot(index='pix', columns='year', values=col).reindex(index=info.index,
+                                                                             columns=self.year_list).values
+        lai = piv('GS_LAI_rel')
+        x = piv(self.x_col)
+        cov = {c: piv(c) for c in self.rap_list}
+        del df
+        ok = np.isfinite(lai).all(axis=1) & np.isfinite(x).all(axis=1)
+        print(self.x_var, '| pixels:', len(info), '| complete LAI and x:', int(ok.sum()))
+        info, lai, x = info[ok].copy(), lai[ok], x[ok]
+        cov = {c: v[ok] for c, v in cov.items()}
+        if self.x_var == 'SM':
+            x = (x - x.mean(axis=1, keepdims=True)) / x.std(axis=1, keepdims=True)
+        yrs = np.array(self.year_list)
+        pm = {p: (yrs >= y0) & (yrs <= y1) for p, (y0, y1) in self.period_dic.items()}
+        ## LAI anomaly in % of the period's mean LAI
+        lai_d = detrend(lai, axis=1)
+        anom = np.full_like(lai_d, np.nan)
+        for p, m in pm.items():
+            level = 1 + np.mean(lai[:, m], axis=1, keepdims=True) / 100.
+            anom[:, m] = lai_d[:, m] / level
+        ## composition change
+        veg = cov['RAP_AFG'] + cov['RAP_PFG'] + cov['RAP_SHR'] + cov['RAP_TRE']
+        share = {'AFG': cov['RAP_AFG'], 'PFG': cov['RAP_PFG'], 'woody': cov['RAP_SHR'] + cov['RAP_TRE']}
+        with np.errstate(divide='ignore', invalid='ignore'):
+            share = {k: np.where(veg > 0, v / veg * 100, np.nan) for k, v in share.items()}
+        res = info
+        for k, v in share.items():
+            res[f'd{k}'] = np.nanmean(v[:, pm['P2']], axis=1) - np.nanmean(v[:, pm['P1']], axis=1)
+        res['dVEG'] = np.nanmean(veg[:, pm['P2']], axis=1) - np.nanmean(veg[:, pm['P1']], axis=1)   ## pp
+        veg_ok = (np.nanmean(veg[:, pm['P1']], axis=1) >= self.veg_min) & \
+                 (np.nanmean(veg[:, pm['P2']], axis=1) >= self.veg_min)
+        D = res[['dAFG', 'dPFG', 'dwoody']].values
+        name = np.array(['AFG share up', 'PFG share up', 'woody share up'])
+        with np.errstate(invalid='ignore'):
+            up = np.nanmax(D, axis=1)
+            cls = np.where(np.nanmax(np.abs(D), axis=1) < self.stable_thr, 'stable',
+                           np.where(up >= self.up_thr, name[np.nanargmax(np.where(np.isfinite(D), D, -999), axis=1)],
+                                    'other'))
+        cls = np.where(veg_ok & np.isfinite(D).all(axis=1), cls, 'no cover')
+        res['cls'] = cls
+        print('pixels per group and class:\n', res.groupby(['group', 'cls']).size().unstack(fill_value=0).to_string())
+        ## per period: bins, wet gain / dry loss, hinge slopes
+        k_bin = np.digitize(x, self.bin_edges[1:-1])   ## 0 .. 4
+        for p, m in pm.items():
+            a, s, kb = anom[:, m], x[:, m], k_bin[:, m]
+            for k in range(len(self.bin_labels)):
+                sel = kb == k
+                with np.errstate(invalid='ignore', divide='ignore'):
+                    res[f'{p}_bin{k}'] = np.where(sel.sum(axis=1) > 0, np.sum(np.where(sel, a, 0), axis=1) /
+                                                  sel.sum(axis=1), np.nan)
+                res[f'{p}_nyr_bin{k}'] = sel.sum(axis=1)
+            with np.errstate(invalid='ignore', divide='ignore'):
+                wet, dry = s > 0.5, s < -0.5
+                res[f'{p}_wet_gain_bin'] = np.where(wet.sum(axis=1) > 0,
+                                                    np.sum(np.where(wet, a, 0), axis=1) / wet.sum(axis=1), np.nan)
+                res[f'{p}_dry_loss_bin'] = np.where(dry.sum(axis=1) > 0,
+                                                    -np.sum(np.where(dry, a, 0), axis=1) / dry.sum(axis=1), np.nan)
+            res[f'{p}_wet_gain_hinge'], res[f'{p}_dry_loss_hinge'] = self.hinge(a, s)
+            sm_ = s - s.mean(axis=1, keepdims=True)
+            res[f'{p}_sens'] = np.sum(sm_ * (a - a.mean(axis=1, keepdims=True)), axis=1) / np.sum(sm_ ** 2, axis=1)
+        for v in ['wet_gain_bin', 'dry_loss_bin', 'wet_gain_hinge', 'dry_loss_hinge', 'sens']:
+            res[f'd_{v}'] = res[f'P2_{v}'] - res[f'P1_{v}']
+        ## how many dry / wet years each period has (do the two periods overlap in x?)
+        w = res['area_weight'].values
+        print('area-weighted mean number of years per x bin:')
+        for p in pm:
+            print(' ', p, [round(float(np.sum(res[f'{p}_nyr_bin{k}'].values * w) / np.sum(w)), 1)
+                           for k in range(len(self.bin_labels))],
+                  [b.replace('\n', ' ') for b in self.bin_labels])
+        T.save_df(res, self.outdir + f'Comp_sens_{self.x_var}_pixels_{self.tag}.df')
+        return res
+
+    def run_cover_change(self):
+        res = self.load()
+        tab, slope = self.cover_change_bins(res)
+        self.fig_cover_change(tab, slope)
+
+    def cover_change_bins(self, res):
+        metrics = [('d_sens', 'all years'), ('d_dry_loss_hinge', 'dry side'), ('d_wet_gain_hinge', 'wet side')]
+        res = res[np.isfinite(res['dVEG'])].copy()
+        res['dveg_bin'] = np.digitize(res['dVEG'].values, self.dveg_edges[1:-1])
+        rows, srows = [], []
+        for g in self.group_list:
+            d = res[res['group'] == g]
+            for col, name in metrics:
+                dd = d[np.isfinite(d[col])]
+                for k in range(len(self.dveg_labels)):
+                    b = dd[dd['dveg_bin'] == k]
+                    if len(b) < self.n_min:
+                        continue
+                    v, w = b[col].values, b['area_weight'].values
+                    lo, hi = self.block_ci(b, v, w)
+                    rows.append([g, name, k, self.dveg_labels[k], len(b), np.sum(v * w) / np.sum(w), lo, hi])
+                if len(dd) >= self.n_min:
+                    srows.append([g, name, len(dd), *self.slope_ci(dd, 'dVEG', col)])
+        tab = pd.DataFrame(rows, columns=['group', 'side', 'bin', 'dVEG_bin', 'n_pix', 'd_sens', 'ci_low', 'ci_high'])
+        slope = pd.DataFrame(srows, columns=['group', 'side', 'n_pix', 'slope', 'ci_low', 'ci_high'])
+        tab.to_csv(self.outdir + f'Comp_sens_{self.x_var}_cover_change_{self.tag}.csv', index=False)
+        slope.to_csv(self.outdir + f'Comp_sens_{self.x_var}_cover_change_slope_{self.tag}.csv', index=False)
+        print('pixels per group and dVEG bin:\n', res.groupby(['group', 'dveg_bin']).size().unstack(fill_value=0)
+              .rename(columns=dict(enumerate(self.dveg_labels))).to_string())
+        print(tab.pivot_table(index=['side', 'group'], columns='bin', values='d_sens').round(2).to_string())
+        print('change of sensitivity per 1 pp of cover change:\n', slope.round(3).to_string())
+        return tab, slope
+
+    def slope_ci(self, d, xc, yc, n_boot=200):
+        ## area-weighted LS slope of yc on xc, 95% CI by 1 x 1 deg block bootstrap
+        x, y, w = d[xc].values, d[yc].values, d['area_weight'].values
+
+        def fit(i):
+            xm = np.sum(x[i] * w[i]) / np.sum(w[i])
+            ym = np.sum(y[i] * w[i]) / np.sum(w[i])
+            return np.sum(w[i] * (x[i] - xm) * (y[i] - ym)) / np.sum(w[i] * (x[i] - xm) ** 2)
+        block = (np.floor(d['lon'].values) * 1000 + np.floor(d['lat'].values)).astype(int)
+        ids = np.unique(block)
+        idx = {k: np.where(block == k)[0] for k in ids}
+        rng = np.random.default_rng(0)
+        boot = [fit(np.concatenate([idx[k] for k in rng.choice(ids, size=len(ids))])) for _ in range(n_boot)]
+        return fit(np.arange(len(x))), np.percentile(boot, 2.5), np.percentile(boot, 97.5)
+
+    def fig_cover_change(self, tab, slope):
+        sides = [('all years', 'a) all years: slope of LAI on x'), ('dry side', 'b) dry side: drop per unit x'),
+                 ('wet side', 'c) wet side: rise per unit x')]
+        x = np.arange(len(self.dveg_labels))
+        off = np.linspace(-0.24, 0.24, len(self.group_list))
+        sl = slope.set_index(['group', 'side'])
+        with plt.rc_context(self.big_font):
+            fig, axs = plt.subplots(1, 3, figsize=(25, 7.5))
+            for ax, (side, title) in zip(axs, sides):
+                for o, g in zip(off, self.group_list):
+                    t = tab[(tab['group'] == g) & (tab['side'] == side)]
+                    if len(t) == 0:
+                        continue
+                    v = t['d_sens'].values
+                    lab = g
+                    if (g, side) in sl.index:
+                        s_, lo, hi = sl.loc[(g, side), ['slope', 'ci_low', 'ci_high']]
+                        lab = f'{g}: {s_:+.2f} [{lo:+.2f}, {hi:+.2f}]'
+                    ax.errorbar(t['bin'].values + o, v, yerr=[v - t['ci_low'].values, t['ci_high'].values - v],
+                                fmt='o-', color=self.group_color[g], ms=8, lw=2, capsize=3, label=lab)
+                ax.axhline(0, color='k', lw=1)
+                ax.axvspan(2.5, 3.5, color='#EEEEEE', zorder=0)
+                ax.set_xticks(x)
+                ax.set_xticklabels([l.replace(' to ', '\nto ') for l in self.dveg_labels])
+                ax.set_xlabel('Total cover change, 2005-2024 minus 1986-2004 (pp)')
+                ax.set_title(title)
+                ax.spines[['top', 'right']].set_visible(False)
+                ax.legend(frameon=False, fontsize=12, loc='best', title='slope per pp [95% CI]', title_fontsize=12)
+            axs[0].set_ylabel('Change of sensitivity, P2 - P1\n(% LAI per unit x)')
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'Comp_sens_{self.x_var}_cover_change_{self.tag}.png', dpi=300,
+                        bbox_inches='tight')
+            plt.savefig(self.outdir + f'Comp_sens_{self.x_var}_cover_change_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def hinge(self, a, s):
+        ## per pixel LS of a = c + b_wet max(s, 0) + b_dry min(s, 0); returns b_wet, b_dry (NaN if too few years)
+        X = np.stack([np.ones_like(s), np.maximum(s, 0), np.minimum(s, 0)], axis=2)
+        XtX = np.einsum('pyi,pyj->pij', X, X)
+        Xty = np.einsum('pyi,py->pi', X, a)
+        ok = ((s > 0).sum(axis=1) >= self.n_side_min) & ((s < 0).sum(axis=1) >= self.n_side_min)
+        beta = np.full((len(a), 3), np.nan)
+        beta[ok] = np.linalg.solve(XtX[ok], Xty[ok][..., None])[..., 0]
+        return beta[:, 1], beta[:, 2]
+
+    def bin_curves(self, res):
+        rows = []
+        for c in self.class_list:
+            d = res[res['cls'] == c]
+            for k in range(len(self.bin_labels)):
+                dd = d[np.isfinite(d[f'P1_bin{k}']) & np.isfinite(d[f'P2_bin{k}'])]
+                if len(dd) < self.n_min:
+                    continue
+                for p in self.period_dic:
+                    v, w = dd[f'{p}_bin{k}'].values, dd['area_weight'].values
+                    lo, hi = self.block_ci(dd, v, w)
+                    rows.append([c, k, self.bin_labels[k].replace('\n', ' '), p, len(dd), np.sum(v * w) / np.sum(w),
+                                 lo, hi])
+        tab = pd.DataFrame(rows, columns=['class', 'bin', 'x_bin', 'period', 'n_pix', 'anomaly', 'ci_low', 'ci_high'])
+        tab.to_csv(self.outdir + f'Comp_sens_{self.x_var}_bins_{self.tag}.csv', index=False)
+        print(tab.pivot_table(index=['class', 'period'], columns='bin', values='anomaly').round(2).to_string())
+        return tab
+
+    def diff_ci(self, d, col, cls, n_boot=200):
+        ## area-weighted mean of col in class cls minus that of 'stable', 95% CI by joint 1 x 1 deg block bootstrap
+        d = d[np.isfinite(d[col]) & d['cls'].isin([cls, 'stable'])]
+        a, b = (d['cls'] == cls).values, (d['cls'] == 'stable').values
+        if a.sum() < self.n_min or b.sum() < self.n_min:
+            return np.nan, np.nan, np.nan, int(a.sum())
+        v, w = d[col].values, d['area_weight'].values
+
+        def stat(idx):
+            ia, ib = idx[a[idx]], idx[b[idx]]
+            return np.sum(v[ia] * w[ia]) / np.sum(w[ia]) - np.sum(v[ib] * w[ib]) / np.sum(w[ib])
+        block = (np.floor(d['lon'].values) * 1000 + np.floor(d['lat'].values)).astype(int)
+        ids = np.unique(block)
+        idx = {k: np.where(block == k)[0] for k in ids}
+        rng = np.random.default_rng(0)
+        boot = []
+        for _ in range(n_boot):
+            pick = np.concatenate([idx[k] for k in rng.choice(ids, size=len(ids))])
+            if a[pick].sum() and b[pick].sum():
+                boot.append(stat(pick))
+        return stat(np.arange(len(d))), np.percentile(boot, 2.5), np.percentile(boot, 97.5), int(a.sum())
+
+    def summary(self, res):
+        ## raw change (P2 - P1) per class and DiD (class - stable), all groups together and per group
+        rows = []
+        cols = ['d_wet_gain_hinge', 'd_dry_loss_hinge', 'd_wet_gain_bin', 'd_dry_loss_bin']
+        for g in ['All'] + self.group_list:
+            d = res if g == 'All' else res[res['group'] == g]
+            for col in cols:
+                for c in self.class_list:
+                    dd = d[(d['cls'] == c) & np.isfinite(d[col])]
+                    if len(dd) < self.n_min:
+                        continue
+                    v, w = dd[col].values, dd['area_weight'].values
+                    lo, hi = self.block_ci(dd, v, w)
+                    rows.append([g, col, c, 'raw', len(dd), np.sum(v * w) / np.sum(w), lo, hi])
+                    if c != 'stable':
+                        m, lo, hi, n = self.diff_ci(d, col, c)
+                        rows.append([g, col, c, 'DiD', n, m, lo, hi])
+        tab = pd.DataFrame(rows, columns=['group', 'metric', 'class', 'kind', 'n_pix', 'value', 'ci_low', 'ci_high'])
+        tab.to_csv(self.outdir + f'Comp_sens_{self.x_var}_did_{self.tag}.csv', index=False)
+        print(tab[tab['group'] == 'All'].pivot_table(index=['class', 'kind'], columns='metric',
+                                                      values='value').round(2).to_string())
+        return tab
+
+    def fig_bins(self, tab):
+        x = np.arange(len(self.bin_labels))
+        with plt.rc_context(self.big_font):
+            fig, axs = plt.subplots(1, 4, figsize=(24, 6.5), sharey=True)
+            for ax, c in zip(axs, self.class_list):
+                for p, color in [('P1', '#9E9E9E'), ('P2', self.class_color[c])]:
+                    t = tab[(tab['class'] == c) & (tab['period'] == p)].set_index('bin').reindex(x)
+                    ax.fill_between(x, t['ci_low'], t['ci_high'], color=color, alpha=0.25, lw=0)
+                    ax.plot(x, t['anomaly'], 'o-', color=color, lw=2.5, ms=8,
+                            label=f'{self.period_dic[p][0]}-{self.period_dic[p][1]}')
+                ax.axhline(0, color='k', lw=1)
+                ax.set_xticks(x)
+                ax.set_xticklabels(self.bin_labels)
+                n = tab[tab['class'] == c]['n_pix']
+                ax.set_title(f'{c}\n(n = {int(n.max()) if len(n) else 0})')
+                ax.set_xlabel(self.x_label)
+                ax.spines[['top', 'right']].set_visible(False)
+                ax.legend(frameon=False, loc='upper left')
+            axs[0].set_ylabel('LAI anomaly (% of period mean)')
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'Comp_sens_{self.x_var}_bins_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'Comp_sens_{self.x_var}_bins_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def fig_did(self, tab):
+        t = tab[(tab['group'] == 'All') & (tab['kind'] == 'DiD')]
+        st = tab[(tab['group'] == 'All') & (tab['class'] == 'stable')].set_index('metric')['value']
+        with plt.rc_context(self.big_font):
+            fig, axs = plt.subplots(1, 2, figsize=(17, 7.5))
+            for ax, kind, title, unit in [(axs[0], 'hinge', 'a) per unit x (hinge fit)', '% per unit x'),
+                                          (axs[1], 'bin', 'b) mean of years |x| > 0.5', '% of period mean')]:
+                for c in self.class_list[:-1]:
+                    gx = t[(t['class'] == c) & (t['metric'] == f'd_dry_loss_{kind}')]
+                    gy = t[(t['class'] == c) & (t['metric'] == f'd_wet_gain_{kind}')]
+                    if len(gx) == 0 or len(gy) == 0:
+                        continue
+                    vx, vy = gx['value'].values[0], gy['value'].values[0]
+                    ax.errorbar(vx, vy, xerr=[[vx - gx['ci_low'].values[0]], [gx['ci_high'].values[0] - vx]],
+                                yerr=[[vy - gy['ci_low'].values[0]], [gy['ci_high'].values[0] - vy]], fmt='o', ms=13,
+                                color=self.class_color[c], capsize=5, lw=2, label=f'{c} (n = {gx["n_pix"].values[0]})')
+                ax.axhline(0, color='k', lw=1)
+                ax.axvline(0, color='k', lw=1)
+                lim = np.nanmax(np.abs(ax.get_xlim() + ax.get_ylim()))
+                ax.set_xlim(-lim, lim)
+                ax.set_ylim(-lim, lim)
+                for tx, ty, s, ha, va in [(0.02, 0.98, 'more gain,\nless loss', 'left', 'top'),
+                                          (0.98, 0.98, 'amplified\n(boom-bust)', 'right', 'top'),
+                                          (0.02, 0.02, 'damped', 'left', 'bottom'),
+                                          (0.98, 0.02, 'less gain,\nmore loss', 'right', 'bottom')]:
+                    ax.text(tx, ty, s, transform=ax.transAxes, ha=ha, va=va, color='#757575', fontsize=15)
+                ax.set_xlabel(f'Change of dry-year loss, P2 - P1\nminus stable pixels ({unit})')
+                ax.set_ylabel(f'Change of wet-year gain, P2 - P1\nminus stable pixels ({unit})')
+                ax.set_title(f'{title}\nstable pixels: dry {st.get(f"d_dry_loss_{kind}", np.nan):+.2f}, '
+                             f'wet {st.get(f"d_wet_gain_{kind}", np.nan):+.2f}')
+                ax.spines[['top', 'right']].set_visible(False)
+            h, l = axs[0].get_legend_handles_labels()
+            plt.tight_layout()
+            fig.legend(h, l, loc='upper center', bbox_to_anchor=(0.5, 0.0), ncol=3, frameon=False)
+            plt.savefig(self.outdir + f'Comp_sens_{self.x_var}_did_{self.tag}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'Comp_sens_{self.x_var}_did_{self.tag}.pdf', bbox_inches='tight')
+            plt.close()
+
+
 def main():
     ## step 1: where grass greens beyond climate and composition
     # Grass_smooth_trend().run()   ## 1a: raw vs smoothed (0.25 deg) unexplained trend maps (done)
@@ -1596,7 +2007,16 @@ def main():
     ## step 6: inside the greening pixels (SNU 1986-2024): did bare ground decline, which RAP cover increased
     # Greening_cover_change().run()   ## 6a: grass / shrub x annual / perennial + savanna; greening vs LAI n.s.;
     ##                                   LAI vs cover regression; RAP time series check (done 2026-11-23)
-    Greening_cover_change().run_lai_per_cover()   ## 6b: LAI per unit vegetation cover, greening vs LAI n.s. (2026-11-23)
+    # Greening_cover_change().run_lai_per_cover()   ## 6b: LAI per unit vegetation cover, greening vs LAI n.s. (done)
+    # Greening_cover_change().run_decomposition()   ## 6c: cover gain vs per-unit-cover greening: map, plane, bars (done)
+    ## step 7: does LAI respond differently to equally wet / dry years after the composition changed (P1 vs P2)
+    # for x_var in ['SPEI', 'SM']:
+    #     Composition_sensitivity(x_var).run()   ## 7a: bins and DiD vs stable pixels (done)
+    ## step 8: same pixel, P2 - P1: did the sensitivity to dry / wet years change with the change of total cover?
+    # for x_var in ['SPEI', 'SM']:
+    #     Composition_sensitivity(x_var).run_cover_change()   ## 8a (done 2026-11-23)
+    ## step 9: decomposition with the all-pixel mean (selection-bias check)
+    Greening_cover_change().run_decomposition()   ## 9a: 6c figure + diamond = all pixels (2026-11-23)
 
 
 if __name__ == '__main__':
