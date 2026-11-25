@@ -1,4 +1,5 @@
 from __Global__ import *
+from window_config import *   ## 2026-11-23: GS_WINDOW, WIN, GS_TABLE, R2
 ## 2026-11-21: larger fonts in all figures (default sizes; explicit fontsize values were also enlarged x1.6)
 plt.rcParams.update({'font.size': 12, 'axes.titlesize': 13, 'axes.labelsize': 13, 'xtick.labelsize': 11,
                      'ytick.labelsize': 11, 'legend.fontsize': 11, 'legend.title_fontsize': 11})
@@ -15,6 +16,8 @@ class Time_series_base():
         self.map_height = 8.2 * centimeter_factor
         self.dff = result_root + rf'\Dataframe\SPEI\SPEI.df'
         self.result2 = this_root + rf'\Result2\\'
+        self.result2w = this_root + rf'\{R2}\\'   ## 2026-11-23: outputs of the long records with the active window
+        self.cbar_label_values = None   ## 2026-11-23: trend_sig_map labels only these colour-bar ticks (None = all)
         self.season_list = ['spring', 'summer']
         self.color_dic = {'spring': '#EA6E88', 'summer': '#48526F'}
         self.split_year = 2000
@@ -421,6 +424,8 @@ class Time_series_base():
         cb = plt.colorbar(im, ax=ax, orientation='horizontal', shrink=0.7, ticks=bounds, extend='both', pad=0.08,
                           aspect=35)
         cb.ax.tick_params(labelsize=9.5)
+        if self.cbar_label_values is not None:   ## 2026-11-23: fewer labels so the numbers do not overlap
+            cb.set_ticklabels([f'{b:g}' if np.any(np.isclose(b, self.cbar_label_values)) else '' for b in bounds])
         cb.set_label('Dots: p < 0.05', fontsize=9.5)
         ## small bar chart in the lower-left corner of the map (Pacific, no study pixels there), no axis labels:
         ##   bars left to right = sig negative, non-sig negative, non-sig positive, sig positive (explained in caption)
@@ -512,9 +517,9 @@ class Long_LAI_time_series(Time_series_base):
         self.name = name
         self.first_year = first_year
         self.end_year = last_year
-        self.dff = result_root + rf'\Dataframe\growing_season\GS_{name}.df'
+        self.dff = result_root + rf'\Dataframe\growing_season\GS_{name}{WIN}.df'   ## 2026-11-23: window_config
         self.modis_dff = result_root + rf'\Dataframe\growing_season\GS.df'
-        self.outdir = self.result2 + rf'02_vegetation\{name}_LAI_timeseries\\'
+        self.outdir = self.result2w + rf'02_vegetation\{name}_LAI_timeseries\\'
         T.mk_dir(self.outdir, force=True)
         self.split_year = 2000
         self.season_list = ['growing']
@@ -683,11 +688,12 @@ class Best_scale_SPEI_1982(Long_LAI_time_series):
     def __init__(self):
         super().__init__('SNU', 1982, 2024)
         self.name = 'SPEI_best'
-        self.outdir = self.result2 + rf'01_drought\SPEI_best_scale_1982_2024\\'
+        self.outdir = self.result2w + rf'01_drought\SPEI_best_scale_1982_2024\\'   ## 2026-11-23: window_config
         T.mk_dir(self.outdir, force=True)
-        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024.df'
-        self.best_dff = self.result2 + rf'03_response\best_scale_long\best_scale_long_SNU_1982_2024.df'
+        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024{WIN}.df'
+        self.best_dff = self.result2w + rf'03_response\best_scale_long\best_scale_long_SNU_1982_2024.df'
         self.spei_bounds = [-1.5, -1, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 1, 1.5]   ## 2026-11-23: +-1.5, finer near 0 (was +-0.8)
+        self.cbar_label_values = [-1.5, -1, -0.4, 0, 0.4, 1, 1.5]   ## 2026-11-23: labelled ticks only
         self.big_font = {'font.size': 16, 'axes.titlesize': 17, 'axes.labelsize': 17, 'xtick.labelsize': 15,
                          'ytick.labelsize': 15, 'legend.fontsize': 15}
 
@@ -783,6 +789,124 @@ class Best_scale_SPEI_1982(Long_LAI_time_series):
             plt.tight_layout()
             plt.savefig(self.outdir + 'Fig_SPEI_best_trend_bar.png', dpi=300, bbox_inches='tight')
             plt.savefig(self.outdir + 'Fig_SPEI_best_trend_bar.pdf', bbox_inches='tight')
+            plt.close()
+
+
+class Decoupling_quadrant(Best_scale_SPEI_1982):
+    ## per pixel: sign of the SNU GS LAI trend x sign of the best-scale GS SPEI trend, 1982-1999 and 2000-2024 (2026-11-24)
+    ##   drying, greening   SPEI trend < 0, LAI trend >= 0  (decoupled from drought)
+    ##   drying, browning   SPEI trend < 0, LAI trend < 0   (follows drought)
+    ##   wetting, greening  SPEI trend >= 0, LAI trend >= 0 (follows water)
+    ##   wetting, browning  SPEI trend >= 0, LAI trend < 0  (decoupled, other direction)
+    ## version 'all': every pixel by sign; 'sig': only pixels with both trends p < 0.05 keep their class, the rest grey
+    ## data: SNU GS LAI (GS_SNU{WIN}.df, % of mean) and best-scale GS SPEI (Best_scale_SPEI_1982.load), same pixels;
+    ##   growing-season window and output tree from window_config; groups RAP 1986-2024 (7 groups)
+    ## output: {R2}\03_response\decoupling_quadrant\
+    ##   Decoupling_quadrant_{all / sig}_map.png / .pdf : maps of the two periods (top), area % by group (bottom)
+    ##   Decoupling_quadrant.csv : area % of each class per period, group and version
+    def __init__(self, period_list=((1982, 1999), (2000, 2024))):
+        super().__init__()
+        self.outdir = self.result2w + rf'03_response\decoupling_quadrant\\'
+        T.mk_dir(self.outdir, force=True)
+        self.q_periods = list(period_list)
+        self.q_names = ['drying, greening', 'drying, browning', 'wetting, greening', 'wetting, browning']
+        self.q_colors = ['#4DAC26', '#A6611A', '#2C7FB8', '#D01C8B']
+        self.ns_name = 'not both p < 0.05'
+        self.ns_color = '#D9D9D9'
+
+    def run(self):
+        spei = self.load()
+        lai = Long_LAI_time_series.load(self)
+        res = {}
+        rows = []
+        for t0, t1 in self.q_periods:
+            years = np.arange(t0, t1 + 1)
+            info_l, tr_l, p_l = self.pixel_trend(lai[(lai['year'] >= t0) & (lai['year'] <= t1)], 'growing_LAI_rel',
+                                                 years)
+            info_s, tr_s, p_s = self.pixel_trend(spei[(spei['year'] >= t0) & (spei['year'] <= t1)],
+                                                 'growing_SPEI_best', years)
+            common = info_l.index.intersection(info_s.index)
+            il = pd.Series(np.arange(len(info_l)), index=info_l.index).loc[common].values
+            js = pd.Series(np.arange(len(info_s)), index=info_s.index).loc[common].values
+            info = info_l.loc[common]
+            tl, pl, ts, ps = tr_l[il], p_l[il], tr_s[js], p_s[js]
+            q = np.where(ts < 0, np.where(tl >= 0, 0, 1), np.where(tl >= 0, 2, 3))
+            sig = (pl < 0.05) & (ps < 0.05)
+            res[(t0, t1)] = (info, q, sig)
+            w = info['area_weight'].values
+            for g, mg in self.group_masks(info).items():
+                for ver in ['all', 'sig']:
+                    row = [f'{t0}-{t1}', g, ver, int(mg.sum())]
+                    for c in range(4):
+                        sel = mg & (q == c) & (sig if ver == 'sig' else True)
+                        row.append(np.sum(w[sel]) / np.sum(w[mg]) * 100)
+                    rows.append(row)
+            print(f'{t0}-{t1}: pixels {len(info)}, both trends p < 0.05: {int(sig.sum())}')
+        tab = pd.DataFrame(rows, columns=['period', 'group', 'version', 'n_pix'] + self.q_names)
+        tab[self.ns_name] = np.where(tab['version'] == 'sig', 100 - tab[self.q_names].sum(axis=1), 0.)
+        tab.to_csv(self.outdir + 'Decoupling_quadrant.csv', index=False)
+        print(tab.round(1).to_string())
+        for ver in ['all', 'sig']:
+            self.figure(res, tab, ver)
+
+    def figure(self, res, tab, ver):
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.patches as mpatches
+        import matplotlib.ticker as mticker
+        from matplotlib.colors import ListedColormap, BoundaryNorm
+        colors = self.q_colors + [self.ns_color]
+        names = self.q_names + ([self.ns_name] if ver == 'sig' else [])
+        ## 2026-11-24: larger fonts for the slides (figure shown at ~1000 px wide)
+        font = {'font.size': 26, 'axes.titlesize': 30, 'axes.labelsize': 28, 'xtick.labelsize': 24, 'ytick.labelsize': 26}
+        with plt.rc_context(font):
+            fig = plt.figure(figsize=(20, 16))
+            for j, (t0, t1) in enumerate(self.q_periods):
+                info, q, sig = res[(t0, t1)]
+                k = q.astype(float)
+                if ver == 'sig':
+                    k[~sig] = 4
+                arr = np.full((468, 449), np.nan)
+                arr[np.array([p[0] for p in info.index]), np.array([p[1] for p in info.index])] = k
+                ax = fig.add_axes([0.01 + j * 0.49, 0.43, 0.47, 0.52], projection=ccrs.PlateCarree())
+                ax.imshow(arr, cmap=ListedColormap(colors), norm=BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5, 4.5], 5),
+                          extent=[-124.529, -102.079, 25.579, 48.979], transform=ccrs.PlateCarree(),
+                          interpolation='nearest')
+                ax.add_feature(cfeature.STATES, linewidth=0.3)
+                ax.add_feature(cfeature.LAND, facecolor='none', edgecolor='black', linewidth=0.4)
+                ax.set_extent([-125, -102, 28, 49], crs=ccrs.PlateCarree())
+                gl = ax.gridlines(draw_labels=True, linewidth=0)
+                gl.top_labels = False
+                gl.right_labels = False
+                gl.xlocator = mticker.FixedLocator(range(-120, -100, 10))
+                gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
+                gl.xlabel_style = {'size': 24}
+                gl.ylabel_style = {'size': 24}
+                ax.set_title(f'{t0}-{t1}', fontsize=32, fontweight='bold')
+                ax2 = fig.add_axes([0.17 + j * 0.50, 0.11, 0.31, 0.27])
+                t = tab[(tab['period'] == f'{t0}-{t1}') & (tab['version'] == ver)].set_index('group')
+                y = np.arange(len(t))[::-1]
+                left = np.zeros(len(t))
+                for c, (col, name) in enumerate(zip(colors, names)):
+                    v = t[name].values
+                    ax2.barh(y, v, left=left, color=col, height=0.72, edgecolor='white', linewidth=0.5)
+                    for yy, l0, vv in zip(y, left, v):
+                        if vv >= 8:
+                            ax2.text(l0 + vv / 2, yy, f'{vv:.0f}', ha='center', va='center', fontsize=22,
+                                     color='black' if col == self.ns_color else 'white')
+                    left += v
+                ax2.set_yticks(y)
+                ax2.set_yticklabels(list(t.index))
+                ax2.set_xlim(0, 100)
+                ax2.set_xlabel('Area (%)')
+                ax2.spines[['top', 'right']].set_visible(False)
+            handles = [mpatches.Patch(color=c, label=n) for c, n in zip(colors, names)]
+            fig.legend(handles=handles, loc='lower center', ncol=3 if len(names) > 4 else 4, frameon=False,
+                       bbox_to_anchor=(0.5, -0.04), fontsize=26, handlelength=1.2, columnspacing=1.2)
+            sub = ' (both trends p < 0.05)' if ver == 'sig' else ' (sign of the trends)'
+            fig.suptitle(f'SNU GS LAI trend vs best-scale GS SPEI trend{sub}', fontsize=28, y=1.04)
+            plt.savefig(self.outdir + f'Decoupling_quadrant_{ver}_map.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'Decoupling_quadrant_{ver}_map.pdf', bbox_inches='tight')
             plt.close()
 
 
@@ -1092,7 +1216,7 @@ class SPEI_long_term_plot(Time_series_base):
     ## output: Result2\01_drought\SPEI_long_term\
     def __init__(self):
         super().__init__()
-        self.outdir = self.result2 + rf'01_drought\SPEI_long_term\\'
+        self.outdir = self.result2w + rf'01_drought\SPEI_long_term\\'   ## 2026-11-23: window_config
         T.mk_dir(self.outdir, force=True)
         self.start_year = 1958
         self.split_year = 2003   ## start of the recent period (MODIS)
@@ -1105,8 +1229,8 @@ class SPEI_long_term_plot(Time_series_base):
         self.season_list = ['growing']
         self.color_dic = {'growing': '#D9480F'}   ## orange-red
         self.trend_period_list = [(1958, 2024, ':'), (2003, 2024, '-')]
-        self.gs_dff = result_root + rf'\Dataframe\growing_season\growing_season.df'
-        self.dff_out = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024.df'  ## pixel x year growing-season SPEI
+        self.gs_dff = result_root + rf'\Dataframe\growing_season\{GS_TABLE}'   ## 2026-11-23: window_config
+        self.dff_out = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024{WIN}.df'  ## pixel x year growing-season SPEI
         pass
 
     def run(self):
@@ -1307,7 +1431,7 @@ class SPEI_1982_plot(SPEI_long_term_plot):
     ## output : Result2\01_drought\SPEI_1982_2024\
     def __init__(self):
         super().__init__()
-        self.outdir = self.result2 + rf'01_drought\SPEI_1982_2024\\'
+        self.outdir = self.result2w + rf'01_drought\SPEI_1982_2024\\'   ## 2026-11-23: window_config
         T.mk_dir(self.outdir, force=True)
         self.start_year = 1982
         self.split_year = 2000
@@ -1317,6 +1441,7 @@ class SPEI_1982_plot(SPEI_long_term_plot):
         self.trend_period_list = self.period_list
         self.herb_years = (1986, 2024)   ## 2026-11-21: annual / perennial from the whole RAP record, as the long LAI
         self.sig_bounds = [-1.5, -1, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 1, 1.5]   ## 2026-11-23: +-1.5 as the best-scale maps (was +-0.6)
+        self.cbar_label_values = [-1.5, -1, -0.4, 0, 0.4, 1, 1.5]   ## 2026-11-23: labelled ticks only
 
     def run(self):
         if not os.path.isfile(self.dff_out):
@@ -1360,12 +1485,12 @@ class LAI_same_period_compare(Time_series_base):
     ## output: Result2\02_vegetation\LAI_same_period_compare\ : LAI_same_period_2000_2020.csv / _bar.png / _r.csv
     def __init__(self, y0=2000, y1=2020):   ## 2026-11-22: period as parameters
         super().__init__()
-        self.outdir = self.result2 + rf'02_vegetation\LAI_same_period_compare\\'
+        self.outdir = self.result2w + rf'02_vegetation\LAI_same_period_compare\\'   ## 2026-11-23: window_config
         T.mk_dir(self.outdir, force=True)
         self.years = np.arange(y0, y1 + 1)
         self.tag = f'{self.years[0]}_{self.years[-1]}'
-        self.data_dic = {'GIMMS': result_root + rf'\Dataframe\growing_season\GS_GIMMS.df',
-                         'SNU': result_root + rf'\Dataframe\growing_season\GS_SNU.df'}
+        self.data_dic = {'GIMMS': result_root + rf'\Dataframe\growing_season\GS_GIMMS{WIN}.df',
+                         'SNU': result_root + rf'\Dataframe\growing_season\GS_SNU{WIN}.df'}
         self.color_dic = {'GIMMS': '#8FB8DE', 'SNU': '#2E7D32'}
         self.herb_years = (1986, 2024)   ## groups as the long LAI figures
 
@@ -1725,9 +1850,12 @@ def main():
     # SPEI_1982_plot().run()                               ## SPEI03, 06, 12, 24, 36: time series, maps, step (done)
     # LAI_same_period_compare(1982, 2020).ts_overlay()     ## robustness 1: SNU vs GIMMS time series 1982-2020 (done)
     # LAI_same_period_compare(2000, 2020).run()            ## robustness 2: spatial consistency 2000-2020, 4 x 4 map (done)
-    ## 2026-11-23: SPEI trend maps with the +-1.5 colour bar (Fig 1 and Fig 4 of the slides)
-    Best_scale_SPEI_1982().run()   ## best-scale SPEI (SNU), three periods
-    SPEI_1982_plot().run()         ## SPEI03-36 time series, trend maps, step change
+    ## 2026-11-23: SPEI trend maps with the +-1.5 colour bar (Fig 1 and Fig 4 of the slides); window from window_config;
+    ##   2026-11-23: colour-bar labels at -1.5, -1, -0.4, 0, 0.4, 1, 1.5 only (the numbers overlapped)
+    # Best_scale_SPEI_1982().run()   ## best-scale SPEI (SNU), three periods (done)
+    # SPEI_1982_plot().run()         ## SPEI03-36 time series, trend maps, step change (done)
+    ## 2026-11-24: drying / wetting x greening / browning per pixel, 1982-1999 and 2000-2024; + version with both p < 0.05
+    Decoupling_quadrant().run()
     # LAI_same_period_compare(1982, 2020).run()            ## (done 2026-11-22)
     # LAI_same_period_compare(1982, 1999).run()            ## (done 2026-11-22)
     # LAI_same_period_compare().bar_two_periods(('1982_2020', '2000_2020'))   ## (done in-session 2026-11-22)

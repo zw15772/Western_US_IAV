@@ -1786,15 +1786,16 @@ class Long_attribution(Attribution_model2):
     ## observed = A + B + C for every pixel; CI: 1 x 1 deg block bootstrap
     ## output : Result2\03_response\long_attribution_{y0}_{y1}\
     def __init__(self, first_year=1986, last_year=2024):
-        Growing_season_trend.__init__(self, this_root + rf'Result2\03_response\long_attribution_{first_year}_{last_year}\\')
+        ## 2026-11-23: paths from window_config (R2, WIN)
+        Growing_season_trend.__init__(self, this_root + rf'{R2}\03_response\long_attribution_{first_year}_{last_year}\\')
         self.year_list = list(range(first_year, last_year + 1))
         self.tag = f'{first_year}_{last_year}'
-        self.sm_dff = this_root + rf'Result2\01_drought\SM_sufficiency_1982_2024\GS_SM_v3_1982_2024.df'
-        self.snu_dff = result_root + rf'\Dataframe\growing_season\GS_SNU.df'
+        self.sm_dff = this_root + rf'{R2}\01_drought\SM_sufficiency_1982_2024\GS_SM_v3_1982_2024.df'
+        self.snu_dff = result_root + rf'\Dataframe\growing_season\GS_SNU{WIN}.df'
         self.rap_dff = result_root + rf'\Dataframe\RAP\RAP_cover.df'
         self.vpd_fdir = data_root + rf'TerraClimate\vpd\dic\\'
-        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024.df'
-        self.best_dff = this_root + rf'Result2\03_response\best_scale_long\best_scale_long_SNU_1982_2024.df'
+        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024{WIN}.df'
+        self.best_dff = this_root + rf'{R2}\03_response\best_scale_long\best_scale_long_SNU_1982_2024.df'
         self.data_dff = self.outdir + f'long_attribution_data_v2_{self.tag}.df'   ## v2: + SPEI_best
         self.group_list = ['Forest', 'Shrub annual', 'Shrub perennial', 'Grass annual', 'Grass perennial', 'Savanna']
         self.rap_list = ['RAP_AFG', 'RAP_PFG', 'RAP_SHR', 'RAP_TRE']

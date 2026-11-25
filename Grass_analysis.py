@@ -714,14 +714,14 @@ class PFG_change_vs_LAI_trend(Growing_season_trend):
     ## output: Result2\05_Grass_attribution\PFG_change_SNU\ :
     ##   PFG_change_vs_LAI_trend_{tag}.png (all grass), _strata.png (3 x 3), .csv (bins), _fit.csv (a, b, stable), .df
     def __init__(self):
-        super().__init__(this_root + rf'Result2\05_Grass_attribution\PFG_change_SNU\\')
+        super().__init__(this_root + rf'{R2}\05_Grass_attribution\PFG_change_SNU\\')   ## 2026-11-23: window_config
         self.year_list = list(range(1986, 2025))
         self.tag = f'{self.year_list[0]}_{self.year_list[-1]}'
         self.cmp_dff = this_root + \
             rf'Result2\03_response\model2_annual_perennial\model2_annual_perennial_compare_2003_2024.df'
-        self.snu_dff = result_root + rf'\Dataframe\growing_season\GS_SNU.df'
+        self.snu_dff = result_root + rf'\Dataframe\growing_season\GS_SNU{WIN}.df'
         self.rap_dff = result_root + rf'\Dataframe\RAP\RAP_cover.df'
-        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024.df'
+        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024{WIN}.df'
         self.bin_edges = [-100, -2, -1, -0.5, 0.5, 1, 2, 4, 100]   ## PFG trend, pp per decade
         self.stable = 0.5   ## |PFG trend| < 0.5 pp per decade = stable cover
         self.n_min = 30
@@ -1068,7 +1068,7 @@ class Greening_cover_change(PFG_change_vs_LAI_trend):
     ##   csv of each figure, and the pixel table Greening_cover_{tag}.df
     def __init__(self):
         super().__init__()
-        self.outdir = this_root + rf'Result2\05_Grass_attribution\Greening_cover_SNU\\'
+        self.outdir = this_root + rf'{R2}\05_Grass_attribution\Greening_cover_SNU\\'   ## 2026-11-23: window_config
         T.mk_dir(self.outdir, force=True)
         self.cover_list = ['AFG', 'PFG', 'SHR', 'TRE', 'LTR', 'BGR']
         self.cover_color = {'AFG': '#E6A23C', 'PFG': '#4C9A2A', 'SHR': '#8E5A2B', 'TRE': '#1F5F3A', 'LTR': '#B8A07E',
@@ -1155,8 +1155,14 @@ class Greening_cover_change(PFG_change_vs_LAI_trend):
             fig = plt.figure(figsize=(27, 9))
             ## a
             ax = fig.add_axes([0.0, 0.08, 0.27, 0.78], projection=ccrs.PlateCarree())
-            im = ax.pcolormesh(xe, ye, grid, cmap='BrBG', norm=TwoSlopeNorm(0.5, 0, 1), transform=ccrs.PlateCarree(),
-                               shading='flat')
+            ## 2026-11-23: five discrete classes instead of BrBG, so 'both' has its own colour (purple):
+            ##   < 0 cover gain, leaf per cover falls | 0-1/3 mostly cover gain | 1/3-2/3 both | 2/3-1 mostly per unit
+            ##   cover | > 1 per unit cover while cover falls
+            from matplotlib.colors import ListedColormap, BoundaryNorm
+            share_cls = ['#8C510A', '#D8B365', '#8E6BBF', '#5AB4AC', '#01665E']
+            share_bnd = [-0.5, 0, 1 / 3, 2 / 3, 1, 1.5]
+            im = ax.pcolormesh(xe, ye, np.clip(grid, -0.49, 1.49), cmap=ListedColormap(share_cls),
+                               norm=BoundaryNorm(share_bnd, 5), transform=ccrs.PlateCarree(), shading='flat')
             ax.add_feature(cfeature.STATES, linewidth=0.4)
             ax.add_feature(cfeature.COASTLINE, linewidth=0.6)
             ax.set_extent([-124.6, -102, 31, 46], crs=ccrs.PlateCarree())
@@ -1167,9 +1173,11 @@ class Greening_cover_change(PFG_change_vs_LAI_trend):
             gl.ylocator = mticker.FixedLocator(range(30, 50, 5))
             gl.xlabel_style = {'size': 14}
             gl.ylabel_style = {'size': 14}
-            cb = plt.colorbar(im, ax=ax, fraction=0.04, extend='both')
-            cb.set_ticks([0, 0.5, 1])
-            cb.set_ticklabels(['cover gain', 'both', 'per unit cover'])
+            cb = plt.colorbar(im, ax=ax, fraction=0.04)
+            cb.set_ticks([-0.25, 1 / 6, 0.5, 5 / 6, 1.25])
+            cb.set_ticklabels(['cover gain,\nleaf / cover falls', 'mostly\ncover gain', 'both', 'mostly\nper unit cover',
+                               'per unit cover,\ncover falls'])
+            cb.ax.tick_params(labelsize=13)
             ax.set_title(f'a) Sig. greening: share from per-unit-cover\ngreening ({res}° median)')
             ## b
             ax = fig.add_axes([0.35, 0.12, 0.30, 0.72])
@@ -1177,35 +1185,34 @@ class Greening_cover_change(PFG_change_vs_LAI_trend):
             xs_line = np.linspace(-3, 10, 20)
             for L in range(-2, 11, 2):
                 ax.plot(xs_line, L - xs_line, ls=':', color='grey', lw=1)
+            ## 2026-11-23: only the all-pixel mean of each group (diamond); greening / LAI n.s. stay in the csv and in c)
+            sub = tab[tab['status'] == 'all'].set_index('group')
             for g in self.group_list:
-                d = tab[tab['group'] == g].set_index('status')
-                if not {'greening', 'control'} <= set(d.index):
+                if g not in sub.index:
                     continue
-                G, C = d.loc['greening'], d.loc['control']
-                ax.annotate('', xy=(G['cover_gain'], G['per_unit']), xytext=(C['cover_gain'], C['per_unit']),
-                            arrowprops=dict(arrowstyle='->', color=col_g[g], lw=1.8))
-                if 'all' in d.index:
-                    A = d.loc['all']
-                    ax.errorbar(A['cover_gain'], A['per_unit'],
-                                xerr=[[A['cover_gain'] - A['cover_gain_ci_low']], [A['cover_gain_ci_high'] - A['cover_gain']]],
-                                yerr=[[A['per_unit'] - A['per_unit_ci_low']], [A['per_unit_ci_high'] - A['per_unit']]],
-                                fmt='D', ms=11, color=col_g[g], mfc=col_g[g], mec='k', mew=1.5, capsize=3, zorder=4)
-                for r, filled in [(C, False), (G, True)]:
-                    ax.errorbar(r['cover_gain'], r['per_unit'],
-                                xerr=[[r['cover_gain'] - r['cover_gain_ci_low']], [r['cover_gain_ci_high'] - r['cover_gain']]],
-                                yerr=[[r['per_unit'] - r['per_unit_ci_low']], [r['per_unit_ci_high'] - r['per_unit']]],
-                                fmt='o', ms=13, color=col_g[g], mfc=col_g[g] if filled else 'white', mew=2.5,
-                                capsize=3, label=g if filled else None, zorder=3)
+                A = sub.loc[g]
+                ax.errorbar(A['cover_gain'], A['per_unit'],
+                            xerr=[[A['cover_gain'] - A['cover_gain_ci_low']], [A['cover_gain_ci_high'] - A['cover_gain']]],
+                            yerr=[[A['per_unit'] - A['per_unit_ci_low']], [A['per_unit_ci_high'] - A['per_unit']]],
+                            fmt='D', ms=16, color=col_g[g], mfc=col_g[g], mec='k', mew=1.5, capsize=4, lw=2,
+                            label=f"{g}: LAI {A['LAI']:+.1f}", zorder=4)
+                ax.annotate(g, (A['cover_gain'], A['per_unit']), xytext=(12, 10), textcoords='offset points',
+                            fontsize=15, color=col_g[g], fontweight='bold')
             ax.axhline(0, color='k', lw=0.8)
             ax.axvline(0, color='k', lw=0.8)
-            vals = np.concatenate([tab['cover_gain'], tab['per_unit']])
-            lo, hi = np.nanmin(vals) - 1.5, np.nanmax(vals) + 1.5
-            ax.set_xlim(min(lo, -1.5), hi)
-            ax.set_ylim(min(lo, -1.5), max(hi, self.co2_range[1] + 0.5))
+            vals = np.concatenate([sub['cover_gain_ci_low'], sub['cover_gain_ci_high'], sub['per_unit_ci_low'],
+                                   sub['per_unit_ci_high']])
+            lo, hi = np.nanmin(vals) - 1.0, np.nanmax(vals) + 1.0
+            ax.set_xlim(min(lo, -1.5), max(hi, 6))
+            ax.set_ylim(min(lo, -1.5), self.co2_range[1] + 0.5)
+            for L in range(-2, 11, 2):   ## label the equal-LAI lines at the top edge
+                xt = L - (self.co2_range[1] + 0.2)
+                if ax.get_xlim()[0] < xt < ax.get_xlim()[1]:
+                    ax.text(xt, self.co2_range[1] + 0.2, f'LAI {L:+d}', fontsize=11, color='grey', ha='center')
             ax.set_xlabel('Cover gain (% of mean per decade)')
             ax.set_ylabel('LAI per unit cover trend\n(% per decade)')
-            ax.errorbar([], [], fmt='D', ms=11, color='grey', mec='k', label='all pixels of the group')
-            ax.set_title('b) open = LAI n.s., filled = sig. greening,\ndiamond = all pixels; dotted = equal LAI trend')
+            ax.set_title('b) all pixels of each group: LAI trend = cover gain + per unit cover\n'
+                         'dotted = equal LAI trend; band = CO$_2$ expectation')
             ax.legend(frameon=False, fontsize=14, loc='upper left', bbox_to_anchor=(1.0, 1.0))
             ax.spines[['top', 'right']].set_visible(False)
             ## c
@@ -1656,12 +1663,12 @@ class Composition_sensitivity(Growing_season_trend):
     ##   the dVEG ~ 0 bin = change shared by pixels whose cover did not change (sensor, drier P2)
     ##   output: Comp_sens_{x}_cover_change_{tag}.png / .pdf / .csv, _slope.csv
     def __init__(self, x_var='SPEI'):
-        Growing_season_trend.__init__(self, this_root + rf'Result2\05_Grass_attribution\Composition_sensitivity_SNU\\')
+        Growing_season_trend.__init__(self, this_root + rf'{R2}\05_Grass_attribution\Composition_sensitivity_SNU\\')
         self.year_list = list(range(1986, 2025))
         self.tag = f'{self.year_list[0]}_{self.year_list[-1]}'
         self.period_dic = {'P1': (1986, 2004), 'P2': (2005, 2024)}
         self.data_dff = this_root + \
-            rf'Result2\03_response\long_attribution_1986_2024\long_attribution_data_v2_1986_2024.df'
+            rf'{R2}\03_response\long_attribution_1986_2024\long_attribution_data_v2_1986_2024.df'
         self.x_var = x_var
         self.x_col = {'SPEI': 'SPEI_best', 'SM': 'GS_P'}[x_var]
         self.x_label = {'SPEI': 'best-scale GS SPEI', 'SM': 'GS root-zone SM (z of percentile)'}[x_var]

@@ -1,5 +1,6 @@
 # coding='utf-8'
 from __Global__ import *
+from window_config import *   ## 2026-11-23: GS_WINDOW, WIN, GS_TABLE, R2
 ## 2026-11-21: larger fonts in all figures (default sizes; explicit fontsize values were also enlarged x1.6)
 plt.rcParams.update({'font.size': 12, 'axes.titlesize': 13, 'axes.labelsize': 13, 'xtick.labelsize': 11,
                      'ytick.labelsize': 11, 'legend.fontsize': 11, 'legend.title_fontsize': 11})
@@ -341,9 +342,11 @@ class Growing_season_definition(Growing_season_extraction):
     ##   phenology_sensitivity.csv   area with two seasons if the second peak needs 20 / 30 / 50% of the amplitude,
     ##                               and the area where a second peak lasts only one month (not counted)
     ## output: Result2\02_vegetation\phenology\
+    ## 2026-11-23: table and output folder from window_config: GS_TABLE (growing_season_SNU.df: clim_01 ... clim_12 are
+    ##   the SNU 1982-2024 monthly means, so the seasons are the SNU ones) and {R2}\02_vegetation\phenology\
     def __init__(self):
         super().__init__()
-        self.outdir = this_root + rf'Result2\02_vegetation\phenology\\'
+        self.outdir = this_root + rf'{R2}\02_vegetation\phenology\\'
         T.mk_dir(self.outdir, force=True)
         self.mapper = Map_plotter(self.outdir)
         self.class_list = ['All', 'Forest', 'Shrub', 'Grass', 'Savanna']
@@ -351,7 +354,7 @@ class Growing_season_definition(Growing_season_extraction):
         pass
 
     def run(self):
-        gs = T.load_df(self.df_dir + 'growing_season.df')
+        gs = T.load_df(self.df_dir + GS_TABLE)   ## 2026-11-23: window_config
         gs = gs[(gs['n_season'] > 0) & (gs['GS_mean_LAI'] >= self.LAI_threshold)]
         gs = gs.copy()
         if 'clim_01' not in gs.columns:   ## growing_season.df made before clim_ was added: monthly means from the dict
@@ -666,6 +669,8 @@ class GS_LAI_long_term(Growing_season_extraction):
     ##           MODIS_GS_mean_LAI (GS_mean_LAI of growing_season.df)
     ## input  : monthly dict per pixel, Jan of first_year ... Dec of last_year
     ## output : Result\Dataframe\growing_season\GS_{name}.df (pixel-year)
+    ## 2026-11-23: window and output file from window_config.py: GS_TABLE (growing_season_SNU.df or growing_season.df),
+    ##   output GS_{name}{WIN}.df
     def __init__(self, name, fdir, first_year, last_year):
         super().__init__()
         self.name = name
@@ -673,8 +678,8 @@ class GS_LAI_long_term(Growing_season_extraction):
         self.first_year = first_year
         self.last_year = last_year
         self.year_list = list(range(first_year, last_year + 1))
-        self.gs_dff = self.df_dir + 'growing_season.df'
-        self.dff_out = self.df_dir + f'GS_{name}.df'
+        self.gs_dff = self.df_dir + GS_TABLE
+        self.dff_out = self.df_dir + f'GS_{name}{WIN}.df'
 
     def run(self):
         gs = T.load_df(self.gs_dff)
@@ -739,6 +744,37 @@ class GS_LAI_long_term(Growing_season_extraction):
         return np.where(complete, out, np.nan)
 
 
+class Growing_season_SNU(GS_LAI_long_term):
+    ## 2026-11-23: growing_season_SNU.df = growing_season.df with the season columns (n_season, s1_* / s2_*, gs_start,
+    ##   gs_end, gs_peak, gs_length, clim_01 ... clim_12) redefined from the SNU monthly LAI: 1982-2024 mean of each
+    ##   calendar month, the same rule as MODIS (define); MODIS_gs_start / _end / _peak keep the MODIS window
+    ## other columns (lon, lat, area_weight, landcover_type, cropland, GS_mean_LAI of MODIS, monsoon_share) unchanged,
+    ##   so the pixel selection stays the same; pixels whose SNU main season crosses the new year or has no season are
+    ##   kept in the table and left out by the usual filter (n_season > 0, gs_start <= gs_end)
+    def __init__(self):
+        super().__init__('SNU', data_root + rf'SNU_LAI\dic\\', 1982, 2024)
+
+    def run(self):
+        gs = T.load_df(self.df_dir + 'growing_season.df')
+        mon = self.load_monthly(list(gs.index))
+        clim = np.nanmean(mon.reshape(len(gs), -1, 12), axis=1)   ## pixel x 12, 1982-2024
+        snu = pd.DataFrame([self.define(c) for c in clim], index=gs.index)
+        snu['gs_length'] = (snu['gs_end'] - snu['gs_start']) % 12 + 1
+        out = gs.copy()
+        for c in ['gs_start', 'gs_end', 'gs_peak']:
+            out[f'MODIS_{c}'] = gs[c].values
+        for c in snu.columns:
+            out[c] = snu[c].values
+        for k in range(12):
+            out[f'clim_{k + 1:02d}'] = clim[:, k]
+        use_m = (gs['n_season'] > 0) & (gs['gs_start'] <= gs['gs_end'])
+        use_s = (out['n_season'] > 0) & (out['gs_start'] <= out['gs_end'])
+        same = use_m & use_s & (out['gs_start'] == gs['gs_start']) & (out['gs_end'] == gs['gs_end'])
+        print('pixels:', len(out), '| MODIS window used:', int(use_m.sum()), '| SNU window used:', int(use_s.sum()),
+              '| both:', int((use_m & use_s).sum()), '| same window:', int(same.sum()))
+        T.save_df(out, self.df_dir + 'growing_season_SNU.df')
+
+
 class GS_LAI_GIMMS(GS_LAI_long_term):
     ## GIMMS LAI4g, monthly (MVC of the half-month values), 1982-2020 -> GS_GIMMS.df (2026-11-21)
     def __init__(self):
@@ -759,8 +795,13 @@ def main():
     # GS_SPEI_trend().run()               ## GS SPEI trend maps and table (01_drought)
     # GS_climate_trend().run()            ## GS P, VPD, Tmax trend maps and table (01_drought)
     ## 2026-11-21: long LAI records, MODIS growing-season window
-    GS_LAI_GIMMS().run()                ## GS_GIMMS.df, 1982-2020
-    GS_LAI_SNU().run()                  ## GS_SNU.df, 1982-2024
+    # GS_LAI_GIMMS().run()                ## GS_GIMMS.df, 1982-2020 (done)
+    # GS_LAI_SNU().run()                  ## GS_SNU.df, 1982-2024 (done)
+    ## 2026-11-23: SNU growing season; the whole long chain is rerun by run_window_chain.py
+    # Growing_season_SNU().run()          ## growing_season_SNU.df (done)
+    # GS_LAI_SNU().run()                  ## GS_SNU{WIN}.df (done)
+    # GS_LAI_GIMMS().run()                ## GS_GIMMS{WIN}.df (done)
+    Growing_season_definition().run()   ## 2026-11-23: maps of start / end / peak / length with the active window
 
 
 if __name__ == '__main__':

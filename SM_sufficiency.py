@@ -44,12 +44,12 @@ class SM_sufficiency(GS_LAI_long_term):
         self.dic_years = (1982, 2024)
         super().__init__('SM', None, first_year, last_year)
         self.tag = f'{first_year}_{last_year}'
-        self.outdir = this_root + rf'Result2\01_drought\SM_sufficiency_{self.tag}\\'
+        self.outdir = this_root + rf'{R2}\01_drought\SM_sufficiency_{self.tag}\\'   ## 2026-11-23: window_config
         T.mk_dir(self.outdir, force=True)
         self.layer_dic = {'L1': 7., 'L2': 21., 'L3': 72., 'L4': 189.}   ## thickness, cm
         self.cmp_dff = this_root + \
             rf'Result2\03_response\model2_annual_perennial\model2_annual_perennial_compare_2003_2024.df'
-        self.snu_dff = self.df_dir + 'GS_SNU.df'
+        self.snu_dff = self.df_dir + f'GS_SNU{WIN}.df'   ## window: self.gs_dff = GS_TABLE (GS_LAI_long_term)
         self.rap_dff = result_root + rf'\Dataframe\RAP\RAP_cover.df'
         ## v3 (2026-11-23): x = percentile of the year's GS / pre-season root-zone SM within the pixel's own record;
         ##   the v1 / v2 files (rescaled W) are not read

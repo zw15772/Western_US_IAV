@@ -98,8 +98,8 @@ class SNU_window_compare(SNU_season_base):
     ##   per group area-weighted mean and 95% CI, and the paired difference SNU window - MODIS window
     ## output: Fig_GS_window_compare.png / .pdf (a: start difference, b: end difference, c: GS LAI trend both windows),
     ##   GS_window_compare_shift.csv, GS_window_compare_trend.csv, maps GS_start_SNU_minus_MODIS, GS_end_SNU_minus_MODIS,
-    ##   pixel-year table Result\Dataframe\growing_season\GS_SNU_snuwin.df (GS LAI with the SNU window, same columns as
-    ##   GS_SNU.df) for a rerun of the downstream steps if needed
+    ##   pixel-year table Result\Dataframe\growing_season\GS_SNU_snuwin_check.df (GS LAI with the SNU window, for
+    ##   checking; the file used downstream, GS_SNU_snuwin.df, is made by GS_LAI_SNU with window_config)
     def run(self):
         gs, mon = self.load_base()
         snu = self.define_snu(gs, mon)
@@ -187,7 +187,7 @@ class SNU_window_compare(SNU_season_base):
         info['GS_mean_LAI'] = np.nanmean(lai, axis=1)
         df = df.merge(info, left_on='pix', right_index=True, how='left')
         df = df[df['pix'].isin(set(gs.index[snu['use'].values]))]
-        T.save_df(df, result_root + rf'\Dataframe\growing_season\GS_SNU_snuwin.df')
+        T.save_df(df, result_root + rf'\Dataframe\growing_season\GS_SNU_snuwin_check.df')   ## 2026-11-23: renamed; GS_SNU_snuwin.df is made by GS_LAI_SNU
 
     def figure(self, shift, trend):
         cls = ['<=-2', '-1', '0', '+1', '>=+2']
@@ -255,8 +255,15 @@ class SNU_phenology(SNU_season_base):
     ## output: Fig_phenology.png / .pdf (a: SOS, EOS, LOS trends; b: GS LAI trend edge + core; c: SOS / EOS anomaly
     ##   time series, All), phenology_trend.csv, phenology_edge_core.csv, maps SOS_trend, EOS_trend, pixel-year table
     ##   phenology_SNU_{tag}.df
+    ## 2026-11-23: season window = window_config GS_TABLE (search range of SOS / EOS, edge vs core), outputs in R2
     def __init__(self):
         super().__init__()
+        self.outdir = this_root + rf'{R2}\02_vegetation\phenology_SNU\\'
+        T.mk_dir(self.outdir, force=True)
+        self.mapper = Map_plotter(self.outdir)
+        self.gs_dff = result_root + rf'\Dataframe\growing_season\{GS_TABLE}'
+        self.group_dff = this_root + \
+            rf'{R2}\03_response\long_attribution_1986_2024\long_attribution_data_v2_1986_2024.df'
         self.amp_min = 0.05
         self.search = 3
         self.day = 30.44
@@ -273,6 +280,31 @@ class SNU_phenology(SNU_season_base):
                       'RdBu')
         self.map_cont(gs, tr_eos, 'EOS_trend_1982_2024', 'EOS trend 1982-2024 (days / decade, + = later)', 15,
                       'RdBu_r')
+        self.run_maps()
+
+    def run_maps(self):
+        ## 2026-11-23: trend maps 1982-2024 of the season length (LOS, days / decade) and of the peak LAI (% of the pixel's
+        ##   mean per decade) from the saved pixel-year table phenology_SNU_{tag}.df (made by run); same pixels as run
+        gs = T.load_df(self.gs_dff)
+        gs = gs[(gs['n_season'] > 0) & (gs['gs_start'] <= gs['gs_end'])].copy()
+        grp = T.load_df(self.group_dff).groupby('pix')['group'].first()
+        gs['group'] = grp.reindex(gs.index).values
+        gs = gs[gs['group'].notna()]
+        df = T.load_df(self.outdir + f'phenology_SNU_{self.tag}.df')
+
+        def piv(col):
+            return df.pivot(index='pix', columns='year', values=col).reindex(index=gs.index,
+                                                                             columns=self.year_list).values
+        los, peak = piv('LOS'), piv('peak_LAI')
+        with np.errstate(invalid='ignore', divide='ignore'):
+            peak_rel = (peak / np.nanmean(peak, axis=1, keepdims=True) - 1) * 100
+        tr_los, tr_peak = self.trend_nan(los)[0], self.trend_nan(peak_rel)[0]
+        print('pixels with a LOS trend:', int(np.isfinite(tr_los).sum()), '| with a peak LAI trend:',
+              int(np.isfinite(tr_peak).sum()), 'of', len(gs))
+        self.map_cont(gs, tr_los, 'LOS_trend_1982_2024', 'Season length trend 1982-2024 (days / decade)', 15,
+                      'RdBu_r')
+        self.map_cont(gs, tr_peak, 'peak_LAI_trend_1982_2024', 'Peak LAI trend 1982-2024 (% of mean / decade)', 10,
+                      'BrBG')
 
     def timing(self, gs, mon):
         npx, ny = len(gs), len(self.year_list)
@@ -433,8 +465,9 @@ class SNU_phenology(SNU_season_base):
 
 
 def main():
-    SNU_window_compare().run()   ## 1: SNU vs MODIS growing-season window, GS LAI trend with both (2026-11-23)
-    SNU_phenology().run()        ## 2: SOS / EOS / LOS trends, edge vs core of the GS LAI trend (2026-11-23)
+    # SNU_window_compare().run()   ## 1: SNU vs MODIS growing-season window, GS LAI trend with both (done)
+    # SNU_phenology().run()        ## 2: SOS / EOS / LOS trends, edge vs core of the GS LAI trend (done)
+    SNU_phenology().run_maps()     ## 3: LOS and peak LAI trend maps from the saved table (2026-11-23)
 
 
 if __name__ == '__main__':

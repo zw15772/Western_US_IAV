@@ -404,11 +404,11 @@ class Best_scale_long(GS_LAI_SPEI_bivariate):
         self.name = name
         self.year_list = list(range(first_year, last_year + 1))
         self.tag = f'{name}_{first_year}_{last_year}'
-        self.outdir = this_root + rf'Result2\03_response\best_scale_long\\'
+        self.outdir = this_root + rf'{R2}\03_response\best_scale_long\\'   ## 2026-11-23: window_config
         T.mk_dir(self.outdir, force=True)
         self.mapper = Map_plotter(self.outdir)
-        self.lai_dff = result_root + rf'\Dataframe\growing_season\GS_{name}.df'
-        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024.df'
+        self.lai_dff = result_root + rf'\Dataframe\growing_season\GS_{name}{WIN}.df'
+        self.spei_dff = result_root + rf'\Dataframe\SPEI_long_term\SPEI_GS_1958_2024{WIN}.df'
         self.rap_dff = result_root + rf'\Dataframe\RAP\RAP_cover.df'
         self.herb_years = (1986, 2024)
         self._herb_dic = None
