@@ -310,8 +310,14 @@ class VOD_analysis(GLEAM_Et):
         tr = self.trends(look, gs)
         summ = self.group_summary(look, gs, tr)
         self.fig_ts(look, gs)
+        self.fig_ts_all(look, gs, 'VOD', 'VODCA GS VOD (% of mean)', '#1B7837',
+                        [(1988, 2021, ':'), (1988, 1999, '--'), (2000, 2021, '-')], 'Fig_VOD_ts_all')   ## 2026-11-25
+        ## 2026-11-25: the LAI figures' layout (Fig 2 right, Fig 4) for VOD
+        self.group_trend_bar(look, tr, 'VOD', 'Fig_VOD_trend_bar')
+        self.lai_style_maps(look, tr, geo, nrow, ncol, 'VOD', 'VODCA growing-season VOD trend',
+                            [-8, -6, -4, -2, 0, 2, 4, 6, 8])
         self.fig_trend_map(look, tr, geo, nrow, ncol)
-        self.fig_period_change(look, tr, summ, geo, nrow, ncol)
+        # self.fig_period_change(look, tr, summ, geo, nrow, ncol)   ## 2026-11-25: not needed (Wen)
         self.fig_sampling(look, geo)
 
     def month_list(self):
@@ -391,7 +397,8 @@ class VOD_analysis(GLEAM_Et):
             tr[f'trend_{p}'] = s * 10 / mean_all * 100
             tr[f'p_{p}'] = pv
         m1, m2 = self.period_mean(gs, self.p1), self.period_mean(gs, self.p2)
-        tr['change_pct'] = (m2 - m1) / m1 * 100
+        ## 2026-11-25: step change as for LAI (Fig 2): (m2 - m1) / whole-record mean * 100
+        tr['step_pct'] = (m2 - m1) / mean_all * 100
         tr.to_csv(self.outdir + 'VOD_trend.csv', index=False)
         return tr
 
@@ -413,14 +420,14 @@ class VOD_analysis(GLEAM_Et):
                 row += [np.sum(v[ok] * w[m][ok]) / w[m][ok].sum(),
                         np.sum(w[m][ok] * ((pv[ok] < 0.05) & (v[ok] > 0))) / w[m][ok].sum() * 100,
                         np.sum(w[m][ok] * ((pv[ok] < 0.05) & (v[ok] < 0))) / w[m][ok].sum() * 100]
-            ch = tr['change_pct'].values[m]
+            ch = tr['step_pct'].values[m]
             ok = np.isfinite(ch)
             row.append(np.sum(ch[ok] * w[m][ok]) / w[m][ok].sum())
             rows.append(row)
         cols = ['group', 'n_cells', f'VOD_GS_{p1n}', f'VOD_GS_{p2n}']
         for p in self.period_dic:
             cols += [f'trend_{p}', f'sig_up_%_{p}', f'sig_down_%_{p}']
-        cols.append('change_pct')
+        cols.append('step_pct')
         tab = pd.DataFrame(rows, columns=cols)
         tab.to_csv(self.outdir + 'VOD_group_summary.csv', index=False)
         print(tab.round(3).to_string())
@@ -478,15 +485,15 @@ class VOD_analysis(GLEAM_Et):
         with plt.rc_context(self.font):
             fig = plt.figure(figsize=(26, 11))
             ax = fig.add_axes([0.0, 0.12, 0.5, 0.8], projection=ccrs.PlateCarree())
-            im = self.grid_map(ax, look, tr['change_pct'].values, geo, nrow, ncol, 'BrBG', bounds)
-            ax.set_title(f'VOD, {lab}', fontweight='bold')
+            im = self.grid_map(ax, look, tr['step_pct'].values, geo, nrow, ncol, 'BrBG', bounds)
+            ax.set_title(f'VOD step: mean {self.p2[0]}-{self.p2[1]} - mean {self.p1[0]}-{self.p1[1]}', fontweight='bold')
             cax = fig.add_axes([0.05, 0.06, 0.4, 0.03])
             cb = plt.colorbar(im, cax=cax, orientation='horizontal', ticks=bounds)
-            cb.set_label('change (%)')
+            cb.set_label('step (% of the 1988-2021 mean)')
             bx = fig.add_axes([0.62, 0.16, 0.36, 0.72])
             t = summ.set_index('group').reindex([g for g in self.group_list if g in summ['group'].values])
             y = np.arange(len(t))[::-1]
-            v_all = t['change_pct'].values
+            v_all = t['step_pct'].values
             bx.barh(y, v_all, color=[self.color_dic[g] for g in t.index], height=0.7)
             for yi, v in zip(y, v_all):
                 bx.text(v, yi, f' {v:+.1f}% ', va='center', ha='left' if v >= 0 else 'right', fontsize=22)
@@ -495,7 +502,7 @@ class VOD_analysis(GLEAM_Et):
             bx.axvline(0, color='k', lw=1)
             bx.set_yticks(y)
             bx.set_yticklabels(t.index)
-            bx.set_xlabel(f'VOD change, {lab} (%)')
+            bx.set_xlabel(f'VOD step, {lab} (% of mean)')
             bx.spines[['top', 'right']].set_visible(False)
             plt.savefig(self.outdir + 'Fig_VOD_period_change.png', dpi=300, bbox_inches='tight')
             plt.savefig(self.outdir + 'Fig_VOD_period_change.pdf', bbox_inches='tight')
