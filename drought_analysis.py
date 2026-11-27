@@ -10,7 +10,7 @@
 ## values: the GS SPEI as it is, no re-standardisation (2026-11-24, Wen); classes on the standard SPEI thresholds.
 ##         drought_sd_ref.csv only reports the SD of the GS SPEI in 1958-1999 (< 1 because it averages several months),
 ##         so the reader knows the thresholds are conservative.
-## scales: SPEI03, SPEI06, SPEI12, SPEI24, SPEI36
+## scales: SPEI03, SPEI06, SPEI12, SPEI24, SPEI36, SPEI48 (SPEI48 added 2026-11-26)
 ## analyses:
 ##   1 area per year: % of area with SPEI < -0.5 (D0 abnormally dry), < -1 (D1 moderate), < -1.5 (D2 severe), < -2 (D3
 ##     extreme), and the wet mirror > 0.5 (W0), > 1 (W1), > 1.5 (W2), > 2 (W3), 1958-2024; period means 1958-1981,
@@ -37,7 +37,7 @@ class Drought_analysis(Time_series_base):
         self.year_list = np.arange(1958, 2025)
         self.ref = (1958, 1999)
         self.period_dic = {'1958-1981': (1958, 1981), '1982-1999': (1982, 1999), '2000-2024': (2000, 2024)}
-        self.scale_list = ['SPEI03', 'SPEI06', 'SPEI12', 'SPEI24', 'SPEI36']   ## 2026-11-24
+        self.scale_list = ['SPEI03', 'SPEI06', 'SPEI12', 'SPEI24', 'SPEI36', 'SPEI48']   ## 2026-11-24; 2026-11-26: + SPEI48 (Figure 2 area panels)
         self.class_list = [('D0 abnormally dry, SPEI < -0.5', -0.5, '#FFE08A'), ('D1 moderate, SPEI < -1', -1., '#F4A259'),
                            ('D2 severe, SPEI < -1.5', -1.5, '#D9480F'), ('D3 extreme, SPEI < -2', -2., '#7F1D1D')]
         self.wet_list = [('W0 abnormally wet, SPEI > 0.5', 0.5, '#C6DBEF'), ('W1 moderate, SPEI > 1', 1., '#6BAED6'),
@@ -119,10 +119,12 @@ class Drought_analysis(Time_series_base):
                         row.append(np.sum(ww * (v[m, k] < thr)) / np.sum(ww) * 100)
                     for name, thr, _ in self.wet_list:
                         row.append(np.sum(ww * (v[m, k] > thr)) / np.sum(ww) * 100)
-                    row.append(np.sum(ww * v[m, k]) / np.sum(ww))
+                    mu = np.sum(ww * v[m, k]) / np.sum(ww)
+                    row.append(mu)
+                    row.append(np.sqrt(np.sum(ww * (v[m, k] - mu) ** 2) / np.sum(ww)))   ## 2026-11-26: spatial SD
                     rows.append(row)
         tab = pd.DataFrame(rows, columns=['scale', 'group', 'year'] + [c[0] for c in self.class_list] +
-                           [c[0] for c in self.wet_list] + ['mean_SPEI'])
+                           [c[0] for c in self.wet_list] + ['mean_SPEI', 'sd_SPEI'])
         tab.to_csv(self.outdir + 'drought_area_by_year.csv', index=False)
         return tab
 
