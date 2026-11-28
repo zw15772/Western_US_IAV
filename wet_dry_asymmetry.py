@@ -17,6 +17,11 @@
 ##     (1982-1991 ... 2015-2024; 2026-11-27: from 1982, pixels complete 1982-2024), raw and detrended within the
 ##     window; area-weighted mean per group; trend over all windows and over the windows after 2000 (start >= 2000)
 ##     (overlapping windows: the p value is optimistic, read as descriptive)
+## 4 (2026-11-27) wet gain vs dry loss with thresholds wet SPEI > 0.5, normal -0.5 to 0.5, dry SPEI < -0.5:
+##     per pixel: gain = mean LAI of wet years - mean of normal years, loss = mean of dry years - mean of normal
+##     years (pixels with >= 2 years in each class); per group area-weighted mean and 95% CI, gain / |loss|,
+##     paired t-test of gain vs |loss|; raw (classes from the raw SPEI) and detrended (both detrended, classes
+##     from the detrended SPEI); a) 2000-2024, b) every 10-year window from 1982 (detrended within the window)
 ## groups : 7 groups (All, Forest, Shrub annual / perennial, Grass annual / perennial, Savanna), RAP 1986-2024
 ## output : {R2}\03_response\wet_dry_asymmetry\
 ##   asymmetry_{scale}.csv, composite_{scale}.csv, LAI_trend_decomposition_{scale}.csv, sensitivity_window_{scale}.csv
@@ -35,6 +40,8 @@ class Wet_dry_asymmetry(Long_LAI_time_series):
         self.window_years = np.arange(1982, 2025)   ## 2026-11-27: moving-window sensitivity from 1982
         self.min_side = 5        ## years needed on each side of SPEI = 0
         self.window = 10         ## years per moving window
+        self.wet_thr, self.dry_thr = 0.5, -0.5   ## 2026-11-27: wet / dry classes for the gain / loss comparison
+        self.min_class = 2       ## years needed in each class (wet, normal, dry) per pixel
         self.groups = ['All', 'Forest', 'Shrub annual', 'Shrub perennial', 'Grass annual', 'Grass perennial', 'Savanna']
         self.font = {'font.size': 16, 'axes.labelsize': 17, 'xtick.labelsize': 15, 'ytick.labelsize': 15,
                      'legend.fontsize': 14}
@@ -54,6 +61,15 @@ class Wet_dry_asymmetry(Long_LAI_time_series):
             print(sc, 'asymmetry:')
             print(tab.round(3).to_string())
             self.composite(info, lai, spei[sc], sc)
+            gl = pd.concat([self.gain_loss_table(info, *((lai, spei[sc]) if ver == 'raw' else
+                                                          (self.detrend(lai), self.detrend(spei[sc]))), ver)
+                            for ver in ['raw', 'detrended']])   ## 2026-11-27
+            gl.to_csv(self.outdir + f'gain_loss_{sc}.csv', index=False)
+            print(sc, 'wet gain vs dry loss 2000-2024:')
+            print(gl.round(3).to_string())
+            glw = self.gain_loss_window(info_w, lai_w, spei_w[sc], sc)
+            self.fig_gain_loss(gl, sc)
+            self.fig_gain_loss_window(glw, sc)
             dec = self.decomposition(info, lai, spei[sc], fit['raw'], sc)
             sen = self.sensitivity_window(info_w, lai_w, spei_w[sc], sc)
             self.fig_asymmetry(tab, sc)
@@ -131,6 +147,126 @@ class Wet_dry_asymmetry(Long_LAI_time_series):
         tab = pd.DataFrame(rows, columns=['group', 'class', 'n_pixel_years', 'share_%', 'mean_LAI_rel'])
         tab.to_csv(self.outdir + f'composite_{sc}.csv', index=False)
         return tab
+
+    def gain_loss_pixel(self, y, x):
+        ## per pixel mean LAI in wet / normal / dry years -> gain and loss relative to the normal years
+        wet, dry = x > self.wet_thr, x < self.dry_thr
+        nor = ~wet & ~dry
+        out = {}
+        for k, sel in [('wet', wet), ('normal', nor), ('dry', dry)]:
+            n = sel.sum(axis=1)
+            out[k] = np.where(n >= self.min_class, np.where(sel, y, 0).sum(axis=1) / np.maximum(n, 1), np.nan)
+            out['n_' + k] = n
+        return out['wet'] - out['normal'], out['dry'] - out['normal'], out
+
+    def gain_loss_group(self, info, gain, loss):
+        w = info['area_weight'].values
+        rows = []
+        for g, m in self.group_masks(info).items():
+            m = m & np.isfinite(gain) & np.isfinite(loss)
+            if m.sum() < 30:
+                rows.append([g, int(m.sum())] + [np.nan] * 8)
+                continue
+            gm, glo, ghi = self.wmean_ci(gain[m], w[m])
+            lm, llo, lhi = self.wmean_ci(loss[m], w[m])
+            t, p = stats.ttest_rel(gain[m], -loss[m])
+            rows.append([g, int(m.sum()), gm, glo, ghi, lm, llo, lhi, gm / abs(lm) if lm != 0 else np.nan, p])
+        return pd.DataFrame(rows, columns=['group', 'n_pix', 'wet_gain', 'wet_gain_lo', 'wet_gain_hi', 'dry_loss',
+                                           'dry_loss_lo', 'dry_loss_hi', 'gain_over_abs_loss', 'paired_p'])
+
+    def gain_loss_table(self, info, y, x, ver):
+        gain, loss, out = self.gain_loss_pixel(y, x)
+        tab = self.gain_loss_group(info, gain, loss)
+        tab.insert(0, 'version', ver)
+        print(f'{ver}: pixels with >= {self.min_class} wet, normal and dry years: '
+              f'{int((np.isfinite(gain) & np.isfinite(loss)).sum())} of {len(gain)}')
+        return tab
+
+    def gain_loss_window(self, info, lai, x, sc):
+        ## wet gain and dry loss in every 10-year window from 1982 (raw and detrended within the window)
+        rows = []
+        for k in range(len(self.window_years) - self.window + 1):
+            sl = slice(k, k + self.window)
+            yrs = self.window_years[sl]
+            for ver in ['raw', 'detrended']:
+                yy, xx = lai[:, sl], x[:, sl]
+                if ver == 'detrended':
+                    t = yrs - yrs.mean()
+                    yy = yy - yy.mean(axis=1, keepdims=True) - (((yy - yy.mean(axis=1, keepdims=True)) * t).sum(axis=1) /
+                                                                 (t ** 2).sum())[:, None] * t
+                    xx = xx - xx.mean(axis=1, keepdims=True) - (((xx - xx.mean(axis=1, keepdims=True)) * t).sum(axis=1) /
+                                                                 (t ** 2).sum())[:, None] * t
+                gain, loss, _ = self.gain_loss_pixel(yy, xx)
+                tab = self.gain_loss_group(info, gain, loss)
+                tab.insert(0, 'centre', yrs.mean())
+                tab.insert(0, 'window', f'{yrs[0]}-{yrs[-1]}')
+                tab.insert(0, 'version', ver)
+                rows.append(tab)
+        tab = pd.concat(rows)
+        tab.to_csv(self.outdir + f'gain_loss_window_{sc}.csv', index=False)
+        return tab
+
+    def fig_gain_loss(self, tab, sc):
+        ## 2000-2024: wet gain (up) and dry loss (down) per group, raw and detrended
+        with plt.rc_context(self.font):
+            fig, axs = plt.subplots(1, 2, figsize=(13, 6), sharey=True)
+            for ax, ver in zip(axs, ['raw', 'detrended']):
+                d = tab[tab['version'] == ver].set_index('group').reindex(self.groups).dropna(subset=['wet_gain'])
+                xx = np.arange(len(d))
+                for col, c, lab in [('wet_gain', '#2171B5', f'wet gain (SPEI > {self.wet_thr})'),
+                                    ('dry_loss', '#D9480F', f'dry loss (SPEI < {self.dry_thr})')]:
+                    err = np.array([d[col] - d[col + '_lo'], d[col + '_hi'] - d[col]])
+                    ax.bar(xx, d[col], width=0.6, color=c, yerr=err, capsize=3, label=lab)
+                top = np.nanmax(tab['wet_gain_hi'].values)
+                for i, (r, p) in enumerate(zip(d['gain_over_abs_loss'], d['paired_p'])):
+                    ax.text(i, top * 1.08, f'{r:.2f}\n{self.p_text(p)}', ha='center', va='bottom', fontsize=11)
+                ax.set_ylim(top=top * 1.45)
+                ax.axhline(0, color='k', lw=0.8)
+                ax.set_xticks(xx)
+                ax.set_xticklabels([g.replace(' ', '\n') for g in d.index], fontsize=13)
+                ax.set_title(f'{ver} (gain / |loss|, paired p)', fontsize=16)
+                ax.spines[['top', 'right']].set_visible(False)
+            axs[0].set_ylabel(f'LAI vs normal years (% of mean)\n{sc}, 2000-2024')
+            h, l = axs[0].get_legend_handles_labels()
+            fig.legend(h, l, frameon=False, ncol=2, loc='lower center', bbox_to_anchor=(0.5, -0.06))
+            plt.tight_layout()
+            plt.savefig(self.outdir + f'Fig_gain_loss_{sc}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(self.outdir + f'Fig_gain_loss_{sc}.pdf', bbox_inches='tight')
+            plt.close()
+
+    def fig_gain_loss_window(self, tab, sc):
+        ## per group: wet gain and |dry loss| in each 10-year window from 1982; one figure per version
+        for ver in ['raw', 'detrended']:
+            with plt.rc_context(self.font):
+                fig, axs = plt.subplots(2, 4, figsize=(13, 7.5), sharex=True)
+                axs = axs.ravel()
+                for ax, g in zip(axs, self.groups):
+                    d = tab[(tab['version'] == ver) & (tab['group'] == g)].dropna(subset=['wet_gain', 'dry_loss'])
+                    if d.empty:
+                        ax.set_axis_off()
+                        continue
+                    ax.plot(d['centre'], d['wet_gain'], color='#2171B5', lw=2.5, label='wet gain')
+                    ax.fill_between(d['centre'], d['wet_gain_lo'], d['wet_gain_hi'], color='#2171B5', alpha=0.15, lw=0)
+                    ax.plot(d['centre'], -d['dry_loss'], color='#D9480F', lw=2.5, label='|dry loss|')
+                    ax.fill_between(d['centre'], -d['dry_loss_lo'], -d['dry_loss_hi'], color='#D9480F', alpha=0.15, lw=0)
+                    ax.axvline(2000 + (self.window - 1) / 2, color='grey', ls=':', lw=1.2)
+                    ax.axhline(0, color='grey', lw=0.8)
+                    ax.set_title(g, fontsize=15)
+                    ax.spines[['top', 'right']].set_visible(False)
+                axs[-1].set_axis_off()
+                h, l = axs[0].get_legend_handles_labels()
+                axs[-1].legend(h, l, frameon=False, loc='upper center', fontsize=15)
+                axs[-1].text(0.5, 0.05, f'{sc}, {ver}\nwet > {self.wet_thr}, dry < {self.dry_thr}\n'
+                             f'{self.window}-year windows from {self.window_years[0]}\ndotted: first window from 2000',
+                             transform=axs[-1].transAxes, ha='center', va='bottom', fontsize=13)
+                for ax in axs[4:7]:
+                    ax.set_xlabel('Window centre')
+                for ax in [axs[0], axs[4]]:
+                    ax.set_ylabel('LAI vs normal years\n(% of mean)')
+                plt.tight_layout()
+                plt.savefig(self.outdir + f'Fig_gain_loss_window_{sc}_{ver}.png', dpi=300, bbox_inches='tight')
+                plt.savefig(self.outdir + f'Fig_gain_loss_window_{sc}_{ver}.pdf', bbox_inches='tight')
+                plt.close()
 
     def decomposition(self, info, lai, x, fit, sc):
         ## raw version: LAI = wet part + dry part + background; regional mean per year and trend of each part
